@@ -21,11 +21,12 @@
 }}} */
 
 ini_set('display_errors', 0);
+// ini_set('display_startup_errors', 1);
 
 if (defined('E_DEPRECATED')) {
-	error_reporting(E_ALL & ~(E_DEPRECATED|E_NOTICE|E_STRICT));
+  error_reporting(E_ALL & ~(E_DEPRECATED | E_NOTICE | E_STRICT));
 } else {
-	error_reporting(E_ALL & ~E_NOTICE);
+  error_reporting(E_ALL & ~E_NOTICE);
 }
 
 if (function_exists('date_default_timezone_set')) {
@@ -44,24 +45,24 @@ $baseDir = dirname(__FILE__);
 define('DP_BASE_DIR', $baseDir);
 // dprint(__FILE__, __LINE__, 8, "[DEBUG] Base dir is '" . DP_BASE_DIR . "'");
 
-require_once ($baseDir . '/includes/dP_compat.php');
+require_once($baseDir . '/includes/dP_compat.php');
 
 // only rely on env variables if not using a apache handler
 function safe_get_env($name)
 {
-	if (isset($_SERVER[$name])) {
-		return $_SERVER[$name];
-	} else if (mb_strpos(php_sapi_name(), 'apache') === false) {
-		getenv($name);
-	} else {
-		return '';
-	}
+  if (isset($_SERVER[$name])) {
+    return $_SERVER[$name];
+  } else if (mb_strpos(php_sapi_name(), 'apache') === false) {
+    getenv($name);
+  } else {
+    return '';
+  }
 }
 
 // automatically define the base url
 $baseUrl = (((!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] != 'off')
-             || $_SERVER['HTTP_X_FORWARDED_PROTO'] == 'https')
-             ? 'https://' : 'http://');
+  || ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https')
+  ? 'https://' : 'http://');
 $baseUrl .= safe_get_env('HTTP_HOST');
 // check if webserver is not running on default port
 // This seems to only apply if using older Apache servers
@@ -70,9 +71,9 @@ if (($_SERVER['SERVER_PORT'] != 80 || $_SERVER['SERVER_PORT'] != 443) && strpos(
 }
 $pathInfo = safe_get_env('PATH_INFO');
 if (@$pathInfo) {
-  $baseUrl .= str_replace('\\','/',dirname($pathInfo));
+  $baseUrl .= str_replace('\\', '/', dirname($pathInfo));
 } else {
-  $baseUrl .= str_replace('\\','/', dirname(safe_get_env('SCRIPT_NAME')));
+  $baseUrl .= str_replace('\\', '/', dirname(safe_get_env('SCRIPT_NAME')));
 }
 
 $baseUrl = preg_replace('#/$#D', '', $baseUrl);
@@ -81,11 +82,11 @@ $baseUrl = preg_replace('#/$#D', '', $baseUrl);
 define('DP_BASE_URL', $baseUrl);
 // And now we need to ensure we have a valid path for included pear libraries.
 // This dependency sucks, but if we don't do it we have no idea what versions we have
-$dpLib = DP_BASE_DIR.DIRECTORY_SEPARATOR.'lib';
-$pear = $dpLib . DIRECTORY_SEPARATOR. 'PEAR';
+$dpLib = DP_BASE_DIR . DIRECTORY_SEPARATOR . 'lib';
+$pear = $dpLib . DIRECTORY_SEPARATOR . 'PEAR';
 // If you want a really secure path, comment the second one out and uncomment this
 // set_include_path('.'.PATH_SEPARATOR.$dpLib.PATH_SEPARATOR.$pear);
-set_include_path('.'.PATH_SEPARATOR.$dpLib.PATH_SEPARATOR.$pear.PATH_SEPARATOR.get_include_path());
+set_include_path('.' . PATH_SEPARATOR . $dpLib . PATH_SEPARATOR . $pear . PATH_SEPARATOR . get_include_path());
 
 // required includes for start-up
 global $dPconfig;

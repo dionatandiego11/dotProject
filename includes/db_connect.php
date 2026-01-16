@@ -1,56 +1,52 @@
-<?php /* INCLUDES $Id$ */
+<?php
 /**
-* Generic functions based on library function (that is, non-db specific)
-*
-* @todo Encapsulate into a database object
-*/
+ * Generic database connection and query functions
+ *
+ * @package dotProject
+ * @license GPL version 2 or later
+ */
 
-if (!(defined('DP_BASE_DIR'))) {
+declare(strict_types=1);
+
+if (!defined('DP_BASE_DIR')) {
 	die('You should not access this file directly.');
 }
 
-// load the db specific handlers
-//require_once(DP_BASE_DIR."/includes/db_" . $dPconfig['dbtype'] . ".php");
-//require_once("./includes/db_adodb.php");
 require_once DP_BASE_DIR . '/includes/db_adodb.php';
 
-// make the connection to the db
-db_connect(dPgetConfig('dbhost'), dPgetConfig('dbname'),
-dPgetConfig('dbuser'), dPgetConfig('dbpass'), dPgetConfig('dbpersist'));
+// Make the connection to the database
+db_connect(
+	dPgetConfig('dbhost'),
+	dPgetConfig('dbname'),
+	dPgetConfig('dbuser'),
+	dPgetConfig('dbpass'),
+	dPgetConfig('dbpersist')
+);
 
-
-// Quick hack to ensure MySQL behaves itself (#2323)
+// Ensure MySQL behaves correctly
 $db->Execute("SET sql_mode := ''");
 
-/*
-* Having successfully established the database connection now,
-* we will hurry up to load the system configuration details from the database.
-*/
-
-$sql = 'SELECT config_name, config_value, config_type FROM '.dPgetConfig('dbprefix','').'config';
+// Load system configuration from database
+$sql = 'SELECT config_name, config_value, config_type FROM ' . dPgetConfig('dbprefix', '') . 'config';
 $rs = $db->Execute($sql);
 
-if ($rs) { // Won't work in install mode.
+if ($rs) {
 	$rsArr = $rs->GetArray();
-
 	foreach ($rsArr as $c) {
-		if ($c['config_type'] == 'checkbox') {
-			$c['config_value'] = ($c['config_value'] == 'true') ? true : false;
+		if ($c['config_type'] === 'checkbox') {
+			$c['config_value'] = $c['config_value'] === 'true';
 		}
 		$dPconfig[$c['config_name']] = $c['config_value'];
 	}
 }
 
-
 /**
-* This global function loads the first field of the first row returned by the query.
-*
-* @param string The SQL query
-* @return The value returned in the query or null if the query failed.
-*/
-function db_loadResult($sql) {
+ * Load the first field of the first row returned by the query.
+ */
+function db_loadResult(string $sql): mixed
+{
 	$cur = db_exec($sql);
-	if (!($cur)) {
+	if (!$cur) {
 		exit(db_error());
 	}
 	$ret = null;
@@ -62,92 +58,87 @@ function db_loadResult($sql) {
 }
 
 /**
-* This global function loads the first row of a query into an object
-*
-* If an object is passed to this function, the returned row is bound to the existing elements of <var>object</var>.
-* If <var>object</var> has a value of null, then all of the returned query fields returned in the object.
-* @param string The SQL query
-* @param object The address of variable
-* @return bool  Object loaded correctly? true
-*/
-function db_loadObject($sql, &$object, $bindAll=false , $strip = true) {
+ * Load the first row of a query into an object.
+ */
+function db_loadObject(string $sql, ?object &$object, bool $bindAll = false, bool $strip = true): bool
+{
 	if (!empty($object)) {
-		$hash = array();
+		$hash = [];
 		if (empty(db_loadHash($sql, $hash))) {
 			return false;
 		}
 		bindHashToObject($hash, $object, null, $strip, $bindAll);
 		return true;
-	} else {
-		$cur = db_exec($sql);
-		if (empty($cur)) {
-			exit(db_error());  // a bit drastic, isn't it? (gwyneth 20210427)
-		}
-		$object = db_fetch_object($cur);
-		if (!empty($object)) {
-			db_free_result($cur);
-		} else {
-			$object = null;
-		}
-		return !empty($object);
 	}
+
+	$cur = db_exec($sql);
+	if (empty($cur)) {
+		exit(db_error());
+	}
+	$object = db_fetch_object($cur);
+	if (!empty($object)) {
+		db_free_result($cur);
+	} else {
+		$object = null;
+	}
+	return !empty($object);
 }
 
 /**
-* This global function return a result row as an associative array
-*
-* @param string The SQL query
-* @param array An array for the result to be return in
-* @return <b>True</b> is the query was successful, <b>False</b> otherwise
-*/
-function db_loadHash($sql, &$hash) {
+ * Return a result row as an associative array.
+ *
+ * @param array<string, mixed> $hash
+ */
+function db_loadHash(string $sql, array &$hash): bool
+{
 	$cur = db_exec($sql);
-	if (!($cur)) {
+	if (!$cur) {
 		exit(db_error());
 	}
 	$hash = db_fetch_assoc($cur);
 	db_free_result($cur);
-	return ((!($hash)) ? false : true);
+	return !empty($hash);
 }
 
 /**
-* Document::db_loadHashList()
-*
-* { Description }
-*
-* @param string $index
-*/
-function db_loadHashList($sql, $index='') {
+ * Load hash list from query.
+ *
+ * @return array<int|string, mixed>
+ */
+function db_loadHashList(string $sql, string $index = ''): array
+{
 	$cur = db_exec($sql);
-	if (!($cur)) {
+	if (!$cur) {
 		exit(db_error());
 	}
-	$hashlist = array();
+	$hashlist = [];
 	while ($hash = db_fetch_array($cur)) {
-		$hashlist[$hash[(($index) ? $index : 0)]] = $index ? $hash : $hash[1];
+		$hashlist[$hash[$index ?: 0]] = $index ? $hash : $hash[1];
 	}
 	db_free_result($cur);
 	return $hashlist;
 }
 
 /**
-* Document::db_loadList()
-*
-* { Description }
-*
-* @param [type] $maxrows
-*/
-function db_loadList($sql, $maxrows=NULL) {
-	GLOBAL $AppUI;
-	if (!($cur = db_exec($sql))) {;
+ * Load list of rows from query.
+ *
+ * @return array<int, array<string, mixed>>|false
+ */
+function db_loadList(string $sql, ?int $maxrows = null): array|false
+{
+	global $AppUI;
+
+	$cur = db_exec($sql);
+	if (!$cur) {
 		$AppUI->setMsg(db_error(), UI_MSG_ERROR);
 		return false;
 	}
-	$list = array();
+
+	$list = [];
 	$cnt = 0;
 	while ($hash = db_fetch_assoc($cur)) {
 		$list[] = $hash;
-		if ($maxrows && $maxrows == $cnt++) {
+		if ($maxrows !== null && ++$cnt >= $maxrows) {
 			break;
 		}
 	}
@@ -156,23 +147,26 @@ function db_loadList($sql, $maxrows=NULL) {
 }
 
 /**
-* Document::db_loadColumn()
-*
-* { Description }
-*
-* @param [type] $maxrows
-*/
-function db_loadColumn($sql, $maxrows=NULL) {
-	GLOBAL $AppUI;
-	if (!($cur = db_exec($sql))) {;
+ * Load a single column from query.
+ *
+ * @return array<int, mixed>|false
+ */
+function db_loadColumn(string $sql, ?int $maxrows = null): array|false
+{
+	global $AppUI;
+
+	$cur = db_exec($sql);
+	if (!$cur) {
 		$AppUI->setMsg(db_error(), UI_MSG_ERROR);
 		return false;
 	}
-	$list = array();
+
+	$list = [];
 	$cnt = 0;
 	$row_index = null;
+
 	while ($row = db_fetch_row($cur)) {
-		if (!(isset($row_index))) {
+		if ($row_index === null) {
 			if (isset($row[0])) {
 				$row_index = 0;
 			} else {
@@ -181,7 +175,7 @@ function db_loadColumn($sql, $maxrows=NULL) {
 			}
 		}
 		$list[] = $row[$row_index];
-		if ($maxrows && $maxrows == $cnt++) {
+		if ($maxrows !== null && ++$cnt >= $maxrows) {
 			break;
 		}
 	}
@@ -189,30 +183,29 @@ function db_loadColumn($sql, $maxrows=NULL) {
 	return $list;
 }
 
-/* return an array of objects from a SQL SELECT query
- * class must implement the Load() factory, see examples in Webo classes
- * @note to optimize request, only select object oids in $sql
+/**
+ * Return an array of objects from a SQL SELECT query.
+ *
+ * @return array<int, object>
  */
-function db_loadObjectList($sql, $object, $maxrows = NULL) {
+function db_loadObjectList(string $sql, object $object, ?int $maxrows = null): array
+{
 	$cur = db_exec($sql);
-	if (!($cur)) {
+	if (!$cur) {
 		die('db_loadObjectList : ' . db_error());
 	}
-	$list = array();
+
+	$list = [];
 	$cnt = 0;
 	$row_index = null;
+
 	while ($row = db_fetch_array($cur)) {
-		if (!(isset($row_index))) {
-			if (isset($row[0]))
-				$row_index = 0;
-			else {
-				$row_indices = array_keys($row);
-				$row_index = $row_indices[0];
-			}
+		if ($row_index === null) {
+			$row_index = isset($row[0]) ? 0 : array_keys($row)[0];
 		}
 		$object->load($row[$row_index]);
 		$list[] = $object;
-		if ($maxrows && $maxrows == $cnt++) {
+		if ($maxrows !== null && ++$cnt >= $maxrows) {
 			break;
 		}
 	}
@@ -220,137 +213,145 @@ function db_loadObjectList($sql, $object, $maxrows = NULL) {
 	return $list;
 }
 
-
 /**
-* Document::db_insertArray()
-*
-* { Description }
-*
-* @param [type] $verbose
-*/
-function db_insertArray($table, &$hash, $verbose=false) {
-	//TODO: if DBQuery class available, use it
-	$dbprefix = dPgetConfig('dbprefix','');
-	if ( ($dbprefix != '') && (strstr($table,$dbprefix) === false) ) {
-		//have prefix and table does not have it prepended
-		$fmtsql = "INSERT INTO `$dbprefix$table` (%s) VALUES (%s) ";
-	} else {
-		// table has prefix already prepended (or no prefix)
-		$fmtsql = "INSERT INTO `$table` (%s) VALUES (%s) ";
-	}
+ * Insert an array into a database table.
+ *
+ * @param array<string, mixed> $hash
+ */
+function db_insertArray(string $table, array &$hash, bool $verbose = false): bool
+{
+	$dbprefix = dPgetConfig('dbprefix', '');
+	$tableName = ($dbprefix !== '' && !str_contains($table, $dbprefix))
+		? $dbprefix . $table
+		: $table;
+
+	$fields = [];
+	$values = [];
+
 	foreach ($hash as $k => $v) {
-		if (is_array($v) || is_object($v) || $v == NULL) {
+		if (is_array($v) || is_object($v) || $v === null) {
 			continue;
 		}
 		$fields[] = $k;
-		$values[] = "'" . db_escape($v) . "'";
+		$values[] = "'" . db_escape((string) $v) . "'";
 	}
-	$sql = sprintf($fmtsql, implode(',', $fields) ,  implode(',', $values));
+
+	$sql = sprintf(
+		"INSERT INTO `%s` (%s) VALUES (%s)",
+		$tableName,
+		implode(',', $fields),
+		implode(',', $values)
+	);
 
 	if ($verbose) {
 		print "$sql<br />\n";
 	}
 
-	if (!(db_exec($sql))) {
+	if (!db_exec($sql)) {
 		return false;
 	}
-	$id = db_insert_id();
+	db_insert_id();
 	return true;
 }
 
 /**
-* Document::db_updateArray()
-*
-* { Description }
-*
-* @param [type] $verbose
-*/
-function db_updateArray($table, &$hash, $keyName, $verbose=false) {
-	//TODO: If DBQuery available, use it
-	$dbprefix = dPgetConfig('dbprefix','');
-	if ( ($dbprefix != '') && (strstr($table,$dbprefix) === false) ) {
-		$fmtsql = "UPDATE `$dbprefix$table` SET %s WHERE %s ";
-	} else {
-		$fmtsql = "UPDATE `$table` SET %s WHERE %s ";
-	}
+ * Update an array in a database table.
+ *
+ * @param array<string, mixed> $hash
+ */
+function db_updateArray(string $table, array &$hash, string $keyName, bool $verbose = false): mixed
+{
+	$dbprefix = dPgetConfig('dbprefix', '');
+	$tableName = ($dbprefix !== '' && !str_contains($table, $dbprefix))
+		? $dbprefix . $table
+		: $table;
+
+	$tmp = [];
+	$where = '';
+
 	foreach ($hash as $k => $v) {
-		if (is_array($v) || is_object($v) || $k[0] == '_') { // internal or NA field
+		if (is_array($v) || is_object($v) || str_starts_with($k, '_')) {
 			continue;
 		}
 
-		if ($k == $keyName) { // PK not to be updated
-			$where = "$keyName='" . db_escape($v) . "'";
+		if ($k === $keyName) {
+			$where = "$keyName='" . db_escape((string) $v) . "'";
 			continue;
 		}
-		$val = (($v == '') ? 'NULL' : ("'" . db_escape($v) . "'"));
+		$val = $v === '' ? 'NULL' : "'" . db_escape((string) $v) . "'";
 		$tmp[] = "$k=$val";
 	}
-	$sql = sprintf($fmtsql, implode(',', $tmp) , $where);
+
+	$sql = sprintf("UPDATE `%s` SET %s WHERE %s", $tableName, implode(',', $tmp), $where);
+
 	if ($verbose) {
 		print "$sql<br />\n";
 	}
-	$ret = db_exec($sql);
-	return $ret;
+
+	return db_exec($sql);
 }
 
 /**
-* Document::db_delete()
-*
-* { Description }
-*
-*/
-function db_delete($table, $keyName, $keyValue) {
-	//TODO: If DBQuery available use it
-	$dbprefix = dPgetConfig('dbprefix','');
-	if ( ($dbprefix != '') && (strstr($table,$dbprefix) === false) ) {
-		$sql = "DELETE FROM $dbprefix$table WHERE $keyName='$keyValue'";
-	} else {
-		$sql = "DELETE FROM $table WHERE $keyName='$keyValue'";
-	}
+ * Delete a row from a database table.
+ */
+function db_delete(string $table, string $keyName, string|int $keyValue): mixed
+{
+	$dbprefix = dPgetConfig('dbprefix', '');
+	$tableName = ($dbprefix !== '' && !str_contains($table, $dbprefix))
+		? $dbprefix . $table
+		: $table;
+
 	$keyName = db_escape($keyName);
-	$keyValue = db_escape($keyValue);
-	$ret = db_exec( $sql );
-	return $ret;
+	$keyValue = db_escape((string) $keyValue);
+	$sql = "DELETE FROM $tableName WHERE $keyName='$keyValue'";
+
+	return db_exec($sql);
 }
 
-
 /**
-* Document::db_insertObject()
-*
-* { Description }
-*
-* @param [type] $keyName
-* @param [type] $verbose
-*/
-function db_insertObject($table, &$object, $keyName = NULL, $verbose=false) {
-	//TODO: If DBQuery available, use it
-	$dbprefix = dPgetConfig('dbprefix','');
-	if ( ($dbprefix != '') && (strstr($table,$dbprefix) === false) ) {
-		$fmtsql = "INSERT INTO `$dbprefix$table` (%s) VALUES (%s) ";
-	} else {
-		$fmtsql = "INSERT INTO `$table` (%s) VALUES (%s) ";
-	}
+ * Insert an object into a database table.
+ */
+function db_insertObject(string $table, object &$object, ?string $keyName = null, bool $verbose = false): bool
+{
+	$dbprefix = dPgetConfig('dbprefix', '');
+	$tableName = ($dbprefix !== '' && !str_contains($table, $dbprefix))
+		? $dbprefix . $table
+		: $table;
+
+	$fields = [];
+	$values = [];
+
 	foreach (get_object_vars($object) as $k => $v) {
-		if (is_array($v) || is_object($v) || $v == NULL) {
+		if (is_array($v) || is_object($v) || $v === null) {
 			continue;
 		}
-		if ($k[0] == '_') { // internal field
+		if (str_starts_with($k, '_')) {
 			continue;
 		}
 		$fields[] = $k;
-		$values[] = "'" . db_escape($v) . "'";
+		$values[] = "'" . db_escape((string) $v) . "'";
 	}
-	$sql = sprintf($fmtsql, implode(",", $fields) ,  implode(",", $values));
+
+	$sql = sprintf(
+		"INSERT INTO `%s` (%s) VALUES (%s)",
+		$tableName,
+		implode(',', $fields),
+		implode(',', $values)
+	);
+
 	if ($verbose) {
 		print "$sql<br />\n";
 	}
-	if (!(db_exec($sql))) {
+
+	if (!db_exec($sql)) {
 		return false;
 	}
+
 	$id = db_insert_id();
 	if ($verbose) {
 		print "id=[$id]<br />\n";
 	}
+
 	if ($keyName && $id) {
 		$object->$keyName = $id;
 	}
@@ -358,63 +359,70 @@ function db_insertObject($table, &$object, $keyName = NULL, $verbose=false) {
 }
 
 /**
-* Document::db_updateObject()
-*
-* { Description }
-*
-* @param [type] $updateNulls
-*/
-function db_updateObject($table, &$object, $keyName, $updateNulls=true, $descriptionField = NULL) {
+ * Update an object in a database table.
+ */
+function db_updateObject(
+	string $table,
+	object &$object,
+	string $keyName,
+	bool $updateNulls = true,
+	?string $descriptionField = null
+): bool {
 	global $AppUI;
-	$perms =& $AppUI->acl();
+	$perms = $AppUI->acl();
 
-	//TODO: If DBQuery exists use it
-	$dbprefix = dPgetConfig('dbprefix','');
-	if ( ($dbprefix != '') && (strstr($table,$dbprefix) === false) ) {
-		$fmtsql = "UPDATE `$dbprefix$table` SET %s WHERE %s";
-	} else {
-		$fmtsql = "UPDATE `$table` SET %s WHERE %s";
-	}
+	$dbprefix = dPgetConfig('dbprefix', '');
+	$tableName = ($dbprefix !== '' && !str_contains($table, $dbprefix))
+		? $dbprefix . $table
+		: $table;
+
 	$obj_vars_arr = get_object_vars($object);
+	$tmp = [];
+	$where = '';
+
 	foreach ($obj_vars_arr as $k => $v) {
-		if (is_array($v) || is_object($v) || $k[0] == '_') { // internal or NA field
+		if (is_array($v) || is_object($v) || str_starts_with($k, '_')) {
 			continue;
 		}
-		if ($k == $keyName) { // PK not to be updated
-			$where = "$keyName='" . db_escape($v) . "'";
+		if ($k === $keyName) {
+			$where = "$keyName='" . db_escape((string) $v) . "'";
 			continue;
 		}
-		if ($v === NULL && !($updateNulls)) {
+		if ($v === null && !$updateNulls) {
 			continue;
 		}
-		$val = (($v === '') ? "''" : ("'" . db_escape($v) . "'"));
+		$val = $v === '' ? "''" : "'" . db_escape((string) $v) . "'";
 		$tmp[] = "$k=$val";
 	}
-	if (count ($tmp)) {
-		$sql = sprintf($fmtsql, implode(",", $tmp) , $where);
+
+	if (count($tmp)) {
+		$sql = sprintf("UPDATE `%s` SET %s WHERE %s", $tableName, implode(',', $tmp), $where);
 		$retval = db_exec($sql);
+
 		if ($retval) {
 			$perm_item_id = $perms->get_object_id($table, $obj_vars_arr[$keyName], 'axo');
 			if ($perm_item_id) {
 				if ($descriptionField) {
 					$keyDesc = $descriptionField;
 				} else {
-					//try to get a valid label field from module table by default
-					//If the passed $table has our dbprefix, we have to strip it
-					//TODO: If DBQuery available, use it
-					if ($dbprefix != '') {
-						if (!(strstr($table,$dbprefix) === false)) substr_replace($table,'',0,strlen($dbprefix));
-						$keyDesc = db_loadResult('SELECT permissions_item_label FROM '.$dbprefix.'modules'
-						                         . " WHERE permissions_item_table = '" . $table . "'");
-					} else {
-					$keyDesc = db_loadResult('SELECT permissions_item_label FROM modules'
-					                         . " WHERE permissions_item_table = '" . $table . "'");
-					}
+					$tableToQuery = ($dbprefix !== '' && !str_contains($table, $dbprefix))
+						? $table
+						: str_replace($dbprefix, '', $table);
+					$keyDesc = db_loadResult(
+						'SELECT permissions_item_label FROM ' . $dbprefix . "modules WHERE permissions_item_table = '" . $tableToQuery . "'"
+					);
 				}
 
 				if ($keyDesc) {
-					$perms->edit_object($perm_item_id, $table, $obj_vars_arr[$keyDesc],
-					                    $obj_vars_arr[$keyName], 0, 0, 'axo');
+					$perms->edit_object(
+						$perm_item_id,
+						$table,
+						$obj_vars_arr[$keyDesc],
+						$obj_vars_arr[$keyName],
+						0,
+						0,
+						'axo'
+					);
 				}
 			}
 		}
@@ -422,105 +430,90 @@ function db_updateObject($table, &$object, $keyName, $updateNulls=true, $descrip
 		$retval = true;
 	}
 
-	return $retval;
+	return (bool) $retval;
 }
 
 /**
-* Document::db_dateConvert()
-*
-* { Description }
-*
-*/
-function db_dateConvert($src, &$dest, $srcFmt) {
+ * Convert a date string to timestamp.
+ */
+function db_dateConvert(string $src, int &$dest, string $srcFmt): bool
+{
 	$result = strtotime($src);
-	$dest = $result;
-	return ($result != 0);
+	$dest = $result ?: 0;
+	return $result !== false && $result !== 0;
 }
 
 /**
-* Document::db_datetime()
-*
-* { Description }
-*
-* @param [type] $timestamp
-*/
-function db_datetime($timestamp = NULL) {
-	if (!($timestamp)) {
-		return NULL;
+ * Format a timestamp or CDate object as datetime string.
+ */
+function db_datetime(mixed $timestamp = null): ?string
+{
+	if (!$timestamp) {
+		return null;
 	}
-	$datetime_str = ((is_object($timestamp)) ? $timestamp->toString('%Y-%m-%d %H:%M:%S')
-	                 : strftime('%Y-%m-%d %H:%M:%S', $timestamp));
-	return $datetime_str;
+
+	if (is_object($timestamp) && method_exists($timestamp, 'toString')) {
+		return $timestamp->toString('%Y-%m-%d %H:%M:%S');
+	}
+
+	return date('Y-m-d H:i:s', (int) $timestamp);
 }
 
 /**
-* Document::db_dateTime2locale()
-*
-* { Description }
-*
-*/
-function db_dateTime2locale($dateTime, $format) {
-	$dateTime = null;
+ * Convert datetime to locale format.
+ */
+function db_dateTime2locale(string $dateTime, string $format): ?string
+{
+	$result = null;
 	if (intval($dateTime)) {
 		$date = new CDate($dateTime);
-		$dateTime = $date->format($format);
+		$result = $date->format($format);
 	}
-	return $dateTime;
+	return $result;
 }
 
-/*
-* copy the hash array content into the object as properties
-* only existing properties of object are filled. when undefined in hash, properties wont be deleted
-* only non-object hash values accepted or function dies
-* @param array the input array
-* @param obj byref the object to fill of any class
-* @param string
-* @param boolean
-* @param boolean
-*/
-function bindHashToObject($hash, &$obj, $prefix=NULL, $checkSlashes=true, $bindAll=false) {
-	if (!(is_array($hash))) {
+/**
+ * Copy the hash array content into the object as properties.
+ *
+ * @param array<string, mixed> $hash
+ */
+function bindHashToObject(
+	array $hash,
+	object &$obj,
+	?string $prefix = null,
+	bool $checkSlashes = true,
+	bool $bindAll = false
+): void {
+	if (!is_array($hash)) {
 		die('bindHashToObject : hash expected');
-	} else if (!(is_object($obj))) {
+	}
+	if (!is_object($obj)) {
 		die('bindHashToObject : object expected');
 	}
-	/*
-	 * checking that all hash values are non-objects so that stripslashes() and other such
-	 * functions are correctly used as well as making sure that we actually create new values and
-	 * not just copy a reference to an object. bind() already filters non-objects but we still need
-	 * to check on this should the funtion be called independently of bind()
-	 */
 
+	// Validate all hash values are non-objects
 	foreach ($hash as $k => $v) {
-		if (is_object($hash[$k])) {
-			$error_str .= ('bindHashToObject : non-object expected for hash value with key '
-			               . $k . "\n");
-			die ($error_str);
+		if (is_object($v)) {
+			die('bindHashToObject : non-object expected for hash value with key ' . $k);
 		}
 	}
-	// get_magic_quotes_gpc() has been REMOVED in PHP 8; calling it throws a fatal error (gwyneth 20210413)
-  $check_magic_quotes = function_exists('get_magic_quotes_gpc') && get_magic_quotes_gpc();
 
+	// Magic quotes were removed in PHP 5.4, so checkSlashes has no effect now
 	if ($bindAll) {
 		foreach ($hash as $k => $v) {
-			$obj->$k = (($checkSlashes && $check_magic_quotes) ? stripslashes($hash[$k])
-			            : $hash[$k]);
+			$obj->$k = $v;
 		}
-	} else if ($prefix) {
+	} elseif ($prefix) {
 		foreach (get_object_vars($obj) as $k => $v) {
-			if (isset($hash[$prefix . $k ])) {
-				$obj->$k = (($checkSlashes && $check_magic_quotes) ? stripslashes($hash[$k])
-				            : $hash[$k]);
+			if (isset($hash[$prefix . $k])) {
+				$obj->$k = $hash[$prefix . $k];
 			}
 		}
 	} else {
 		foreach (get_object_vars($obj) as $k => $v) {
 			if (isset($hash[$k])) {
-				$obj->$k = (($checkSlashes && $check_magic_quotes) ? stripslashes($hash[$k])
-				            : $hash[$k]);
+				$obj->$k = $hash[$k];
 			}
 		}
 	}
-	//echo "obj="; print_r($obj); exit;
 }
-?>

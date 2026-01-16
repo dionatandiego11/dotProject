@@ -11,11 +11,13 @@ require_once($AppUI->getSystemClass('event_queue'));
 require_once($AppUI->getSystemClass('date'));
 
 // user based access
-$task_access = array('0'=>'Public',
-					 '4'=>'Privileged',
-					 '2'=>'Participant',
-					 '1'=>'Protected',
-					 '3'=>'Private');
+$task_access = array(
+	'0' => 'Public',
+	'4' => 'Privileged',
+	'2' => 'Participant',
+	'1' => 'Protected',
+	'3' => 'Private'
+);
 
 /*
  * TASK DYNAMIC VALUE:
@@ -28,13 +30,17 @@ $task_access = array('0'=>'Public',
 
 // When calculating a task's start date only consider
 // end dates of tasks with these dynamic values.
-$tracked_dynamics = array('0' => '0',
-						  '1' => '1',
-						  '2' => '31');
+$tracked_dynamics = array(
+	'0' => '0',
+	'1' => '1',
+	'2' => '31'
+);
 // Tasks with these dynamics have their dates updated when
 // one of their dependencies changes. (They track dependencies)
-$tracking_dynamics = array('0' => '21',
-						   '1' => '31');
+$tracking_dynamics = array(
+	'0' => '21',
+	'1' => '31'
+);
 
 /*
  * CTask Class
@@ -72,24 +78,27 @@ class CTask extends CDpObject
 	var $task_departments = NULL;
 	var $task_contacts = NULL;
 	var $task_custom = NULL;
-	var $task_type	 = NULL;
+	var $task_type = NULL;
 
 	protected $_reminder_list = array();
 	protected $_reminder_sender = null;
 	protected $_default_batch_status = null;
 
 
-	public function __construct() {
+	public function __construct()
+	{
 		parent::__construct('tasks', 'task_id');
 		$this->_module_directory = 'tasks';
 	}
 
-	function __toString() {
-		return $this -> link . '/' . $this -> type . '/' . $this -> length;
+	function __toString()
+	{
+		return $this->link . '/' . $this->type . '/' . $this->length;
 	}
 
 	// overload check
-	function check() {
+	function check(): ?string
+	{
 		global $AppUI;
 
 		if ($this->task_id === NULL) {
@@ -97,7 +106,7 @@ class CTask extends CDpObject
 		}
 		// ensure changes to checkboxes are honoured
 		$this->task_milestone = intval($this->task_milestone);
-		$this->task_dynamic	  = intval($this->task_dynamic);
+		$this->task_dynamic = intval($this->task_dynamic);
 
 		$this->task_percent_complete = intval($this->task_percent_complete);
 
@@ -153,8 +162,10 @@ class CTask extends CDpObject
 			$this_child_deps = array();
 			foreach ($this_children as $child) {
 				$child_dep_str = $this->staticGetDependencies($child);
-				$this_child_deps = array_unique(array_merge($this_child_deps,
-				                                            explode(',', $child_dep_str)));
+				$this_child_deps = array_unique(array_merge(
+					$this_child_deps,
+					explode(',', $child_dep_str)
+				));
 			}
 
 			$current_task = $this;
@@ -163,16 +174,20 @@ class CTask extends CDpObject
 			while ($current_task->task_id != $current_task->task_parent) {
 				$current_parent = new CTask();
 				$current_parent->load($current_task->task_parent);
-				$parents_children = array_unique(array_merge($parents_children,
-				                                             $current_parent->getChildren()));
+				$parents_children = array_unique(array_merge(
+					$parents_children,
+					$current_parent->getChildren()
+				));
 
 				// Task parent (of any level) cannot be a child of task or its children
 				// extra precaution against any UI bugs allowing otherwise
 				if (in_array($current_parent->task_id, $parents_children)) {
 					return (($this->task_id == $current_parent->task_parent)
-					        ? 'BadParent_CircularParent'
-					        : array('BadParent_CircularGrandParent',
-					                ('(' . $current_parent->task_id . ')')));
+						? 'BadParent_CircularParent'
+						: array(
+							'BadParent_CircularGrandParent',
+							('(' . $current_parent->task_id . ')')
+						));
 				}
 				//Task's children cannot have a parent (of any level) as a dependency
 				if (in_array($current_parent->task_id, $this_child_deps)) {
@@ -182,8 +197,10 @@ class CTask extends CDpObject
 				//Task cannot have a parent (of any level) as a dependency
 				if (in_array($current_parent->task_id, $this_dependencies)) {
 					return (($current_task == $this) ? 'BadDep_CannotDependOnParent'
-					        : array('BadDep_CircularGrandParent',
-					                ('(' . $current_parent->task_id . ')')));
+						: array(
+							'BadDep_CircularGrandParent',
+							('(' . $current_parent->task_id . ')')
+						));
 				}
 
 				$parents_dependents = explode(',', $current_parent->dependentTasks());
@@ -209,8 +226,10 @@ class CTask extends CDpObject
 			if ($this->task_id != $this->task_parent) {
 				array_push($this_dependents, $this->task_parent);
 				$dep_string = $this->dependentTasks($this->task_parent);
-				$this_dependents = array_unique(array_merge($this_dependents,
-				                                            explode(',', $dep_string)));
+				$this_dependents = array_unique(array_merge(
+					$this_dependents,
+					explode(',', $dep_string)
+				));
 			}
 
 			$more_dependents = array();
@@ -224,8 +243,10 @@ class CTask extends CDpObject
 						$current_parent_id = $current_task->task_parent;
 						array_push($more_dependents, $current_parent_id);
 						$dep_string = $this->dependentTasks($dependent_task->task_parent);
-						$more_dependents = array_unique(array_merge($more_dependents,
-						                                            explode(',', $dep_string)));
+						$more_dependents = array_unique(array_merge(
+							$more_dependents,
+							explode(',', $dep_string)
+						));
 
 						$current_task = new CTask();
 						$current_task->load($current_parent_id);
@@ -262,7 +283,8 @@ class CTask extends CDpObject
 	 * @return any result from the database operation
 	 */
 
-	function load($oid=null, $strip=false, $skipUpdate=false) {
+	function load(?int $oid = null, bool $strip = false, bool $skipUpdate = false): mixed
+	{
 		// use parent function to load the given object
 		$loaded = parent::load($oid, $strip);
 
@@ -294,12 +316,14 @@ class CTask extends CDpObject
 	/*
 	 * call the load function but don't update dynamics
 	 */
-	function peek($oid=null, $strip=false) {
+	function peek($oid = null, $strip = false)
+	{
 		$loadme = $this->load($oid, $strip, true);
 		return $loadme;
 	}
 
-	function updateDynamics($fromChildren = false) {
+	function updateDynamics($fromChildren = false)
+	{
 		//Has a parent or children, we will check if it is dynamic so that it's info is updated also
 		$q = new DBQuery;
 		$modified_task = new CTask();
@@ -320,7 +344,7 @@ class CTask extends CDpObject
 			$q->addTable($this->_tbl);
 			$q->addQuery('SUM(task_duration * task_duration_type)');
 			$q->addWhere('task_parent = ' . $modified_task->task_id . ' AND task_id <> '
-						 . $modified_task->task_id . ' AND task_duration_type = 1 ');
+				. $modified_task->task_id . ' AND task_duration_type = 1 ');
 			$q->addGroup('task_parent');
 			$sql = $q->prepare();
 			$q->clear();
@@ -334,7 +358,7 @@ class CTask extends CDpObject
 			$q->addTable($this->_tbl);
 			$q->addQuery(' SUM(task_duration * ' . dPgetConfig('daily_working_hours') . ')');
 			$q->addWhere('task_parent = ' . $modified_task->task_id . ' AND task_id <> '
-						 . $modified_task->task_id . ' AND task_duration_type <> 1 ');
+				. $modified_task->task_id . ' AND task_duration_type <> 1 ');
 			$q->addGroup('task_parent');
 			$sql = $q->prepare();
 			$q->clear();
@@ -348,7 +372,7 @@ class CTask extends CDpObject
 				$modified_task->task_duration = round($children_allocated_hours, 2);
 			} else {
 				$modified_task->task_duration = round($children_allocated_hours
-													  / dPgetConfig('daily_working_hours'), 2);
+					/ dPgetConfig('daily_working_hours'), 2);
 			}
 
 			//Update worked hours based on children
@@ -356,7 +380,7 @@ class CTask extends CDpObject
 			$q->innerJoin('task_log', 'tl', 't.task_id = tl.task_log_task');
 			$q->addQuery('SUM(task_log_hours)');
 			$q->addWhere('task_parent = ' . $modified_task->task_id . ' AND task_id <> '
-						 . $modified_task->task_id . ' AND task_dynamic <> 1 ');
+				. $modified_task->task_id . ' AND task_dynamic <> 1 ');
 			$sql = $q->prepare();
 			$q->clear();
 			$children_hours_worked = (float) db_loadResult($sql);
@@ -366,7 +390,7 @@ class CTask extends CDpObject
 			$q->addTable('tasks');
 			$q->addQuery('SUM(task_hours_worked)');
 			$q->addWhere('task_parent = ' . $modified_task->task_id . ' AND task_id <> '
-						 . $modified_task->task_id . ' AND task_dynamic = 1 ');
+				. $modified_task->task_id . ' AND task_dynamic = 1 ');
 			$sql = $q->prepare();
 			$q->clear();
 			$children_hours_worked += (float) db_loadResult($sql);
@@ -378,7 +402,7 @@ class CTask extends CDpObject
 			$q->addTable('tasks');
 			$q->addQuery('SUM(task_percent_complete * task_duration * task_duration_type)');
 			$q->addWhere('task_parent = ' . $modified_task->task_id . ' AND task_id <> '
-						 . $modified_task->task_id . ' AND task_duration_type = 1 ');
+				. $modified_task->task_id . ' AND task_duration_type = 1 ');
 			$sql = $q->prepare();
 			$q->clear();
 			$real_children_hours_worked = (float) db_loadResult($sql);
@@ -386,24 +410,24 @@ class CTask extends CDpObject
 			//"days"
 			$q->addTable('tasks');
 			$q->addQuery('SUM(task_percent_complete * task_duration * '
-						 . dPgetConfig('daily_working_hours') . ')');
+				. dPgetConfig('daily_working_hours') . ')');
 			$q->addWhere('task_parent = ' . $modified_task->task_id . ' AND task_id <> '
-						 . $modified_task->task_id . ' AND task_duration_type <> 1 ');
+				. $modified_task->task_id . ' AND task_duration_type <> 1 ');
 			$sql = $q->prepare();
 			$q->clear();
 			$real_children_hours_worked += (float) db_loadResult($sql);
 
-			$total_hours_allocated = (float)($modified_task->task_duration
-											 * (($modified_task->task_duration_type > 1)
-												? dPgetConfig('daily_working_hours') : 1));
+			$total_hours_allocated = (float) ($modified_task->task_duration
+				* (($modified_task->task_duration_type > 1)
+					? dPgetConfig('daily_working_hours') : 1));
 			if ($total_hours_allocated > 0) {
 				$modified_task->task_percent_complete = ceil($real_children_hours_worked
-															 / $total_hours_allocated);
+					/ $total_hours_allocated);
 			} else {
 				$q->addTable('tasks');
 				$q->addQuery('AVG(task_percent_complete)');
 				$q->addWhere('task_parent = ' . $modified_task->task_id . ' AND task_id <> '
-							 . $modified_task->task_id);
+					. $modified_task->task_id);
 				$sql = $q->prepare();
 				$q->clear();
 				$modified_task->task_percent_complete = db_loadResult($sql);
@@ -414,8 +438,8 @@ class CTask extends CDpObject
 			$q->addTable('tasks');
 			$q->addQuery('MIN(task_start_date)');
 			$q->addWhere('task_parent = ' . $modified_task->task_id . ' AND task_id <> '
-						 . $modified_task->task_id . ' AND ! isnull(task_start_date)'
-						 . " AND task_start_date <>	'0000-00-00 00:00:00'");
+				. $modified_task->task_id . ' AND ! isnull(task_start_date)'
+				. " AND task_start_date <>	'0000-00-00 00:00:00'");
 			$sql = $q->prepare();
 			$q->clear();
 			$d = db_loadResult($sql);
@@ -429,7 +453,7 @@ class CTask extends CDpObject
 			$q->addTable('tasks');
 			$q->addQuery('MAX(task_end_date)');
 			$q->addWhere('task_parent = ' . $modified_task->task_id . ' AND task_id <> '
-						 . $modified_task->task_id . ' AND ! isnull(task_end_date)');
+				. $modified_task->task_id . ' AND ! isnull(task_end_date)');
 			$sql = $q->prepare();
 			$q->clear();
 			$modified_task->task_end_date = db_loadResult($sql);
@@ -449,7 +473,8 @@ class CTask extends CDpObject
 	 * @param int id of the destination project
 	 * @return object The new record object or null if error
 	 */
-	function copy($destProject_id = 0, $destTask_id = -1) {
+	function copy($destProject_id = 0, $destTask_id = -1)
+	{
 
 		$newObj = $this->duplicate();
 		// Copy this task to another project if it's specified
@@ -499,7 +524,8 @@ class CTask extends CDpObject
 		return $newObj;
 	}// end of copy()
 
-	function deepCopy($destProject_id = 0, $destTask_id = 0) {
+	function deepCopy($destProject_id = 0, $destTask_id = 0)
+	{
 		$children = $this->getChildren();
 		$newObj = $this->copy($destProject_id, $destTask_id);
 		if (!empty($children)) {
@@ -540,7 +566,8 @@ class CTask extends CDpObject
 		return $newObj;
 	}
 
-	function move($destProject_id = 0, $destTask_id = -1) {
+	function move($destProject_id = 0, $destTask_id = -1)
+	{
 		if ($destProject_id) {
 			$this->task_project = $destProject_id;
 		}
@@ -550,7 +577,8 @@ class CTask extends CDpObject
 		$this->store();
 	}
 
-	function deepMove($destProject_id = 0, $destTask_id = 0) {
+	function deepMove($destProject_id = 0, $destTask_id = 0)
+	{
 		$children = $this->getChildren();
 		$this->move($destProject_id, $destTask_id);
 		if (!empty($children)) {
@@ -568,8 +596,9 @@ class CTask extends CDpObject
 	/**
 	 * @todo Parent store could be partially used
 	 */
-	function store($updateNulls = false) {
-		GLOBAL $AppUI;
+	function store(bool $updateNulls = false): ?string
+	{
+		global $AppUI;
 		$q = new DBQuery;
 
 		$this->dPTrimAll();
@@ -577,7 +606,7 @@ class CTask extends CDpObject
 		$importing_tasks = false;
 		$msg = $this->check();
 		if ($msg) {
-			$return_msg = array(get_class($this) . '::store-check',	 'failed',	'-');
+			$return_msg = array(get_class($this) . '::store-check', 'failed', '-');
 			if (is_array($msg)) {
 				return array_merge($return_msg, $msg);
 			} else {
@@ -592,7 +621,7 @@ class CTask extends CDpObject
 			// Load and globalize the old, not yet updated task object
 			// e.g. we need some info later to calculate the shifting time for depending tasks
 			// see function update_dep_dates
-			GLOBAL $oTsk;
+			global $oTsk;
 			$oTsk = new CTask();
 			$oTsk->peek($this->task_id);
 
@@ -622,9 +651,11 @@ class CTask extends CDpObject
 
 			// Milestone or task end date, or dynamic status has changed,
 			// shift the dates of the tasks that depend on this task
-			if (($this->task_end_date != $oTsk->task_end_date)
+			if (
+				($this->task_end_date != $oTsk->task_end_date)
 				|| ($this->task_dynamic != $oTsk->task_dynamic)
-				|| ($this->task_milestone == '1')) {
+				|| ($this->task_milestone == '1')
+			) {
 				$this->shiftDependentTasks();
 			}
 		} else {
@@ -667,10 +698,10 @@ class CTask extends CDpObject
 			$departments = explode(',', $this->task_departments);
 			$values = [];
 			foreach ($departments as $department) {
-			  $values[] = [ $this->task_id, $department ];
+				$values[] = [$this->task_id, $department];
 			}
 			$q->addTable('task_departments');
-			$q->addInsertMulti([ 'task_id', 'department_id' ], $values);
+			$q->addInsertMulti(['task_id', 'department_id'], $values);
 			$q->exec();
 			$q->clear();
 		}
@@ -684,7 +715,7 @@ class CTask extends CDpObject
 			$contacts = explode(',', $this->task_contacts);
 			$values = [];
 			foreach ($contacts as $contact) {
-				$values[] = [ $this->task_id, $contact ];
+				$values[] = [$this->task_id, $contact];
 			}
 			$q->addTable('task_contacts');
 			$q->addInsertMulti(['task_id', 'contact_id'], $values);
@@ -728,7 +759,8 @@ class CTask extends CDpObject
 	 * @todo Parent store could be partially used
 	 * @todo Can't delete a task with children
 	 */
-	function delete($oid = NULL, $history_desc = '', $history_proj = 0) {
+	function delete(?int $oid = NULL, string $history_desc = '', int $history_proj = 0): ?string
+	{
 		if (empty($this->task_id)) {
 			return 'invalid task id';
 		}
@@ -776,8 +808,13 @@ class CTask extends CDpObject
 					return db_error();
 				}
 				$q->clear();
-				addHistory('tasks', $ctask->task_id, 'delete',
-				           $ctask->task_name, $ctask->task_project);
+				addHistory(
+					'tasks',
+					$ctask->task_id,
+					'delete',
+					$ctask->task_name,
+					$ctask->task_project
+				);
 
 				$this->updateDynamics(); //to update after children are deleted (see above)
 			}
@@ -788,7 +825,7 @@ class CTask extends CDpObject
 		$q->setDelete('task_log');
 		if (!empty($childrenlist)) {
 			$q->addWhere('task_log_task IN (' . implode(', ', $childrenlist)
-						 . ', ' . $this->task_id . ')');
+				. ', ' . $this->task_id . ')');
 		} else {
 			$q->addWhere('task_log_task=' . $this->task_id);
 		}
@@ -802,7 +839,7 @@ class CTask extends CDpObject
 		$q->setDelete('task_dependencies');
 		if (!empty($childrenlist)) {
 			$q->addWhere('dependencies_task_id IN (' . implode(', ', $childrenlist)
-						 . ', ' . $task->task_id . ')');
+				. ', ' . $task->task_id . ')');
 		} else {
 			$q->addWhere('dependencies_task_id=' . $task->task_id);
 		}
@@ -816,7 +853,7 @@ class CTask extends CDpObject
 		$q->setDelete('user_tasks');
 		if (!empty($childrenlist)) {
 			$q->addWhere('task_id IN (' . implode(', ', $childrenlist)
-						 . ', ' . $task->task_id . ')');
+				. ', ' . $task->task_id . ')');
 		} else {
 			$q->addWhere('task_id=' . $task->task_id);
 		}
@@ -829,7 +866,7 @@ class CTask extends CDpObject
 		$q->setDelete('task_departments');
 		if (!empty($childrenlist)) {
 			$q->addWhere('task_id IN (' . implode(', ', $childrenlist)
-						 . ', ' . $task->task_id . ')');
+				. ', ' . $task->task_id . ')');
 		} else {
 			$q->addWhere('task_id=' . $task->task_id);
 		}
@@ -842,7 +879,7 @@ class CTask extends CDpObject
 		$q->setDelete('task_contacts');
 		if (!empty($childrenlist)) {
 			$q->addWhere('task_id IN (' . implode(', ', $childrenlist)
-						 . ', ' . $task->task_id . ')');
+				. ', ' . $task->task_id . ')');
 		} else {
 			$q->addWhere('task_id=' . $task->task_id);
 		}
@@ -855,7 +892,8 @@ class CTask extends CDpObject
 		return NULL;
 	}
 
-	function updateDependencies($cslist) {
+	function updateDependencies($cslist)
+	{
 		$q = new DBQuery;
 		// delete all current entries
 		$q->setDelete('task_dependencies');
@@ -866,10 +904,10 @@ class CTask extends CDpObject
 		// process dependencies
 		$tarr = explode(',', $cslist);
 		$values = [];
-		$fields = [ 'dependencies_task_id', 'dependencies_req_task_id' ];
+		$fields = ['dependencies_task_id', 'dependencies_req_task_id'];
 		foreach ($tarr as $task_id) {
 			if (intval($task_id) > 0) {
-				$values[] = [ $this->task_id, $task_id ];
+				$values[] = [$this->task_id, $task_id];
 			}
 		}
 		if (count($values)) {
@@ -886,7 +924,8 @@ class CTask extends CDpObject
 	 *		  @author		 handco		   <handco@users.sourceforge.net>
 	 *		  @return		 string		   comma delimited list of tasks id's
 	 **/
-	function getDependencies() {
+	function getDependencies()
+	{
 		// Call the static method for this object
 		$result = $this->staticGetDependencies($this->task_id);
 		return $result;
@@ -900,7 +939,8 @@ class CTask extends CDpObject
 	 *		  @param		integer		   ID of the task we want dependencies
 	 *		  @return		 string		   comma delimited list of tasks id's
 	 **/
-	function staticGetDependencies($taskId) {
+	function staticGetDependencies($taskId)
+	{
 		$q = new DBQuery;
 		if (empty($taskId)) {
 			return '';
@@ -910,16 +950,17 @@ class CTask extends CDpObject
 		$q->addWhere('td.dependencies_task_id = ' . $taskId);
 		$sql = $q->prepare();
 		$q->clear();
-		$list = db_loadColumn ($sql);
-		$result = $list ? implode (',', $list) : '';
+		$list = db_loadColumn($sql);
+		$result = $list ? implode(',', $list) : '';
 
 		return $result;
 	} // end of staticGetDependencies ()
 
 
-	function notifyOwner() {
+	function notifyOwner()
+	{
 		$q = new DBQuery;
-		GLOBAL $AppUI, $locale_char_set;
+		global $AppUI, $locale_char_set;
 
 		$q->addTable('projects');
 		$q->addQuery('project_name');
@@ -930,7 +971,7 @@ class CTask extends CDpObject
 		$mail = new Mail;
 
 		$mail->Subject(($projname . '::' . $this->task_name . ' '
-		                . $AppUI->_($this->_action, UI_OUTPUT_RAW)), $locale_char_set);
+			. $AppUI->_($this->_action, UI_OUTPUT_RAW)), $locale_char_set);
 
 		// c = creator
 		// a = assignee
@@ -944,14 +985,14 @@ class CTask extends CDpObject
 		$q->leftJoin('users', 'a', 'a.user_id = u.user_id');
 		$q->leftJoin('contacts', 'ac', 'ac.contact_id = a.user_contact');
 		$q->addQuery('t.task_id, cc.contact_email as creator_email'
-					 . ', cc.contact_first_name as creator_first_name'
-					 . ', cc.contact_last_name as creator_last_name'
-					 . ', oc.contact_email as owner_email'
-					 . ', oc.contact_first_name as owner_first_name'
-					 . ', oc.contact_last_name as owner_last_name'
-					 . ', a.user_id as assignee_id, ac.contact_email as assignee_email'
-					 . ', ac.contact_first_name as assignee_first_name'
-					 . ', ac.contact_last_name as assignee_last_name');
+			. ', cc.contact_first_name as creator_first_name'
+			. ', cc.contact_last_name as creator_last_name'
+			. ', oc.contact_email as owner_email'
+			. ', oc.contact_first_name as owner_first_name'
+			. ', oc.contact_last_name as owner_last_name'
+			. ', a.user_id as assignee_id, ac.contact_email as assignee_email'
+			. ', ac.contact_first_name as assignee_first_name'
+			. ', ac.contact_last_name as assignee_last_name');
 		$q->addWhere(' t.task_id = ' . $this->task_id);
 		$sql = $q->prepare();
 		$q->clear();
@@ -959,23 +1000,23 @@ class CTask extends CDpObject
 
 		if (count($users)) {
 			$body = ($AppUI->_('Project', UI_OUTPUT_RAW) . ': ' . $projname . "\n<br>"
-					 . $AppUI->_('Task', UI_OUTPUT_RAW) . ':	' . $this->task_name . "\n<br>"
-					 . $AppUI->_('URL', UI_OUTPUT_RAW) . ': ' . DP_BASE_URL
-					 . '/index.php?m=tasks&a=view&task_id=' . $this->task_id . "\n\n<br><br>"
-					 . $AppUI->_('Description', UI_OUTPUT_RAW) . ': ' . "\n<br>"
-					 . $this->task_description . "\n\n<br><br>"
-					 . $AppUI->_('Creator', UI_OUTPUT_RAW) . ': ' . $AppUI->user_first_name . ' '
-					 . $AppUI->user_last_name . "\n\n<br><br>"
-					 . $AppUI->_('Progress', UI_OUTPUT_RAW) . ': '
-					 . $this->task_percent_complete . '%' . "\n\n<br><br>"
-					 . dPgetCleanParam($_POST, 'task_log_description'));
+				. $AppUI->_('Task', UI_OUTPUT_RAW) . ':	' . $this->task_name . "\n<br>"
+				. $AppUI->_('URL', UI_OUTPUT_RAW) . ': ' . DP_BASE_URL
+				. '/index.php?m=tasks&a=view&task_id=' . $this->task_id . "\n\n<br><br>"
+				. $AppUI->_('Description', UI_OUTPUT_RAW) . ': ' . "\n<br>"
+				. $this->task_description . "\n\n<br><br>"
+				. $AppUI->_('Creator', UI_OUTPUT_RAW) . ': ' . $AppUI->user_first_name . ' '
+				. $AppUI->user_last_name . "\n\n<br><br>"
+				. $AppUI->_('Progress', UI_OUTPUT_RAW) . ': '
+				. $this->task_percent_complete . '%' . "\n\n<br><br>"
+				. dPgetCleanParam($_POST, 'task_log_description'));
 
 
 			$mail->Body($body, isset($GLOBALS['locale_char_set'])
-						? $GLOBALS['locale_char_set']
-						: '');
-			$mail->From ('"' . $AppUI->user_first_name . ' ' . $AppUI->user_last_name
-						  . '" <' . $AppUI->user_email . '>');
+				? $GLOBALS['locale_char_set']
+				: '');
+			$mail->From('"' . $AppUI->user_first_name . ' ' . $AppUI->user_last_name
+				. '" <' . $AppUI->user_email . '>');
 		}
 
 		if ($mail->ValidEmail($users[0]['owner_email'])) {
@@ -987,9 +1028,10 @@ class CTask extends CDpObject
 	}
 
 	//additional comment will be included in email body
-	function notify($comment = '') {
+	function notify($comment = '')
+	{
 		$q = new DBQuery;
-		GLOBAL $AppUI, $locale_char_set;
+		global $AppUI, $locale_char_set;
 		$df = $AppUI->getPref('SHDATEFORMAT');
 		$df .= ' ' . $AppUI->getPref('TIMEFORMAT');
 
@@ -1001,7 +1043,7 @@ class CTask extends CDpObject
 		$mail = new Mail;
 
 		$mail->Subject(($projname . '::' . $this->task_name . ' '
-		                . $AppUI->_($this->_action, UI_OUTPUT_RAW)), $locale_char_set);
+			. $AppUI->_($this->_action, UI_OUTPUT_RAW)), $locale_char_set);
 
 		// c = creator
 		// a = assignee
@@ -1015,14 +1057,14 @@ class CTask extends CDpObject
 		$q->leftJoin('users', 'a', 'a.user_id = ut.user_id');
 		$q->leftJoin('contacts', 'ac', 'ac.contact_id = a.user_contact');
 		$q->addQuery('t.task_id, c.user_id as creator_id, cc.contact_email as creator_email'
-					 . ', cc.contact_first_name as creator_first_name'
-					 . ', cc.contact_last_name as creator_last_name'
-					 . ', o.user_id as owner_id, oc.contact_email as owner_email'
-					 . ', oc.contact_first_name as owner_first_name'
-					 . ', oc.contact_last_name as owner_last_name'
-					 . ', a.user_id as assignee_id, ac.contact_email as assignee_email'
-					 . ', ac.contact_first_name as assignee_first_name'
-					 . ', ac.contact_last_name as assignee_last_name');
+			. ', cc.contact_first_name as creator_first_name'
+			. ', cc.contact_last_name as creator_last_name'
+			. ', o.user_id as owner_id, oc.contact_email as owner_email'
+			. ', oc.contact_first_name as owner_first_name'
+			. ', oc.contact_last_name as owner_last_name'
+			. ', a.user_id as assignee_id, ac.contact_email as assignee_email'
+			. ', ac.contact_first_name as assignee_first_name'
+			. ', ac.contact_last_name as assignee_last_name');
 		$q->addWhere(' t.task_id = ' . $this->task_id);
 		$users = $q->loadList();
 
@@ -1032,32 +1074,32 @@ class CTask extends CDpObject
 			$priority = dPgetSysVal('TaskPriority');
 
 			$body = ($AppUI->_('Project', UI_OUTPUT_RAW) . ': ' . $projname . "\n<br>"
-					 . $AppUI->_('Task', UI_OUTPUT_RAW) . ':	 ' . $this->task_name);
-			$body .= "\n<br>" . $AppUI->_('Priority'). ': ' . $priority[$this->task_priority];
+				. $AppUI->_('Task', UI_OUTPUT_RAW) . ':	 ' . $this->task_name);
+			$body .= "\n<br>" . $AppUI->_('Priority') . ': ' . $priority[$this->task_priority];
 			$body .= ("\n<br>" . $AppUI->_('Start Date', UI_OUTPUT_RAW) . ': '
-					  . $task_start_date->format($df) . "\n<br>"
-					  . $AppUI->_('Finish Date', UI_OUTPUT_RAW) . ': '
-					  . ($this->task_end_date != '' ? $task_finish_date->format($df) : '') . "\n<br>"
-					  . $AppUI->_('URL', UI_OUTPUT_RAW) . ': ' . DP_BASE_URL
-					  . '/index.php?m=tasks&a=view&task_id=' . $this->task_id . "\n\n<br><br>"
-					  . $AppUI->_('Description', UI_OUTPUT_RAW) . ': ' . "\n<br>"
-					  . $this->task_description);
+				. $task_start_date->format($df) . "\n<br>"
+				. $AppUI->_('Finish Date', UI_OUTPUT_RAW) . ': '
+				. ($this->task_end_date != '' ? $task_finish_date->format($df) : '') . "\n<br>"
+				. $AppUI->_('URL', UI_OUTPUT_RAW) . ': ' . DP_BASE_URL
+				. '/index.php?m=tasks&a=view&task_id=' . $this->task_id . "\n\n<br><br>"
+				. $AppUI->_('Description', UI_OUTPUT_RAW) . ': ' . "\n<br>"
+				. $this->task_description);
 			if ($users[0]['creator_email']) {
-				$body .= ("\n\n<br><br>" . $AppUI->_('Creator', UI_OUTPUT_RAW). ':' . "\n<br>"
-						  . $users[0]['creator_first_name'] . ' ' . $users[0]['creator_last_name' ]
-						  . ', ' . $users[0]['creator_email']);
+				$body .= ("\n\n<br><br>" . $AppUI->_('Creator', UI_OUTPUT_RAW) . ':' . "\n<br>"
+					. $users[0]['creator_first_name'] . ' ' . $users[0]['creator_last_name']
+					. ', ' . $users[0]['creator_email']);
 			}
-			$body .= ("\n\n<br><br>" . $AppUI->_('Owner', UI_OUTPUT_RAW).':' . "\n<br>"
-					  . $users[0]['owner_first_name'] . ' ' . $users[0]['owner_last_name' ]
-					  . ', ' . $users[0]['owner_email']);
+			$body .= ("\n\n<br><br>" . $AppUI->_('Owner', UI_OUTPUT_RAW) . ':' . "\n<br>"
+				. $users[0]['owner_first_name'] . ' ' . $users[0]['owner_last_name']
+				. ', ' . $users[0]['owner_email']);
 
 			if ($comment != '') {
-				$body .= "\n\n<br><br>".$comment;
+				$body .= "\n\n<br><br>" . $comment;
 			}
 			$mail->Body($body, (isset($GLOBALS['locale_char_set'])
-								? $GLOBALS['locale_char_set'] : ''));
-			$mail->From ('"' . $AppUI->user_first_name . ' ' . $AppUI->user_last_name
-						 . '" <' . $AppUI->user_email . '>');
+				? $GLOBALS['locale_char_set'] : ''));
+			$mail->From('"' . $AppUI->user_first_name . ' ' . $AppUI->user_last_name
+				. '" <' . $AppUI->user_email . '>');
 
 			$owner_is_assigned = false;
 			foreach ($users as $row) {
@@ -1088,7 +1130,8 @@ class CTask extends CDpObject
 	 * Email the task log to assignees, task contacts, project contacts, and others
 	 * based upon the information supplied by the user.
 	 */
-	function email_log(&$log, $assignees, $task_contacts, $project_contacts, $others, $extras) {
+	function email_log(&$log, $assignees, $task_contacts, $project_contacts, $others, $extras)
+	{
 		global $AppUI, $locale_char_set, $dPconfig;
 
 		$mail_recipients = array();
@@ -1099,13 +1142,13 @@ class CTask extends CDpObject
 			$q->leftJoin('contacts', 'c', 'c.contact_id = ua.user_contact');
 			$q->addQuery('c.contact_email, c.contact_first_name, c.contact_last_name');
 			$q->addWhere('ut.task_id = ' . $this->task_id);
-			if (! $AppUI->getPref('MAILALL')) {
+			if (!$AppUI->getPref('MAILALL')) {
 				$q->addWhere('ua.user_id <>' . $AppUI->user_id);
 			}
 			$req =& $q->exec(QUERY_STYLE_NUM);
-			for ($req; ! $req->EOF; $req->MoveNext()) {
+			for ($req; !$req->EOF; $req->MoveNext()) {
 				list($email, $first, $last) = $req->fields;
-				if (! isset($mail_recipients[$email])) {
+				if (!isset($mail_recipients[$email])) {
 					$mail_recipients[$email] = trim($first) . ' ' . trim($last);
 				}
 			}
@@ -1117,9 +1160,9 @@ class CTask extends CDpObject
 			$q->addQuery('c.contact_email, c.contact_first_name, c.contact_last_name');
 			$q->addWhere('tc.task_id = ' . $this->task_id);
 			$req =& $q->exec(QUERY_STYLE_NUM);
-			for ($req; ! $req->EOF; $req->MoveNext()) {
+			for ($req; !$req->EOF; $req->MoveNext()) {
 				list($email, $first, $last) = $req->fields;
-				if (! isset($mail_recipients[$email])) {
+				if (!isset($mail_recipients[$email])) {
 					$mail_recipients[$email] = $first . ' ' . $last;
 				}
 			}
@@ -1131,9 +1174,9 @@ class CTask extends CDpObject
 			$q->addQuery('c.contact_email, c.contact_first_name, c.contact_last_name');
 			$q->addWhere('pc.project_id = ' . $this->task_project);
 			$req =& $q->exec(QUERY_STYLE_NUM);
-			for ($req; ! $req->EOF; $req->MoveNext()) {
+			for ($req; !$req->EOF; $req->MoveNext()) {
 				list($email, $first, $last) = $req->fields;
-				if (! isset($mail_recipients[$email])) {
+				if (!isset($mail_recipients[$email])) {
 					$mail_recipients[$email] = $first . ' ' . $last;
 				}
 			}
@@ -1146,9 +1189,9 @@ class CTask extends CDpObject
 				$q->addQuery('c.contact_email, c.contact_first_name, c.contact_last_name');
 				$q->addWhere('c.contact_id in (' . $others . ')');
 				$req =& $q->exec(QUERY_STYLE_NUM);
-				for ($req; ! $req->EOF; $req->MoveNext()) {
+				for ($req; !$req->EOF; $req->MoveNext()) {
 					list($email, $first, $last) = $req->fields;
-					if (! isset($mail_recipients[$email])) {
+					if (!isset($mail_recipients[$email])) {
 						$mail_recipients[$email] = $first . ' ' . $last;
 					}
 				}
@@ -1159,7 +1202,7 @@ class CTask extends CDpObject
 			// Search for semi-colons, commas or spaces and allow any to be separators
 			$extra_list = preg_split('/[\s,;]+/', $extras);
 			foreach ($extra_list as $email) {
-				if ($email && ! isset($mail_recipients[$email])) {
+				if ($email && !isset($mail_recipients[$email])) {
 					$mail_recipients[$email] = $email;
 				}
 			}
@@ -1174,7 +1217,7 @@ class CTask extends CDpObject
 		$mail = new Mail;
 		// Grab the subject from user preferences
 		$prefix = $AppUI->getPref('TASKLOGSUBJ');
-		$mail->Subject($prefix .  ' ' . $log->task_log_name, $char_set);
+		$mail->Subject($prefix . ' ' . $log->task_log_name, $char_set);
 
 		$q->addTable('projects');
 		$q->addQuery('project_name');
@@ -1191,7 +1234,7 @@ class CTask extends CDpObject
 			$req =& $q->exec(QUERY_STYLE_NUM);
 			if ($req) {
 				$body .= $AppUI->_('Parent Task', UI_OUTPUT_RAW) . ': '
-				  . htmlspecialchars_decode($req->fields[0]) . "\n<br>";
+					. htmlspecialchars_decode($req->fields[0]) . "\n<br>";
 			}
 			$q->clear();
 		}
@@ -1200,7 +1243,7 @@ class CTask extends CDpObject
 		$body .= $AppUI->_('Task Type', UI_OUTPUT_RAW) . ':' . $task_types[$this->task_type] . "\n<br>";
 		$body .= $AppUI->_('URL', UI_OUTPUT_RAW)
 			. ': ' . DP_BASE_URL . '/index.php?m=tasks&a=view&task_id=' . $this->task_id . "\n\n<br><br>";
-		$body .= $AppUI->_('Hours', UI_OUTPUT_RAW) . ': ' . $log->task_log_hours . $AppUI->_('h', UI_OUTPUT_RAW)."\n\n<br><br>";
+		$body .= $AppUI->_('Hours', UI_OUTPUT_RAW) . ': ' . $log->task_log_hours . $AppUI->_('h', UI_OUTPUT_RAW) . "\n\n<br><br>";
 		$body .= $AppUI->_('Summary', UI_OUTPUT_RAW) . ': ' . $log->task_log_name . "\n\n<br><br>";
 		$body .= $log->task_log_description;
 
@@ -1217,7 +1260,7 @@ class CTask extends CDpObject
 
 		$mail->Body($body, $char_set);
 		$mail->From($AppUI->user_first_name . ' ' . $AppUI->user_last_name . ' <'
-					. $AppUI->user_email . '>');
+			. $AppUI->user_email . '>');
 
 		$recipient_list = '';
 		foreach ($mail_recipients as $email => $name) {
@@ -1245,9 +1288,15 @@ class CTask extends CDpObject
 	 * @param Date End date of the period
 	 * @param integer The target company
 	 */
-	static function getTasksForPeriod($start_date, $end_date, $company_id=0, $user_id=null,
-	                                  $filter_proj_archived=false, $filter_proj_completed=false) {
-		GLOBAL $AppUI;
+	static function getTasksForPeriod(
+		$start_date,
+		$end_date,
+		$company_id = 0,
+		$user_id = null,
+		$filter_proj_archived = false,
+		$filter_proj_completed = false
+	) {
+		global $AppUI;
 		$q = new DBQuery;
 		// convert to default db time stamp
 		$db_start = $start_date->format(FMT_DATETIME_MYSQL);
@@ -1276,13 +1325,13 @@ class CTask extends CDpObject
 		}
 		$q->innerJoin('projects', 'p', 't.task_project = p.project_id');
 		$q->addQuery('DISTINCT t.task_id, t.task_name, t.task_start_date, t.task_end_date'
-		             . ', t.task_duration, t.task_duration_type'
-		             . ', p.project_color_identifier AS color, p.project_name');
+			. ', t.task_duration, t.task_duration_type'
+			. ', p.project_color_identifier AS color, p.project_name');
 		$q->addWhere('task_status > -1'
-		             . " AND ((task_start_date <= '" . $db_end . "'"
-		             . " AND (task_end_date >= '" . $db_start . "'"
-		             . " OR  task_end_date = '0000-00-00 00:00:00' OR task_end_date = NULL)"
-		             . " OR task_start_date BETWEEN '" . $db_start . "' AND '" . $db_end .  "'))");
+			. " AND ((task_start_date <= '" . $db_end . "'"
+			. " AND (task_end_date >= '" . $db_start . "'"
+			. " OR  task_end_date = '0000-00-00 00:00:00' OR task_end_date = NULL)"
+			. " OR task_start_date BETWEEN '" . $db_start . "' AND '" . $db_end . "'))");
 		if ($user_id) {
 			$q->addWhere("ut.user_id = '" . $user_id . "'");
 		}
@@ -1318,7 +1367,8 @@ class CTask extends CDpObject
 		return db_loadList($sql);
 	}
 
-	function canAccess($user_id) {
+	function canAccess($user_id)
+	{
 		$q = new DBQuery;
 
 		//check whether we are explicitly denied at task level
@@ -1328,79 +1378,79 @@ class CTask extends CDpObject
 		}
 
 		switch ($this->task_access) {
-		case 0:
-			//public
-			$retval = true;
-			$proj_obj = new CProject();
-			$denied_projects = $proj_obj->getDeniedRecords($user_id);
-			if (in_array($this->task_project, $denied_projects)) {
-				$retval = false;
-			}
+			case 0:
+				//public
+				$retval = true;
+				$proj_obj = new CProject();
+				$denied_projects = $proj_obj->getDeniedRecords($user_id);
+				if (in_array($this->task_project, $denied_projects)) {
+					$retval = false;
+				}
 
-			break;
-		case 1:
-			//protected
-			$q->addTable('users', 'u');
-			$q->innerJoin('contacts', 'c', 'c.contact_id=u.user_contact');
-			$q->addQuery('c.contact_company');
-			$q->addWhere('u.user_id=' . $user_id . ' OR u.user_id=' . $this->task_owner);
-			$sql = $q->prepare();
-			$q->clear();
-			$user_owner_companies = db_loadColumn($sql);
-			$company_match = true;
-			foreach ($user_owner_companies as $current_company) {
-				$company_match = $company_match && ((!(isset($last_company)))
-													|| $last_company == $current_company);
-				$last_company = $current_company;
-			}
-
-		case 2:
-			//participant
-			$company_match = ((isset($company_match)) ? $company_match : true);
-			$q->addTable('user_tasks', 'ut');
-			$q->addQuery('COUNT(*)');
-			$q->addWhere('ut.user_id=' . $user_id . ' AND ut.task_id=' . $this->task_id);
-			$sql = $q->prepare();
-			$q->clear();
-			$count = db_loadResult($sql);
-			$retval = (($company_match && $count > 0) || $this->task_owner == $user_id);
-			break;
-		case 3:
-			//private
-			$retval = ($this->task_owner == $user_id);
-			break;
-		case 4:
-			//privileged
-			$retval = true;
-			if ($this->task_project != '') {
-				$q->clear();
-
+				break;
+			case 1:
+				//protected
 				$q->addTable('users', 'u');
 				$q->innerJoin('contacts', 'c', 'c.contact_id=u.user_contact');
 				$q->addQuery('c.contact_company');
-				$q->addWhere('u.user_id = ' . $user_id);
-				$user_company = $q->loadResult();
+				$q->addWhere('u.user_id=' . $user_id . ' OR u.user_id=' . $this->task_owner);
+				$sql = $q->prepare();
 				$q->clear();
+				$user_owner_companies = db_loadColumn($sql);
+				$company_match = true;
+				foreach ($user_owner_companies as $current_company) {
+					$company_match = $company_match && ((!(isset($last_company)))
+						|| $last_company == $current_company);
+					$last_company = $current_company;
+				}
 
-				$q->addTable('projects', 'p');
-				$q->addQuery('p.project_company');
-				$q->addWhere('p.project_id = ' . $this->task_project);
-				$project_company = $q->loadResult();
-				$q->clear();
-
+			case 2:
+				//participant
+				$company_match = ((isset($company_match)) ? $company_match : true);
 				$q->addTable('user_tasks', 'ut');
-				$q->addQuery('COUNT(ut.user_id) AS user_task_count');
-				$q->addWhere('ut.user_id = ' . $user_id . ' AND ut.task_id = ' . $this->task_id);
-				$count = $q->loadResult();
+				$q->addQuery('COUNT(*)');
+				$q->addWhere('ut.user_id=' . $user_id . ' AND ut.task_id=' . $this->task_id);
+				$sql = $q->prepare();
 				$q->clear();
+				$count = db_loadResult($sql);
+				$retval = (($company_match && $count > 0) || $this->task_owner == $user_id);
+				break;
+			case 3:
+				//private
+				$retval = ($this->task_owner == $user_id);
+				break;
+			case 4:
+				//privileged
+				$retval = true;
+				if ($this->task_project != '') {
+					$q->clear();
 
-				$retval = (($user_company == $project_company) || $this->task_owner == $user_id
-				           || $count);
-			}
-			break;
-		default:
-			$retval = false;
-			break;
+					$q->addTable('users', 'u');
+					$q->innerJoin('contacts', 'c', 'c.contact_id=u.user_contact');
+					$q->addQuery('c.contact_company');
+					$q->addWhere('u.user_id = ' . $user_id);
+					$user_company = $q->loadResult();
+					$q->clear();
+
+					$q->addTable('projects', 'p');
+					$q->addQuery('p.project_company');
+					$q->addWhere('p.project_id = ' . $this->task_project);
+					$project_company = $q->loadResult();
+					$q->clear();
+
+					$q->addTable('user_tasks', 'ut');
+					$q->addQuery('COUNT(ut.user_id) AS user_task_count');
+					$q->addWhere('ut.user_id = ' . $user_id . ' AND ut.task_id = ' . $this->task_id);
+					$count = $q->loadResult();
+					$q->clear();
+
+					$retval = (($user_company == $project_company) || $this->task_owner == $user_id
+						|| $count);
+				}
+				break;
+			default:
+				$retval = false;
+				break;
 		}
 
 		return $retval;
@@ -1412,7 +1462,8 @@ class CTask extends CDpObject
 	 *		 @param	 boolean		 true if is a dep call (recurse call)
 	 *		 @param	 boolean		 false for no recursion (needed for calc_end_date)
 	 **/
-	function dependentTasks ($taskId = false, $isDep = false, $recurse = true) {
+	function dependentTasks($taskId = false, $isDep = false, $recurse = true)
+	{
 		$q = new DBQuery;
 		global $aDeps;
 		// Initialize the dependencies array
@@ -1456,15 +1507,16 @@ class CTask extends CDpObject
 			return;
 		}
 
-		return implode (',', $aDeps);
+		return implode(',', $aDeps);
 
 	} // end of dependentTasks()
 
-   /*
-	*		 shift dependents tasks dates
-	*		 @return void
-	*/
-	function shiftDependentTasks () {
+	/*
+	 *		 shift dependents tasks dates
+	 *		 @return void
+	 */
+	function shiftDependentTasks()
+	{
 		// Get tasks that depend on this task
 		$csDeps = explode(',', $this->dependentTasks('', '', false));
 
@@ -1487,15 +1539,16 @@ class CTask extends CDpObject
 		return;
 	} // end of shiftDependentTasks()
 
-   /*
-	*		  Update this task's dates in the DB.
-	*		  start date:		  based on latest end date of dependencies
-	*		  end date:			  based on start date + appropriate task time span
-	*
-	*		  @param				integer task_id of task to update
-	*/
-	function update_dep_dates($task_id) {
-		GLOBAL $tracking_dynamics;
+	/*
+	 *		  Update this task's dates in the DB.
+	 *		  start date:		  based on latest end date of dependencies
+	 *		  end date:			  based on start date + appropriate task time span
+	 *
+	 *		  @param				integer task_id of task to update
+	 */
+	function update_dep_dates($task_id)
+	{
+		global $tracking_dynamics;
 		$q = new DBQuery;
 
 		$newTask = new CTask();
@@ -1512,7 +1565,7 @@ class CTask extends CDpObject
 		$duration = $tsd->calcDuration($ted);
 
 		// reset start date
-		$nsd = new CDate ($newTask->get_deps_max_end_date($newTask));
+		$nsd = new CDate($newTask->get_deps_max_end_date($newTask));
 
 		// prefer Wed 8:00 over Tue 16:00 as start date
 		$nsd = $nsd->next_working_day();
@@ -1551,7 +1604,7 @@ class CTask extends CDpObject
 	 ** Time related calculations have been moved to /classes/date.class.php
 	 ** some have been replaced with more _robust_ functions
 	 **
-			** Affected functions:
+	 ** Affected functions:
 	 ** prev_working_day()
 	 ** next_working_day()
 	 ** calc_task_end_date()	renamed to addDuration()
@@ -1572,7 +1625,8 @@ class CTask extends CDpObject
 
 	*/
 
-	function get_deps_max_end_date($taskObj) {
+	function get_deps_max_end_date($taskObj)
+	{
 		global $tracked_dynamics;
 		$q = new DBQuery;
 
@@ -1610,10 +1664,11 @@ class CTask extends CDpObject
 	 * Function that returns the amount of hours this
 	 * task consumes per user each day
 	 */
-	function getTaskDurationPerDay($use_percent_assigned = false) {
+	function getTaskDurationPerDay($use_percent_assigned = false)
+	{
 		$duration = $this->task_duration * ($this->task_duration_type == 24
-											? dPgetConfig('daily_working_hours')
-											: $this->task_duration_type);
+			? dPgetConfig('daily_working_hours')
+			: $this->task_duration_type);
 		$task_start_date = new CDate($this->task_start_date);
 		$task_finish_date = new CDate($this->task_end_date);
 		$assigned_users = $this->getAssignedUsers();
@@ -1630,7 +1685,7 @@ class CTask extends CDpObject
 		$number_of_days_worked = 0;
 		$actual_date = $task_start_date;
 
-		for ($i=0; $i<=$day_diff; $i++) {
+		for ($i = 0; $i <= $day_diff; $i++) {
 			if ($actual_date->isWorkingDay()) {
 				$number_of_days_worked++;
 			}
@@ -1643,7 +1698,7 @@ class CTask extends CDpObject
 		if ($number_assigned_users == 0) {
 			$number_assigned_users = 1;
 		}
-		return ($duration/$number_assigned_users) / $number_of_days_worked;
+		return ($duration / $number_assigned_users) / $number_of_days_worked;
 	}
 
 
@@ -1651,9 +1706,10 @@ class CTask extends CDpObject
 	 * Function that returns the amount of hours this
 	 * task consumes per user each week
 	 */
-	function getTaskDurationPerWeek($use_percent_assigned = false) {
+	function getTaskDurationPerWeek($use_percent_assigned = false)
+	{
 		$duration = ($this->task_duration_type == 24 ? dPgetConfig('daily_working_hours')
-		             : $this->task_duration_type) * $this->task_duration;
+			: $this->task_duration_type) * $this->task_duration;
 		$task_start_date = new CDate($this->task_start_date);
 		$task_finish_date = new CDate($this->task_end_date);
 		$assigned_users = $this->getAssignedUsers();
@@ -1669,7 +1725,7 @@ class CTask extends CDpObject
 		$number_of_weeks_worked = $task_finish_date->workingDaysInSpan($task_start_date)
 			/ count(explode(',', dPgetConfig('cal_working_days')));
 		$number_of_weeks_worked = (($number_of_weeks_worked < 1)
-								   ? ceil($number_of_weeks_worked) : $number_of_weeks_worked);
+			? ceil($number_of_weeks_worked) : $number_of_weeks_worked);
 
 		// zero adjustment
 		if ($number_of_weeks_worked == 0) {
@@ -1678,12 +1734,13 @@ class CTask extends CDpObject
 		if ($number_assigned_users == 0) {
 			$number_assigned_users = 1;
 		}
-		return ($duration/$number_assigned_users) / $number_of_weeks_worked;
+		return ($duration / $number_assigned_users) / $number_of_weeks_worked;
 	}
 
 
 	// unassign a user from task
-	function removeAssigned($user_id) {
+	function removeAssigned($user_id)
+	{
 		$q = new DBQuery;
 		// delete all current entries
 		$q->setDelete('user_tasks');
@@ -1694,7 +1751,8 @@ class CTask extends CDpObject
 
 	//using user allocation percentage ($perc_assign)
 	// @return returns the Names of the over-assigned users (if any), otherwise false
-	function updateAssigned($cslist, $perc_assign, $del=true, $rmUsers=false) {
+	function updateAssigned($cslist, $perc_assign, $del = true, $rmUsers = false)
+	{
 		$q = new DBQuery;
 
 		// process assignees
@@ -1703,7 +1761,7 @@ class CTask extends CDpObject
 		// delete all current entries from $cslist
 		if ($del == true && $rmUsers == true) {
 			foreach ($tarr as $user_id) {
-				$user_id = (int)$user_id;
+				$user_id = (int) $user_id;
 				if (!empty($user_id)) {
 					$this->removeAssigned($user_id);
 				}
@@ -1733,25 +1791,26 @@ class CTask extends CDpObject
 				}
 				else {
 				*/
-					$q->addTable('user_tasks');
-					$q->addReplace('user_id', $user_id);
-					$q->addReplace('task_id', $this->task_id);
-					$q->addReplace('perc_assignment', $perc);
-					$q->exec();
-					$q->clear();
+				$q->addTable('user_tasks');
+				$q->addReplace('user_id', $user_id);
+				$q->addReplace('task_id', $this->task_id);
+				$q->addReplace('perc_assignment', $perc);
+				$q->exec();
+				$q->clear();
 				// }
 			}
 		}
 		return $overAssignment;
 	}
 
-	function getAssignedUsers() {
+	function getAssignedUsers()
+	{
 		$q = new DBQuery;
 		$q->addTable('users', 'u');
 		$q->innerJoin('user_tasks', 'ut', 'ut.user_id = u.user_id');
 		$q->leftJoin('contacts', 'co', ' co.contact_id = u.user_contact');
 		$q->addQuery('u.*, ut.perc_assignment, ut.user_task_priority'
-		             . ', co.contact_first_name, co.contact_last_name');
+			. ', co.contact_first_name, co.contact_last_name');
 		$q->addWhere('ut.task_id = ' . $this->task_id);
 		$sql = $q->prepare();
 		$q->clear();
@@ -1764,7 +1823,8 @@ class CTask extends CDpObject
 	 *	@param array users	 an array of user_ids calculating their assignment capacity
 	 *	@return array		 returns hashList of extent of utilization for assignment of the users
 	 */
-	function getAllocation($hash = NULL, $users = NULL) {
+	function getAllocation($hash = NULL, $users = NULL)
+	{
 		global $AppUI;
 		static $Allocations = array();
 
@@ -1775,35 +1835,35 @@ class CTask extends CDpObject
 		$hash_key = $hash ? $hash : '<NONE>';
 		$user_key = $users ? implode(',', $users) : '<NONE>';
 
-		if (! $Allocations[$hash_key] || ! $Allocations[$hash_key][$user_key]) {
-			if (! $Allocations[$hash_key]) {
+		if (!$Allocations[$hash_key] || !$Allocations[$hash_key][$user_key]) {
+			if (!$Allocations[$hash_key]) {
 				$Allocations[$hash_key] = array();
 			}
-			if (! $Allocations[$hash_key][$user_key]) {
+			if (!$Allocations[$hash_key][$user_key]) {
 				// retrieve the systemwide default preference for the assignment maximum
 				$scm = $AppUI->getSystemPref('TASKASSIGNMAX');
-				if (! $scm) {
+				if (!$scm) {
 					$scm = 0;
 				}
 				/*
 				 * provide actual assignment charge, individual chargeMax
 				 * and freeCapacity of users' assignments to tasks
-				*/
+				 */
 				$q = new DBQuery;
 				$subqC = new DBQuery;
 				$subqUT = new DBQuery;
 				$q->addTable('users', 'u');
 				$q->addQuery("u.user_id, CONCAT(CONCAT_WS(' [', CONCAT_WS(' '"
-							. ', contact_first_name, contact_last_name), IF(IFNULL((IFNULL(up.pref_value'
-							. ', ' . $scm . ') - SUM(ut.perc_assignment)), up.pref_value) > 0'
-							. ', IFNULL((IFNULL(up.pref_value, ' . $scm . ') - SUM(ut.perc_assignment))'
-							. ', up.pref_value), 0)), ' . "'%]')" . ' AS userFC'
-							. ', IFNULL(SUM(ut.perc_assignment), 0) AS charge, u.user_username'
-							. ', IFNULL(up.pref_value,' . $scm . ') AS chargeMax'
-							. ', IF(IFNULL((IFNULL(up.pref_value, ' . $scm . ') '
-							. '- SUM(ut.perc_assignment)), up.pref_value) > 0'
-							. ', IFNULL((IFNULL(up.pref_value, ' . $scm . ') - SUM(ut.perc_assignment))'
-							. ', up.pref_value), 0) AS freeCapacity');
+					. ', contact_first_name, contact_last_name), IF(IFNULL((IFNULL(up.pref_value'
+					. ', ' . $scm . ') - SUM(ut.perc_assignment)), up.pref_value) > 0'
+					. ', IFNULL((IFNULL(up.pref_value, ' . $scm . ') - SUM(ut.perc_assignment))'
+					. ', up.pref_value), 0)), ' . "'%]')" . ' AS userFC'
+					. ', IFNULL(SUM(ut.perc_assignment), 0) AS charge, u.user_username'
+					. ', IFNULL(up.pref_value,' . $scm . ') AS chargeMax'
+					. ', IF(IFNULL((IFNULL(up.pref_value, ' . $scm . ') '
+					. '- SUM(ut.perc_assignment)), up.pref_value) > 0'
+					. ', IFNULL((IFNULL(up.pref_value, ' . $scm . ') - SUM(ut.perc_assignment))'
+					. ', up.pref_value), 0) AS freeCapacity');
 				// Sub-query for contacts table
 				$subqC->addTable('contacts');
 				$subqC->addGroup('contact_id');
@@ -1828,7 +1888,8 @@ class CTask extends CDpObject
 		return $Allocations[$hash_key][$user_key];
 	}
 
-	function getUserSpecificTaskPriority($user_id = 0, $task_id = NULL) {
+	function getUserSpecificTaskPriority($user_id = 0, $task_id = NULL)
+	{
 		$q = new DBQuery;
 		// use task_id of given object if the optional parameter task_id is empty
 		$task_id = empty($task_id) ? $this->task_id : $task_id;
@@ -1842,8 +1903,12 @@ class CTask extends CDpObject
 		return $prio ? $priority['user_task_priority'] : NULL;
 	}
 
-	function updateUserSpecificTaskPriority($user_task_priority = 0, $user_id = 0
-											, $task_id = NULL) {
+	function updateUserSpecificTaskPriority(
+		$user_task_priority = 0,
+		$user_id = 0
+		,
+		$task_id = NULL
+	) {
 		$q = new DBQuery;
 		// use task_id of given object if the optional parameter task_id is empty
 		$task_id = empty($task_id) ? $this->task_id : $task_id;
@@ -1856,12 +1921,13 @@ class CTask extends CDpObject
 		$q->clear();
 	}
 
-	function getProject() {
+	function getProject()
+	{
 		$q = new DBQuery;
 
 		$q->addTable('projects');
 		$q->addQuery('project_name, project_short_name, project_color_identifier');
-		$q->addWhere("project_id = '" . $this->task_project ."'");
+		$q->addWhere("project_id = '" . $this->task_project . "'");
 		$sql = $q->prepare();
 		$q->clear();
 		$proj = db_loadHash($sql, $projects);
@@ -1869,12 +1935,13 @@ class CTask extends CDpObject
 	}
 
 	//Returns task children IDs
-	function getChildren() {
+	function getChildren()
+	{
 		$q = new DBQuery;
 
 		$q->addTable('tasks');
 		$q->addQuery('task_id');
-		$q->addWhere("task_id <> '" . $this->task_id . "' AND task_parent = '" . $this->task_id ."'");
+		$q->addWhere("task_id <> '" . $this->task_id . "' AND task_parent = '" . $this->task_id . "'");
 		$sql = $q->prepare();
 		$q->clear();
 
@@ -1882,12 +1949,13 @@ class CTask extends CDpObject
 	}
 
 	// Returns task deep children IDs
-	function getDeepChildren() {
+	function getDeepChildren()
+	{
 		$q = new DBQuery;
 
 		$q->addTable('tasks');
 		$q->addQuery('task_id');
-		$q->addWhere("task_id <> '" . $this->task_id . "' AND task_parent = '" . $this->task_id ."'");
+		$q->addWhere("task_id <> '" . $this->task_id . "' AND task_parent = '" . $this->task_id . "'");
 		$sql = $q->prepare();
 		$q->clear();
 		$children = db_loadColumn($sql);
@@ -1909,7 +1977,8 @@ class CTask extends CDpObject
 	 * This function, recursively, updates all tasks status
 	 * to the one passed as parameter
 	 */
-	function updateSubTasksStatus($new_status, $task_id = null) {
+	function updateSubTasksStatus($new_status, $task_id = null)
+	{
 		$q = new DBQuery;
 
 		if (is_null($task_id)) {
@@ -1946,7 +2015,8 @@ class CTask extends CDpObject
 	 * This function recursively updates all tasks project
 	 * to the one passed as parameter
 	 */
-	function updateSubTasksProject($new_project , $task_id = null) {
+	function updateSubTasksProject($new_project, $task_id = null)
+	{
 		$q = new DBQuery;
 
 		if (is_null($task_id)) {
@@ -1986,7 +2056,8 @@ class CTask extends CDpObject
 		}
 	}
 
-	function canUserEditTimeInformation() {
+	function canUserEditTimeInformation()
+	{
 		global $AppUI;
 
 		$project = new CProject();
@@ -2027,18 +2098,19 @@ class CTask extends CDpObject
 	 * and days to trigger before event overdue is
 	 * set in the system config.
 	 */
-	function addReminder() {
+	function addReminder()
+	{
 		$day = 86400;
 
 		if (!dPgetConfig('task_reminder_control')) {
 			return;
 		}
 
-		if (! $this->task_end_date) { // No end date, can't do anything.
+		if (!$this->task_end_date) { // No end date, can't do anything.
 			return $this->clearReminder(true); // Also no point if it is changed to null
 		}
 
-		if ( $this->task_status < 0) { // Inactive task, don't remind
+		if ($this->task_status < 0) { // Inactive task, don't remind
 			return $this->clearReminder(true);
 		}
 
@@ -2087,7 +2159,8 @@ class CTask extends CDpObject
 				'date' => $start_day,
 				'repeat_interval' => $day,
 				'repeat_count' => $repeat,
-				'batch' => $batched));
+				'batch' => $batched
+			));
 		}
 		// We also add a non-batched version so that we can handle those
 		// who don't want digests - we handle that case within the send
@@ -2098,7 +2171,8 @@ class CTask extends CDpObject
 			'type' => 'remind',
 			'date' => $start_day,
 			'repeat_interval' => $day,
-			'repeat_count' => $repeat));
+			'repeat_count' => $repeat
+		));
 	}
 
 	/**
@@ -2109,11 +2183,12 @@ class CTask extends CDpObject
 	 * @return		  mixed		   true, dequeue event, false, event stays in queue.
 	 -1, event is destroyed.
 	*/
-	function EventQueue_remind_immediate($data) {
+	function EventQueue_remind_immediate($data)
+	{
 		global $locale_char_set, $AppUI;
 		$q = new DBQuery;
 
-		if (! isset($this->_default_batch_status)) {
+		if (!isset($this->_default_batch_status)) {
 			$q->addTable('user_preferences');
 			$q->addQuery('pref_value');
 			$q->addWhere('pref_user = 0 and pref_name = \'USEDIGESTS\'');
@@ -2125,23 +2200,23 @@ class CTask extends CDpObject
 		$df = $AppUI->getPref('SHDATEFORMAT');
 		$tf = $AppUI->getPref('TIMEFORMAT');
 		// If we don't have preferences set for these, use ISO defaults.
-		if (! $df) {
+		if (!$df) {
 			$df = '%Y-%m-%d';
 		}
-		if (! $tf) {
+		if (!$tf) {
 			$tf = '%H:%m';
 		}
 		$df .= ' ' . $tf;
 
 		// At this stage we won't have an object yet
-		if (! $this->load($id)) {
+		if (!$this->load($id)) {
 			return -1; // No point it trying again later.
 		}
 		$this->htmlDecode();
 
 		// Only remind on working days.
 		$today = new CDate();
-		if (! $today->isWorkingDay()) {
+		if (!$today->isWorkingDay()) {
 			return true;
 		}
 
@@ -2150,7 +2225,7 @@ class CTask extends CDpObject
 			return -1;
 		}
 
-		if ($this->task_status < 0 ) {
+		if ($this->task_status < 0) {
 			return -1;
 		}
 
@@ -2185,16 +2260,16 @@ class CTask extends CDpObject
 		$q->addWhere('u.user_id = ' . $this->task_owner);
 		if ($q->exec(ADODB_FETCH_NUM)) {
 			list($owner_contact, $owner_first_name, $owner_last_name, $owner_email, $owner_batched, $pref_user) = $q->fetchRow();
-			if (! isset($contacts[$owner_contact])) {
+			if (!isset($contacts[$owner_contact])) {
 				$owner_is_not_assignee = true;
 				$contacts[$owner_contact] = array(
-												  'contact_id' => $owner_contact,
-												  'contact_first_name' => $owner_first_name,
-												  'contact_last_name' => $owner_last_name,
-												  'contact_email' => $owner_email,
-												  'batched' => $owner_batched,
-												  'pref_user' => $pref_user,
-												);
+					'contact_id' => $owner_contact,
+					'contact_first_name' => $owner_first_name,
+					'contact_last_name' => $owner_last_name,
+					'contact_email' => $owner_email,
+					'batched' => $owner_batched,
+					'pref_user' => $pref_user,
+				);
 			}
 		}
 		$q->clear();
@@ -2218,24 +2293,24 @@ class CTask extends CDpObject
 			$msg = $AppUI->_(array($diff, 'DAYS'));
 		}
 
-		$subject = $prefix . ' ' .$msg . ' ' . $this->task_name . '::' . $project_name;
+		$subject = $prefix . ' ' . $msg . ' ' . $this->task_name . '::' . $project_name;
 
 		$body = ($AppUI->_('Task Due', UI_OUTPUT_RAW) . ': ' . $msg . "\n"
-				 . $AppUI->_('Project', UI_OUTPUT_RAW) . ': ' . $project_name . "\n"
-				 . $AppUI->_('Task', UI_OUTPUT_RAW) . ': ' . $this->task_name . "\n"
-				 . $AppUI->_('Start Date', UI_OUTPUT_RAW) . ': ' . $starts->format($df) . "\n"
-				 . $AppUI->_('Finish Date', UI_OUTPUT_RAW) . ': ' . $expires->format($df) . "\n"
-				 . $AppUI->_('URL', UI_OUTPUT_RAW) . ': ' . DP_BASE_URL
-				 . '/index.php?m=tasks&a=view&task_id=' . $this->task_id . '&reminded=1' . "\n\n"
-				 . $AppUI->_('Resources', UI_OUTPUT_RAW) . ":\n");
+			. $AppUI->_('Project', UI_OUTPUT_RAW) . ': ' . $project_name . "\n"
+			. $AppUI->_('Task', UI_OUTPUT_RAW) . ': ' . $this->task_name . "\n"
+			. $AppUI->_('Start Date', UI_OUTPUT_RAW) . ': ' . $starts->format($df) . "\n"
+			. $AppUI->_('Finish Date', UI_OUTPUT_RAW) . ': ' . $expires->format($df) . "\n"
+			. $AppUI->_('URL', UI_OUTPUT_RAW) . ': ' . DP_BASE_URL
+			. '/index.php?m=tasks&a=view&task_id=' . $this->task_id . '&reminded=1' . "\n\n"
+			. $AppUI->_('Resources', UI_OUTPUT_RAW) . ":\n");
 		foreach ($contacts as $contact) {
 			if ($owner_is_not_assignee || $contact['contact_id'] != $owner_contact) {
 				$body .= ($contact['contact_first_name'] . ' ' . $contact['contact_last_name']
-						  . ' <' . $contact['contact_email'] . ">\n");
+					. ' <' . $contact['contact_email'] . ">\n");
 			}
 		}
 		$body .= ("\n" . $AppUI->_('Description', UI_OUTPUT_RAW) . ":\n"
-				  . $this->task_description . "\n");
+			. $this->task_description . "\n");
 
 		$mail = new Mail;
 		// Send out those that require an individual email for each event
@@ -2251,7 +2326,7 @@ class CTask extends CDpObject
 			}
 		}
 		if ($send_count) {
-			$mail->From ('"' . $owner_first_name . ' ' . $owner_last_name . '" <' . $owner_email . '>');
+			$mail->From('"' . $owner_first_name . ' ' . $owner_last_name . '" <' . $owner_email . '>');
 			$mail->Subject($subject, $locale_char_set);
 			$mail->Body($body, $locale_char_set);
 			return $mail->Send();
@@ -2269,11 +2344,12 @@ class CTask extends CDpObject
 	 * @return		  mixed		   true, dequeue event, false, event stays in queue.
 	 -1, event is destroyed.
 	*/
-	function EventQueue_remind_batched($data) {
+	function EventQueue_remind_batched($data)
+	{
 		global $locale_char_set, $AppUI;
 		$q = new DBQuery;
 
-		if (! isset($this->_default_batch_status)) {
+		if (!isset($this->_default_batch_status)) {
 			$q->addTable('user_preferences');
 			$q->addQuery('pref_value');
 			$q->addWhere('pref_user = 0 and pref_name = \'USEDIGESTS\'');
@@ -2285,23 +2361,23 @@ class CTask extends CDpObject
 		$df = $AppUI->getPref('SHDATEFORMAT');
 		$tf = $AppUI->getPref('TIMEFORMAT');
 		// If we don't have preferences set for these, use ISO defaults.
-		if (! $df) {
+		if (!$df) {
 			$df = '%Y-%m-%d';
 		}
-		if (! $tf) {
+		if (!$tf) {
 			$tf = '%H:%m';
 		}
 		$df .= ' ' . $tf;
 
 		// At this stage we won't have an object yet
-		if (! $this->load($id)) {
+		if (!$this->load($id)) {
 			return -1; // No point it trying again later.
 		}
 		$this->htmlDecode();
 
 		// Only remind on working days.
 		$today = new CDate();
-		if (! $today->isWorkingDay()) {
+		if (!$today->isWorkingDay()) {
 			return true;
 		}
 
@@ -2346,16 +2422,16 @@ class CTask extends CDpObject
 		$q->addWhere('u.user_id = ' . $this->task_owner);
 		if ($q->exec(ADODB_FETCH_NUM)) {
 			list($owner_contact, $owner_first_name, $owner_last_name, $owner_email, $owner_batched, $pref_user) = $q->fetchRow();
-			if (! isset($contacts[$owner_contact])) {
+			if (!isset($contacts[$owner_contact])) {
 				$owner_is_not_assignee = true;
 				$contacts[$owner_contact] = array(
-												  'contact_id' => $owner_contact,
-												  'contact_first_name' => $owner_first_name,
-												  'contact_last_name' => $owner_last_name,
-												  'contact_email' => $owner_email,
-												  'batched' => $owner_batched,
-												  'pref_user' => $pref_user,
-												);
+					'contact_id' => $owner_contact,
+					'contact_first_name' => $owner_first_name,
+					'contact_last_name' => $owner_last_name,
+					'contact_email' => $owner_email,
+					'batched' => $owner_batched,
+					'pref_user' => $pref_user,
+				);
 			}
 		}
 		$q->clear();
@@ -2379,29 +2455,29 @@ class CTask extends CDpObject
 			$msg = $AppUI->_(array($diff, 'DAYS'));
 		}
 
-		$subject = $prefix . ' ' .$msg . ' ' . $this->task_name . '::' . $project_name;
+		$subject = $prefix . ' ' . $msg . ' ' . $this->task_name . '::' . $project_name;
 
 		$body = ($AppUI->_('Task Due', UI_OUTPUT_RAW) . ': ' . $msg . "\n"
-				 . $AppUI->_('Project', UI_OUTPUT_RAW) . ': ' . $project_name . "\n"
-				 . $AppUI->_('Task', UI_OUTPUT_RAW) . ': ' . $this->task_name . "\n"
-				 . $AppUI->_('Start Date', UI_OUTPUT_RAW) . ': ' . $starts->format($df) . "\n"
-				 . $AppUI->_('Finish Date', UI_OUTPUT_RAW) . ': ' . $expires->format($df) . "\n"
-				 . $AppUI->_('URL', UI_OUTPUT_RAW) . ': ' . DP_BASE_URL
-				 . '/index.php?m=tasks&a=view&task_id=' . $this->task_id . '&reminded=1' . "\n\n"
-				 . $AppUI->_('Resources', UI_OUTPUT_RAW) . ":\n");
+			. $AppUI->_('Project', UI_OUTPUT_RAW) . ': ' . $project_name . "\n"
+			. $AppUI->_('Task', UI_OUTPUT_RAW) . ': ' . $this->task_name . "\n"
+			. $AppUI->_('Start Date', UI_OUTPUT_RAW) . ': ' . $starts->format($df) . "\n"
+			. $AppUI->_('Finish Date', UI_OUTPUT_RAW) . ': ' . $expires->format($df) . "\n"
+			. $AppUI->_('URL', UI_OUTPUT_RAW) . ': ' . DP_BASE_URL
+			. '/index.php?m=tasks&a=view&task_id=' . $this->task_id . '&reminded=1' . "\n\n"
+			. $AppUI->_('Resources', UI_OUTPUT_RAW) . ":\n");
 		foreach ($contacts as $contact) {
 			if ($owner_is_not_assignee || $contact['contact_id'] != $owner_contact) {
 				$body .= ($contact['contact_first_name'] . ' ' . $contact['contact_last_name']
-						  . ' <' . $contact['contact_email'] . ">\n");
+					. ' <' . $contact['contact_email'] . ">\n");
 			}
 		}
 		$body .= ("\n" . $AppUI->_('Description', UI_OUTPUT_RAW) . ":\n"
-				  . $this->task_description . "\n");
+			. $this->task_description . "\n");
 
 		foreach ($contacts as $contact) {
 			$contact_batched = $contact['pref_user'] ? $contact['batched'] : $this->_default_batch_status;
 			if ($contact_batched) {
-				if (! isset($this->_reminder_list[$contact['contact_email']])) {
+				if (!isset($this->_reminder_list[$contact['contact_email']])) {
 					$this->_reminder_list[$contact['contact_email']] = array(
 						'contact' => $contact,
 						'email' => array(),
@@ -2410,7 +2486,8 @@ class CTask extends CDpObject
 				$this->_reminder_list[$contact['contact_email']]['email'][] = array(
 					'subject' => $subject,
 					'from' => $owner_first_name . ' ' . $owner_last_name,
-					'body' => $body,);
+					'body' => $body,
+				);
 			}
 		}
 		return true;
@@ -2420,18 +2497,19 @@ class CTask extends CDpObject
 	 * Handler function to terminate batched requests.  This allows us to
 	 * send out any digest style reminders that users have asked for.
 	 */
-	function EventQueue_remind_terminateBatch() {
+	function EventQueue_remind_terminateBatch()
+	{
 		global $locale_char_set, $AppUI;
 
 		$site = dPgetConfig('company_name', 'dotProject');
 		$domain = dPgetConfig('site_domain', 'example.com');
 		$from_name = dPgetConfig('admin_username', 'admin');
-		$from_mail = $site . ' Site Admin <'.$from_name.'@'.$domain.'>';
+		$from_mail = $site . ' Site Admin <' . $from_name . '@' . $domain . '>';
 		foreach ($this->_reminder_list as $reminder) {
 			$mail = new Mail();
 			$mail->From($from_mail);
 			$mail->Subject('Task Reminder Digest', $locale_char_set);
-			if (! $mail->ValidEmail($reminder['contact']['contact_email'])) {
+			if (!$mail->ValidEmail($reminder['contact']['contact_email'])) {
 				continue;
 			}
 			$mail->To($reminder['contact']['contact_email']);
@@ -2447,14 +2525,16 @@ class CTask extends CDpObject
 		$this->_reminder_list = array();
 	}
 
-	function EventQueue_remind_initiateBatch() {
+	function EventQueue_remind_initiateBatch()
+	{
 		$this->_reminder_list = array();
 	}
 
 	/**
 	 *
 	 */
-	function clearReminder($dont_check = false) {
+	function clearReminder($dont_check = false)
+	{
 		$ev = EventQueue::getInstance();
 
 		$event_list = $ev->find('tasks', 'remind', $this->task_id);
@@ -2488,27 +2568,31 @@ class CTaskLog extends CDpObject
 	var $task_log_related_url = NULL;
 
 
-	function __construct() {
+	function __construct()
+	{
 		parent::__construct('task_log', 'task_log_id');
 
 		// ensure changes to checkboxes are honoured
 		$this->task_log_problem = intval($this->task_log_problem);
 	}
 
-	function dPTrimAll() {
+	function dPTrimAll(): void
+	{
 		$spacedDescription = $this->task_log_description;
 		parent::dPTrimAll();
 		$this->task_log_description = $spacedDescription;
 	}
 
 	// overload check method
-	function check() {
+	function check(): ?string
+	{
 		$this->task_log_hours = sprintf('%.3F', (float) $this->task_log_hours);
 		return NULL;
 	}
 }
 
-function openClosedTask($task) {
+function openClosedTask($task)
+{
 	global $tasks_opened;
 	$tasks_opened = (($tasks_opened) ? $tasks_opened : array());
 	$to_open_task = new CTask();
@@ -2530,7 +2614,8 @@ function openClosedTask($task) {
 	}
 }
 
-function openClosedTaskRecursive($task_id) {
+function openClosedTaskRecursive($task_id)
+{
 	global $tasks_opened;
 	$tasks_opened = (($tasks_opened) ? $tasks_opened : array());
 	$open_task = new CTask();
@@ -2538,7 +2623,7 @@ function openClosedTaskRecursive($task_id) {
 	if ($task_id > 0) {
 		openClosedTask($task_id);
 
-		$open_task->peek($task_id) ;
+		$open_task->peek($task_id);
 		$children_to_open = $open_task->getChildren();
 		foreach ($children_to_open as $to_open) {
 			openClosedTaskRecursive($to);
@@ -2550,7 +2635,8 @@ function openClosedTaskRecursive($task_id) {
  * Find the first closed item within the supplied array
  * and open it, walking down the hierarchy.
  */
-function openFirstClosed(&$opened, $parent) {
+function openFirstClosed(&$opened, $parent)
+{
 	global $tasks_opened;
 	if (empty($opened[$parent])) {
 		$tasks_opened[$parent] = $parent;
@@ -2564,7 +2650,8 @@ function openFirstClosed(&$opened, $parent) {
 /**
  * Find the last opened and close it.
  */
-function closeLastOpened(&$opened, $parent) {
+function closeLastOpened(&$opened, $parent)
+{
 	global $tasks_opened;
 	// Check if any of the children are opened
 	$found = false;
@@ -2588,7 +2675,8 @@ function closeLastOpened(&$opened, $parent) {
  * task array building and manipulating is overly complex and
  * needs to be reviewed.
  */
-function OpenCloseOneLevel(&$projects, $open = true) {
+function OpenCloseOneLevel(&$projects, $open = true)
+{
 	global $tasks_opened;
 	$children_of = array();
 	$opened = array();
@@ -2602,7 +2690,7 @@ function OpenCloseOneLevel(&$projects, $open = true) {
 		}
 		foreach ($project['tasks'] as $task) {
 			if ($task['task_parent'] != $task['task_id']) {
-				if (! isset($children_of[$task['task_parent']])) {
+				if (!isset($children_of[$task['task_parent']])) {
 					$children_of[$task['task_parent']] = array();
 				}
 				$children_of[$task['task_parent']][] = $task['task_id'];
@@ -2633,7 +2721,8 @@ function OpenCloseOneLevel(&$projects, $open = true) {
 	}
 }
 
-function closeOpenedTask($task) {
+function closeOpenedTask($task)
+{
 	global $tasks_opened;
 	$tasks_opened = (($tasks_opened) ? $tasks_opened : array());
 	$to_close_task = new CTask();
@@ -2654,7 +2743,8 @@ function closeOpenedTask($task) {
 	}
 }
 
-function closeOpenedTaskRecursive($task_id) {
+function closeOpenedTaskRecursive($task_id)
+{
 	global $tasks_opened;
 	$tasks_opened = (($tasks_opened) ? $tasks_opened : array());
 	$close_task = new CTask();
@@ -2662,18 +2752,25 @@ function closeOpenedTaskRecursive($task_id) {
 	if ($task_id > 0) {
 		closeOpenedTask($task_id);
 
-		$close_task->peek($task_id) ;
+		$close_task->peek($task_id);
 		$children_to_close = $close_task->getChildren();
 		foreach ($children_to_close as $to_close) {
-		  closeOpenedTaskRecursive($to_close);
+			closeOpenedTaskRecursive($to_close);
 		}
 	}
 }
 
 //This kludgy function echos children tasks as threads
 
-function showtask(&$a, $level=0, $is_opened = true, $today_view = false, $hideOpenCloseLink=false
-				  , $allowRepeat = false) {
+function showtask(
+	&$a,
+	$level = 0,
+	$is_opened = true,
+	$today_view = false,
+	$hideOpenCloseLink = false
+	,
+	$allowRepeat = false
+) {
 	global $AppUI, $done, $query_string, $durnTypes, $userAlloc, $showEditCheckbox;
 	global $tasks_opened, $user_id, $dPconfig;
 
@@ -2685,7 +2782,7 @@ function showtask(&$a, $level=0, $is_opened = true, $today_view = false, $hideOp
 	$df .= ' ' . $AppUI->getPref('TIMEFORMAT');
 	$show_all_assignees = dPgetConfig('show_all_task_assignees', false);
 
-	if (!isset($done[$a['task_id']]))	{
+	if (!isset($done[$a['task_id']])) {
 		$done[$a['task_id']] = 1;
 	} else if (!($allowRepeat)) {
 		//by default, we shouldn't allow repeat displays of the same task
@@ -2708,7 +2805,7 @@ function showtask(&$a, $level=0, $is_opened = true, $today_view = false, $hideOp
 	$start_date = intval($a['task_start_date']) ? new CDate($a['task_start_date'], FMT_DATETIME_HTML5) : null;
 	$end_date = intval($a['task_end_date']) ? new CDate($a['task_end_date'], FMT_DATETIME_HTML5) : null;
 	$last_update = ((isset($a['last_update']) && intval($a['last_update']))
-					? new CDate($a['last_update']) : null);
+		? new CDate($a['last_update']) : null);
 
 	// prepare coloured highlight of task time information
 	$style = '';
@@ -2747,39 +2844,39 @@ function showtask(&$a, $level=0, $is_opened = true, $today_view = false, $hideOp
 	$canEdit = getPermission('tasks', 'edit', $a['task_id']);
 	$canViewLog = getPermission('task_log', 'view', $a['task_id']);
 	if ($canEdit) {
-		$s .= ("\n\t\t".'<a href="?m=tasks&amp;a=addedit&amp;task_id=' . $a['task_id'] . '">'
-			   . "\n\t\t\t".'<img src="./images/icons/pencil.gif" alt="' . $AppUI->_('Edit Task')
-			   . '" border="0" width="12" height="12" />' . "\n\t\t</a>");
+		$s .= ("\n\t\t" . '<a href="?m=tasks&amp;a=addedit&amp;task_id=' . $a['task_id'] . '">'
+			. "\n\t\t\t" . '<img src="./images/icons/pencil.gif" alt="' . $AppUI->_('Edit Task')
+			. '" border="0" width="12" height="12" />' . "\n\t\t</a>");
 	}
 	$s .= "\n\t</td>";
 	// pinned
 	$pin_prefix = $a['task_pinned'] ? '' : 'un';
-	$s .= ("\n\t<td>\n\t\t" . '<a href="?m=tasks&amp;pin=' . ($a['task_pinned']?0:1)
-		   . '&task_id=' . $a['task_id'] . '">'
-		   . "\n\t\t\t".'<img src="./images/icons/' . $pin_prefix . 'pin.gif" alt="'
-		   . $AppUI->_($pin_prefix . 'pin Task') . '" border="0" width="12" height="12" />'
-		   . "\n\t\t</a>\n\t</td>");
+	$s .= ("\n\t<td>\n\t\t" . '<a href="?m=tasks&amp;pin=' . ($a['task_pinned'] ? 0 : 1)
+		. '&task_id=' . $a['task_id'] . '">'
+		. "\n\t\t\t" . '<img src="./images/icons/' . $pin_prefix . 'pin.gif" alt="'
+		. $AppUI->_($pin_prefix . 'pin Task') . '" border="0" width="12" height="12" />'
+		. "\n\t\t</a>\n\t</td>");
 	// New Log
 	$s .= ("\n\t" . '<td align="center">');
 	if ($canViewLog && $a['task_dynamic'] != 1) {
 		$s .= ('<a href="?m=tasks&amp;a=view&amp;task_id=' . $a['task_id'] . '&tab=1">'
-			   . $AppUI->_('Log') . '</a>');
+			. $AppUI->_('Log') . '</a>');
 	} else {
 		$s .= $AppUI->_('-');
 	}
 	$s .= ('</td>');
 	// percent complete and priority
 	$s .= ("\n\t" . '<td align="right">' . intval($a['task_percent_complete']) . '%</td>'
-		   . "\n\t" . '<td align="center" nowrap="nowrap">');
-	if (@$a['task_log_problem']>0) {
+		. "\n\t" . '<td align="center" nowrap="nowrap">');
+	if (@$a['task_log_problem'] > 0) {
 		$s .= ('<a href="?m=tasks&amp;a=view&amp;task_id='
-			   . $a['task_id'] . '&amp;tab=0&amp;problem=1">'
-			   . dPshowImage('./images/icons/dialog-warning5.png', 16, 16, 'Problem', 'Problem!')
-			   . '</a>');
+			. $a['task_id'] . '&amp;tab=0&amp;problem=1">'
+			. dPshowImage('./images/icons/dialog-warning5.png', 16, 16, 'Problem', 'Problem!')
+			. '</a>');
 	} else if ($a['task_priority'] != 0) {
 		$s .= "\n\t\t" . dPshowImage(('./images/icons/priority' . (($a['task_priority'] > 0)
-																   ? '_up_' : '_down_')
-									  . abs($a['task_priority']) . '.gif'), 13, 16, '', '');
+			? '_up_' : '_down_')
+			. abs($a['task_priority']) . '.gif'), 13, 16, '', '');
 	}
 	$s .= ((@$a['file_count'] > 0) ? '<img src="./images/clip.png" alt="F" />' : '') . '</td>';
 	// dots
@@ -2788,9 +2885,9 @@ function showtask(&$a, $level=0, $is_opened = true, $today_view = false, $hideOp
 	if ($level == -1) {
 		$s .= '...';
 	}
-	for ($y=0; $y < $level; $y++) {
-		$s .= ('<img src="' . (($y+1 == $level) ? './images/corner-dots.gif' : './images/shim.gif')
-			   . '" width="16" height="12" border="0" alt="" />');
+	for ($y = 0; $y < $level; $y++) {
+		$s .= ('<img src="' . (($y + 1 == $level) ? './images/corner-dots.gif' : './images/shim.gif')
+			. '" width="16" height="12" border="0" alt="" />');
 	}
 	// name link
 	/*
@@ -2805,46 +2902,49 @@ function showtask(&$a, $level=0, $is_opened = true, $today_view = false, $hideOp
 	$alt = '';
 	if (!empty($a['task_description'])) {
 		$alt = ('onmouseover="javascript:return overlib(' . "'"
-			. str_replace(array("\n", "\r"), '',
+			. str_replace(
+				array("\n", "\r"),
+				'',
 				$AppUI->___('<div><p>'
-				. str_replace(array('"', "'"), array("&quot;", "\\'"), $a['task_description'])
-				. '</p></div>')) . "', CAPTION, '"
+					. str_replace(array('"', "'"), array("&quot;", "\\'"), $a['task_description'])
+					. '</p></div>')
+			) . "', CAPTION, '"
 			. $AppUI->_('Description')
-			. "', CENTER" .  dPgetConfig('overlib_extra_parameters', ', DONOTHING') . ');" onmouseout="nd();"');
-      dprint(__FILE__, __LINE__, 2, "[DEBUG] " . __FUNCTION__ . ": Extra parameters for overLib: '" . dPgetConfig('overlib_extra_parameters', '[empty]') . "'");
+			. "', CENTER" . dPgetConfig('overlib_extra_parameters', ', DONOTHING') . ');" onmouseout="nd();"');
+		dprint(__FILE__, __LINE__, 2, "[DEBUG] " . __FUNCTION__ . ": Extra parameters for overLib: '" . dPgetConfig('overlib_extra_parameters', '[empty]') . "'");
 	}
 
 	if (!empty($a['task_milestone'])) { // changed as above; it was: $a['task_milestone'] > 0 (gwyneth 20210425)
 		$s .= ('&nbsp;<a href="./index.php?m=tasks&amp;a=view&amp;task_id=' . $a['task_id'] . '" '
-			   . $alt . '>' . '<b>' . $a['task_name'] . '</b></a>'
-			   . '<img src="./images/icons/milestone.gif" border="0" alt="Milestone" /></td>');
-	} else if ($a['task_dynamic'] == 1 || count($task_obj->getChildren()) ) {
-		if (! ($today_view || $hideOpenCloseLink)) {
+			. $alt . '>' . '<b>' . $a['task_name'] . '</b></a>'
+			. '<img src="./images/icons/milestone.gif" border="0" alt="Milestone" /></td>');
+	} else if ($a['task_dynamic'] == 1 || count($task_obj->getChildren())) {
+		if (!($today_view || $hideOpenCloseLink)) {
 			$s .= ('<a href="index.php' . $query_string
-				   . (($is_opened)
-					  ? ('&close_task_id='.$a['task_id']
-						 . '"><img src="images/icons/collapse.gif" align="center"')
-					  : ('&open_task_id='.$a['task_id'] . '"><img src="images/icons/expand.gif"'))
-				   . ' border="0" alt="" /></a>');
+				. (($is_opened)
+					? ('&close_task_id=' . $a['task_id']
+						. '"><img src="images/icons/collapse.gif" align="center"')
+					: ('&open_task_id=' . $a['task_id'] . '"><img src="images/icons/expand.gif"'))
+				. ' border="0" alt="" /></a>');
 		}
 		$s .= ('&nbsp;<a href="./index.php?m=tasks&amp;a=view&amp;task_id=' . $a['task_id'] . '" '
-			   . $alt . '>' . (($a['task_dynamic'] == 1) ? '<b><i>' : '') . $a['task_name'] . (($a['task_dynamic'] == 1) ? '</i></b>' : '') . '</a></td>');
+			. $alt . '>' . (($a['task_dynamic'] == 1) ? '<b><i>' : '') . $a['task_name'] . (($a['task_dynamic'] == 1) ? '</i></b>' : '') . '</a></td>');
 	} else {
-	  $s .= ('&nbsp;<a href="./index.php?m=tasks&amp;a=view&amp;task_id=' . $a['task_id'] . '" '
-			 . $alt . '>' . $AppUI->___($a['task_name']) . '</a></td>');
+		$s .= ('&nbsp;<a href="./index.php?m=tasks&amp;a=view&amp;task_id=' . $a['task_id'] . '" '
+			. $alt . '>' . $AppUI->___($a['task_name']) . '</a></td>');
 	}
 
 	if (!empty($today_view)) { // Show the project name
 		$s .= ('<td width="50%"><a href="?m=projects&amp;a=view&amp;project_id='
-			   . $a['task_project'] . '">' . '<span style="padding:2px;background-color:'
-			   . $a['project_color_identifier'] . ';color:'
-			   . bestColor($a['project_color_identifier']) . '">' . $a['project_name'] . '</span>'
-			   . '</a></td>');
+			. $a['task_project'] . '">' . '<span style="padding:2px;background-color:'
+			. $a['project_color_identifier'] . ';color:'
+			. bestColor($a['project_color_identifier']) . '">' . $a['project_name'] . '</span>'
+			. '</a></td>');
 	}
 	// task owner
 	if (empty($today_view)) {
 		$s .= ('<td nowrap="nowrap" align="center">' . '<a href="?m=admin&amp;a=viewuser&amp;user_id='
-			   . $a['user_id'] . '">' . $a['user_username'] . '</a>' . '</td>');
+			. $a['user_id'] . '">' . $a['user_username'] . '</a>' . '</td>');
 	}
 	// $s .= '<td nowrap="nowrap" align="center">' . $a['user_username'] . '</td>';
 	if (!empty($a['task_assigned_users']) && ($assigned_users = $a['task_assigned_users'])) {
@@ -2857,38 +2957,38 @@ function showtask(&$a, $level=0, $is_opened = true, $today_view = false, $hideOp
 									. $val['user_username'] . '</a>');
 				*/
 				$a_u_tmp_array[] = ('<a href="?m=admin&amp;a=viewuser&amp;user_id=' . $val['user_id'] . '"'
-						  . 'title="' . $AppUI->_('Extent of Assignment') . ':'
-						  . ($userAlloc[$val['user_id']]['charge'] ?? '--'). '%; '
-						  . $AppUI->_('Free Capacity') . ':'
-						  . ($userAlloc[$val['user_id']]['freeCapacity'] ?? '--') . '%' . '">'
-						  . $AppUI->___($val['user_username']) . ' (' . ($val['perc_assignment'] ?? '--') . '%)</a>');
+					. 'title="' . $AppUI->_('Extent of Assignment') . ':'
+					. ($userAlloc[$val['user_id']]['charge'] ?? '--') . '%; '
+					. $AppUI->_('Free Capacity') . ':'
+					. ($userAlloc[$val['user_id']]['freeCapacity'] ?? '--') . '%' . '">'
+					. $AppUI->___($val['user_username']) . ' (' . ($val['perc_assignment'] ?? '--') . '%)</a>');
 			}
-			$s .= join (', ', $a_u_tmp_array) . '</td>';
+			$s .= join(', ', $a_u_tmp_array) . '</td>';
 		} else {
 			$s .= ('<td align="center" nowrap="nowrap">'
-				   .'<a href="?m=admin&amp;a=viewuser&amp;user_id=' . $assigned_users[0]['user_id']
-				   . '" title="' . $AppUI->_('Extent of Assignment') . ':'
-				   . ($userAlloc[$assigned_users[0]['user_id']]['charge'] ?? '--') . '%; '
-				   . $AppUI->_('Free Capacity') . ':'
-				   . ($userAlloc[$assigned_users[0]['user_id']]['freeCapacity'] ?? '--') . '%">'
-				   . $AppUI->___($assigned_users[0]['user_username'] ?? '[unknown username]')
-				   .' (' . ($assigned_users[0]['perc_assignment'] ?? '--') .'%)</a>');
+				. '<a href="?m=admin&amp;a=viewuser&amp;user_id=' . $assigned_users[0]['user_id']
+				. '" title="' . $AppUI->_('Extent of Assignment') . ':'
+				. ($userAlloc[$assigned_users[0]['user_id']]['charge'] ?? '--') . '%; '
+				. $AppUI->_('Free Capacity') . ':'
+				. ($userAlloc[$assigned_users[0]['user_id']]['freeCapacity'] ?? '--') . '%">'
+				. $AppUI->___($assigned_users[0]['user_username'] ?? '[unknown username]')
+				. ' (' . ($assigned_users[0]['perc_assignment'] ?? '--') . '%)</a>');
 			if (!empty($a['assignee_count']) && $a['assignee_count'] > 1) {
 				$s .= (' <a href="javascript: void(0);" onclick="javascript:toggle_users('
-					   . "'users_" . $a['task_id'] . "'" . ');" title="'
-					   . join (', ', $a_u_tmp_array) .'">(+' . ($a['assignee_count'] - 1) . ')</a>'
-					   . '<span style="display: none" id="users_' . $a['task_id'] . '">');
+					. "'users_" . $a['task_id'] . "'" . ');" title="'
+					. join(', ', $a_u_tmp_array) . '">(+' . ($a['assignee_count'] - 1) . ')</a>'
+					. '<span style="display: none" id="users_' . $a['task_id'] . '">');
 				$a_u_tmp_array[] = $AppUI->___($assigned_users[0]['user_username']);
 				for ($i = 1, $xi = count($assigned_users) ?? 0; $i < $xi; $i++) {
 					$a_u_tmp_array[] = $AppUI->___($assigned_users[$i]['user_username']);
 					$s .= ('<br /><a href="?m=admin&amp;a=viewuser&amp;user_id='
-						   . $assigned_users[$i]['user_id'] . '" title="'
-						   . $AppUI->_('Extent of Assignment') . ':'
-						   . ($userAlloc[$assigned_users[$i]['user_id']]['charge']) ?? '--') . '%; '
-						   . $AppUI->_('Free Capacity') . ':'
-						   . ($userAlloc[$assigned_users[$i]['user_id']]['freeCapacity'] ?? '--') . '%">'
-						   . $AppUI->___(($assigned_users[$i]['user_username'] ?? '[unknown username]')  . ' ('
-						   . ($assigned_users[$i]['perc_assignment'] ?? '--') . '%)</a>');
+						. $assigned_users[$i]['user_id'] . '" title="'
+						. $AppUI->_('Extent of Assignment') . ':'
+						. ($userAlloc[$assigned_users[$i]['user_id']]['charge']) ?? '--') . '%; '
+						. $AppUI->_('Free Capacity') . ':'
+						. ($userAlloc[$assigned_users[$i]['user_id']]['freeCapacity'] ?? '--') . '%">'
+						. $AppUI->___(($assigned_users[$i]['user_username'] ?? '[unknown username]') . ' ('
+							. ($assigned_users[$i]['perc_assignment'] ?? '--') . '%)</a>');
 				}
 				$s .= '</span>';
 			}
@@ -2900,33 +3000,34 @@ function showtask(&$a, $level=0, $is_opened = true, $today_view = false, $hideOp
 	}
 	// duration or milestone
 	$s .= ('<td nowrap="nowrap" align="center" style="' . $style . '">'
-		   . (!empty($start_date) ? $start_date->format($df) : '-') . '</td>'
-		   . '<td align="center" nowrap="nowrap" style="' . $style . '">' . $a['task_duration']
-		   . ' ' . $AppUI->_($durnTypes[$a['task_duration_type']]) . '</td>'
-		   . '<td nowrap="nowrap" align="center" style="' . $style . '">'
-		   . (!empty($end_date) ? $end_date->format($df) : '-') . '</td>');
+		. (!empty($start_date) ? $start_date->format($df) : '-') . '</td>'
+		. '<td align="center" nowrap="nowrap" style="' . $style . '">' . $a['task_duration']
+		. ' ' . $AppUI->_($durnTypes[$a['task_duration_type']]) . '</td>'
+		. '<td nowrap="nowrap" align="center" style="' . $style . '">'
+		. (!empty($end_date) ? $end_date->format($df) : '-') . '</td>');
 	if (!empty($today_view)) {
 		$s .= ('<td nowrap="nowrap" align="center" style="' . $style . '">'
-			   . $a['task_due_in'] . '</td>');
+			. $a['task_due_in'] . '</td>');
 	} else if (!empty($AppUI->isActiveModule('history')) && getPermission('history', 'view')) {
-		$s .= ('<td nowrap="nowrap" align="center" style="' . $style.'">'
-			   . (!empty($last_update) ? $last_update->format($df) : '-') . '</td>');
+		$s .= ('<td nowrap="nowrap" align="center" style="' . $style . '">'
+			. (!empty($last_update) ? $last_update->format($df) : '-') . '</td>');
 	}
 
 	// Assignment checkbox
 	if (!empty($showEditCheckbox)) {
 		$s .= ("\n\t" . '<td align="center">' . '<input type="checkbox" name="selected_task['
-			   . $a['task_id'] . ']" value="' . $a['task_id'] . '"/></td>');
+			. $a['task_id'] . ']" value="' . $a['task_id'] . '"/></td>');
 	}
 	$s .= '</tr>';
 	echo $s;
 }
 
-function findchild(&$tarr, $parent, $level=0) {
+function findchild(&$tarr, $parent, $level = 0)
+{
 	global $tasks_opened, $tasks_filtered, $children_of;
 	$tasks_opened = (($tasks_opened) ? $tasks_opened : array());
 
-	$level = $level+1;
+	$level = $level + 1;
 
 	foreach ($tarr as $x => $task) {
 		if ($task['task_parent'] == $parent && $task['task_parent'] != $task['task_id']) {
@@ -2976,7 +3077,8 @@ invalid:
 array_csort($data_array,$col, $type, $col2, $order2, $type2);
 
 */
-function array_csort() {
+function array_csort()
+{
 
 	$args = func_get_args();
 	$marray = array_shift($args);
@@ -3000,7 +3102,7 @@ function array_csort() {
 				 ** Task definition writes the following to the DB:
 				 ** A without start date: start = end = NULL
 				 ** B with start date and empty end date: start = startdate,
-				                                          end = '0000-00-00 00:00:00'
+														  end = '0000-00-00 00:00:00'
 				 ** C start + end date: start= startdate, end = end date
 
 				 ** A the end_date for the middle task (B) is ('dynamically') calculated on display
@@ -3017,7 +3119,7 @@ function array_csort() {
 		$i++;
 	}
 	$msortline .= '$marray));';
-	eval($msortline);
+	eval ($msortline);
 
 	return $marray;
 }
@@ -3028,13 +3130,15 @@ function array_csort() {
  ** @return string	Return calculated end date in MySQL-TIMESTAMP format
  */
 
-function calcEndByStartAndDuration($task) {
+function calcEndByStartAndDuration($task)
+{
 	$end_date = new CDate($task['task_start_date']);
 	$end_date->addSeconds(@$task['task_duration'] * $task['task_duration_type'] * SEC_HOUR);
 	return $end_date->format(FMT_DATETIME_MYSQL);
 }
 
-function sort_by_item_title($title, $item_name, $item_type) {
+function sort_by_item_title($title, $item_name, $item_type)
+{
 	global $AppUI, $project_id, $task_id, $min_view;
 	global $task_sort_item1, $task_sort_type1, $task_sort_order1;
 	global $task_sort_item2, $task_sort_type2, $task_sort_order2;
@@ -3053,7 +3157,7 @@ function sort_by_item_title($title, $item_name, $item_type) {
 
 	if (isset($item_order)) {
 		echo ('<img src="./images/arrow-' . (($item_order == SORT_ASC) ? 'up' : 'down')
-			  . '.gif" width="11" height="11" alt="" />');
+			. '.gif" width="11" height="11" alt="" />');
 	} else {
 		$item_order = SORT_DESC;
 	}
@@ -3064,9 +3168,17 @@ function sort_by_item_title($title, $item_name, $item_type) {
 	$link = '<a href="./index.php?';
 	$not_first = 0;
 	foreach ($_GET as $var => $val) {
-		if (!(in_array($var, array('task_sort_item1', 'task_sort_type1', 'task_sort_order1',
-		                           'task_sort_item2', 'task_sort_type2', 'task_sort_order2')))) {
-			$link .= ((($not_first) ? '&' : '') . $var . '=' . dPgetCleanParam($_GET,$var));
+		if (
+			!(in_array($var, array(
+				'task_sort_item1',
+				'task_sort_type1',
+				'task_sort_order1',
+				'task_sort_item2',
+				'task_sort_type2',
+				'task_sort_order2'
+			)))
+		) {
+			$link .= ((($not_first) ? '&' : '') . $var . '=' . dPgetCleanParam($_GET, $var));
 			$not_first = 1;
 		}
 	}
@@ -3083,8 +3195,10 @@ function sort_by_item_title($title, $item_name, $item_type) {
 		$link .= '&task_sort_type1=' . $item_type;
 		$link .= '&task_sort_order1=' . $item_order;
 
-		if ((($task_sort_item1 && $task_sort_item1 != $item_name)
-			 || $task_sort_item2) && $task_sort_item2 != 'task_priority')  {
+		if (
+			(($task_sort_item1 && $task_sort_item1 != $item_name)
+				|| $task_sort_item2) && $task_sort_item2 != 'task_priority'
+		) {
 			$item_num = (($task_sort_item1 == $item_name) ? '2' : '1');
 			$link .= '&task_sort_item2=' . ${'task_sort_item' . $item_num};
 			$link .= '&task_sort_type2=' . ${'task_sort_type' . $item_num};

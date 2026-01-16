@@ -1,31 +1,35 @@
 <?php /* SYSTEM $Id$ */
 if (!defined('DP_BASE_DIR')) {
-  die('You should not access this file directly.');
+	die('You should not access this file directly.');
 }
 
 /**
-* Preferences class
-*/
-class CPreferences {
+ * Preferences class
+ */
+class CPreferences
+{
 	var $pref_user = NULL;
 	var $pref_name = NULL;
 	var $pref_value = NULL;
-	
+
 	var $_default_prefs = NULL;
-	
-	function __construct() {
+
+	function __construct()
+	{
 		$this->_module_directory = 'system';
 	}
-	
-	function get_defaults() {
+
+	function get_defaults()
+	{
 		$q = new DBQuery;
 		$q->addTable('user_preferences');
 		$q->addQuery('pref_name, pref_value');
 		$q->addWhere('pref_user = 0');
 		$this->_default_prefs = $q->loadHashList();
 	}
-	
-	function bind($hash) {
+
+	function bind($hash)
+	{
 		if (!is_array($hash)) {
 			return 'CPreferences::bind failed';
 		} else {
@@ -33,14 +37,16 @@ class CPreferences {
 			return NULL;
 		}
 	}
-	
-	function check() {
+
+	function check()
+	{
 		// TODO MORE
 		return NULL; // object is ok
 	}
-	
-	function store($updateNulls = false) {
-		if ($this->pref_user && ! isset($this->_default_prefs)) {
+
+	function store($updateNulls = false)
+	{
+		if ($this->pref_user && !isset($this->_default_prefs)) {
 			$this->get_defaults();
 		}
 		$msg = $this->check();
@@ -57,42 +63,46 @@ class CPreferences {
 		}
 		return NULL;
 	}
-	
-	function delete($oid = NULL, $history_desc = '', $history_proj = 0) {
+
+	function delete($oid = NULL, $history_desc = '', $history_proj = 0)
+	{
 		$q = new DBQuery;
 		$q->setDelete('user_preferences');
-		$q->addWhere('pref_user = ' . (int)$this->pref_user);
+		$q->addWhere('pref_user = ' . (int) $this->pref_user);
 		$q->addWhere('pref_name = \'' . $this->pref_name . '\'');
 		return ((!($q->exec())) ? db_error() : null);
 	}
 }
 
 /**
-* Module class
-*/
-class CModule extends CDpObject {
-	var $mod_id=null;
-	var $mod_name=null;
-	var $mod_directory=null;
-	var $mod_version=null;
-	var $mod_setup_class=null;
-	var $mod_type=null;
-	var $mod_active=null;
-	var $mod_ui_name=null;
-	var $mod_ui_icon=null;
-	var $mod_ui_order=null;
-	var $mod_ui_active=null;
-	var $mod_description=null;
-	var $permissions_item_label=null;
-	var $permissions_item_field=null;
-	var $permissions_item_table=null;
-	
-	function __construct() {
+ * Module class
+ */
+class CModule extends CDpObject
+{
+	var $mod_id = null;
+	var $mod_name = null;
+	var $mod_directory = null;
+	var $mod_version = null;
+	var $mod_setup_class = null;
+	var $mod_type = null;
+	var $mod_active = null;
+	var $mod_ui_name = null;
+	var $mod_ui_icon = null;
+	var $mod_ui_order = null;
+	var $mod_ui_active = null;
+	var $mod_description = null;
+	var $permissions_item_label = null;
+	var $permissions_item_field = null;
+	var $permissions_item_table = null;
+
+	function __construct()
+	{
 		parent::__construct('modules', 'mod_id');
 		$this->_module_directory = 'system';
 	}
-	
-	function install() {
+
+	function install()
+	{
 		$q = new DBQuery;
 		$q->addQuery('mod_directory');
 		$q->addTable('modules');
@@ -105,48 +115,49 @@ class CModule extends CDpObject {
 		$q->clear();
 		$q->addQuery('max(mod_ui_order)');
 		$q->addTable('modules');
-		
+
 		// We need to account for "pre-installed" modules that are "UI Inaccessible"
 		// in order to make sure we get the "correct" initial value for .
 		// mod_ui_order values of "UI Inaccessible" modules are irrelevant
 		// and should probably be set to 0 so as not to interfere.
 		$q->addWhere(" mod_name NOT LIKE 'Public'");
-        
+
 		$this->mod_ui_order = $q->loadResult() + 1;
-		
+
 		$perms =& $GLOBALS['AppUI']->acl();
 		$perms->addModule($this->mod_directory, $this->mod_name);
 		// Determine if it is an admin module or not, then add it to the correct set
-		if (! isset($this->mod_admin)) {
+		if (!isset($this->mod_admin)) {
 			$this->mod_admin = 0;
 		}
-		
+
 		if ($this->mod_admin) {
 			$perms->addGroupItem($this->mod_directory, "admin");
 		} else {
 			$perms->addGroupItem($this->mod_directory, "non_admin");
 		}
-		
+
 		if (isset($this->permissions_item_table) && $this->permissions_item_table) {
 			$perms->addModuleSection($this->permissions_item_table);
 		}
 		$this->store();
 		return true;
 	}
-	
-	function remove() {
+
+	function remove()
+	{
 		$sql = "DELETE FROM modules WHERE mod_id = $this->mod_id";
 		$q = new DBQuery;
 		$q->setDelete('modules');
-		$q->addWhere('mod_id = ' . (int)$this->mod_id);
+		$q->addWhere('mod_id = ' . (int) $this->mod_id);
 		if (!$q->exec()) {
 			return db_error();
 		} else {
 			$perms =& $GLOBALS['AppUI']->acl();
-			if (! isset($this->mod_admin)) {
+			if (!isset($this->mod_admin)) {
 				$this->mod_admin = 0;
 			}
-			
+
 			if ($this->mod_admin) {
 				$perms->deleteGroupItem($this->mod_directory, "admin");
 			} else {
@@ -160,23 +171,24 @@ class CModule extends CDpObject {
 			return NULL;
 		}
 	}
-	
-	function move($dirn) {
+
+	function move($dirn)
+	{
 		$new_ui_order = $this->mod_ui_order;
-        
+
 		if ($dirn == 'moveup') {
-			$other_new=$new_ui_order;
+			$other_new = $new_ui_order;
 			$new_ui_order--;
 		} else if ($dirn == 'movedn') {
-			$other_new=$new_ui_order;
+			$other_new = $new_ui_order;
 			$new_ui_order++;
 		}
-        
+
 		if ($new_ui_order) { //make sure we aren't going "up" to 0
 			$q = new DBQuery;
 			if ($other_new) { //make sure value was set.
 				$q->addTable('modules');
-				$q->addUpdate('mod_ui_order', ''.$other_new);
+				$q->addUpdate('mod_ui_order', '' . $other_new);
 				$q->addWhere("mod_ui_order = $new_ui_order");
 				$q->exec();
 				$q->clear();
@@ -186,24 +198,28 @@ class CModule extends CDpObject {
 			$q->addWhere("mod_id = $this->mod_id");
 			$q->exec();
 			$q->clear();
-            
+
 			$this->mod_ui_order = $new_ui_order;
 		}
 	}
-        
+
 	// overridable functions
-	function moduleInstall() {
+	function moduleInstall()
+	{
 		return null;
 	}
-	function moduleRemove() {
+	function moduleRemove()
+	{
 		return null;
 	}
-	function moduleUpgrade() {
+	function moduleUpgrade()
+	{
 		return null;
 	}
 
 	// module finding methods
-	public function getModuleByName($name) {
+	public function getModuleByName($name)
+	{
 		$q = new DBQuery;
 		$name = $q->quote($name);
 		$q->addTable('modules');
@@ -214,32 +230,35 @@ class CModule extends CDpObject {
 }
 
 /**
-* Configuration class
-*/
-class CConfig extends CDpObject {
+ * Configuration class
+ */
+class CConfig extends CDpObject
+{
 	var $config_name = NULL;
 	var $config_value = NULL;
-	
-	function __construct() {
+
+	function __construct()
+	{
 		parent::__construct('config', 'config_id');
 		$this->_module_directory = 'system';
 	}
-	
-	function check() {
+
+	function check(): ?string
+	{
 		//Sanitize user input
 		switch ($this->config_name) {
 			case 'daily_working_hours':
-				$this->config_value = ((($this->config_value % 24) <= 0) ? 24 
-				                       : ($this->config_value % 24));
+				$this->config_value = ((($this->config_value % 24) <= 0) ? 24
+					: ($this->config_value % 24));
 				break;
 			case 'cal_day_start':
 			case 'cal_day_end':
-				$this->config_value = ((($this->config_value % 24) < 0) ? 0 
-				                       : ($this->config_value % 24));
+				$this->config_value = ((($this->config_value % 24) < 0) ? 0
+					: ($this->config_value % 24));
 				break;
 			case 'cal_day_increment':
-				$this->config_value = ((($this->config_value % 60) <= 0) ? 60 
-				                       : ($this->config_value % 60));
+				$this->config_value = ((($this->config_value % 60) <= 0) ? 60
+					: ($this->config_value % 60));
 				break;
 			case 'cal_working_days':
 				$this->config_value = trim($this->config_value, ' ,');
@@ -252,13 +271,15 @@ class CConfig extends CDpObject {
 		}
 		return NULL; // object is ok
 	}
-	
-	function store($updateNulls = false) {
+
+	function store(bool $updateNulls = false): ?string
+	{
 		$msg = $this->check();
 		return (($msg) ? $msg : parent::store($updateNulls));
 	}
-	
-	function getChildren($id) {
+
+	function getChildren($id)
+	{
 		$this->_query->clear();
 		$this->_query->addTable('config_list');
 		$this->_query->addOrder('config_list_id');
@@ -270,34 +291,38 @@ class CConfig extends CDpObject {
 }
 
 
-class bcode extends CDpObject {
-	var $_billingcode_id=NULL;
+class bcode extends CDpObject
+{
+	var $_billingcode_id = NULL;
 	var $company_id;
 	var $billingcode_id = NULL;
 	var $billingcode_desc;
 	var $billingcode_name;
 	var $billingcode_value;
 	var $billingcode_status;
-	
-	function __construct() {
+
+	function __construct()
+	{
 		parent::__construct('billingcode', 'billingcode_id');
 		$this->_module_directory = 'system';
 	}
-	
-	function bind($hash) {
+
+	function bind(array $hash): bool
+	{
 		if (!is_array($hash)) {
-			return "Billing Code::bind failed";
+			return false;
 		} else {
 			bindHashToObject($hash, $this);
-			return NULL;
+			return true;
 		}
 	}
-	
-	function delete($oid = NULL, $history_desc = '', $history_proj = 0) {
+
+	function delete(?int $oid = NULL, string $history_desc = '', int $history_proj = 0): ?string
+	{
 		$q = new DBQuery;
 		$q->addTable('billingcode');
 		$q->addUpdate('billingcode_status', '1');
-		$q->addWhere("billingcode_id='".$this->_billingcode_id."'");
+		$q->addWhere("billingcode_id='" . $this->_billingcode_id . "'");
 		if (!$q->exec()) {
 			$q->clear();
 			return db_error();
@@ -306,15 +331,16 @@ class bcode extends CDpObject {
 			return NULL;
 		}
 	}
-	
-	function store($updateNulls = false) {
+
+	function store(bool $updateNulls = false): ?string
+	{
 		$q = new DBQuery;
 		$q->addQuery('billingcode_id');
 		$q->addTable('billingcode');
 		$q->addWhere("billingcode_name = '" . $this->billingcode_name . "'");
 		$q->addWhere('company_id = ' . $this->company_id);
 		$found_id = $q->loadResult();
-		
+
 		if ($found_id && $found_id != $this->_billingcode_id) {
 			return 'Billing Code::code already exists';
 		} else if ($this->_billingcode_id) {
@@ -324,13 +350,13 @@ class bcode extends CDpObject {
 			$q->addUpdate('billingcode_value', $this->billingcode_value);
 			$q->addUpdate('billingcode_status', $this->billingcode_status);
 			$q->addUpdate('company_id', $this->company_id);
-			$q->addWhere('billingcode_id = ' . $this->_billingcode_id);	
+			$q->addWhere('billingcode_id = ' . $this->_billingcode_id);
 			$q->exec();
 			$q->clear();
-		} else if (!($ret = db_insertObject ('billingcode', $this, 'billingcode_id'))) {
+		} else if (!($ret = db_insertObject('billingcode', $this, 'billingcode_id'))) {
 			return 'Billing Code::store failed <br />' . db_error();
 		} else {
 			return NULL;
-        }
+		}
 	}
 }
