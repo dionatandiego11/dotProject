@@ -9,37 +9,39 @@ require_once($AppUI->getModuleClass('projects'));
 /**
  * Risk Class
  */
-class CRisks extends CDpObject {
+class CRisks extends CDpObject
+{
 	var $risk_id = NULL;
 	var $risk_name = NULL;
-        var $risk_responsible = NULL;       
-        var $risk_description = NULL;
-        var $risk_probability = NULL;
-        var $risk_impact = NULL;
+	var $risk_responsible = NULL;
+	var $risk_description = NULL;
+	var $risk_probability = NULL;
+	var $risk_impact = NULL;
 	var $risk_answer_to_risk = NULL;
-        var $risk_status = NULL;
-        var $risk_project = NULL;
+	var $risk_status = NULL;
+	var $risk_project = NULL;
 	var $risk_task = NULL;
-        var $risk_notes = NULL;
-        var $risk_potential_other_projects = NULL;
+	var $risk_notes = NULL;
+	var $risk_potential_other_projects = NULL;
 	var $risk_lessons_learned = NULL;
-        var $risk_priority = NULL;
-        var $risk_active = NULL;
-        var $risk_strategy = NULL;
-        var $risk_prevention_actions = NULL;
-        var $risk_contingency_plan = NULL;
-        var $risk_period_start_date = NULL;
-        var $risk_period_end_date = NULL;
-        var $risk_ear_classification = NULL;
-        var $risk_triggers = NULL;
-        var $risk_is_contingency=NULL;
-        var $risk_cause= NULL;
-        var $risk_consequence= NULL;
+	var $risk_priority = NULL;
+	var $risk_active = NULL;
+	var $risk_strategy = NULL;
+	var $risk_prevention_actions = NULL;
+	var $risk_contingency_plan = NULL;
+	var $risk_period_start_date = NULL;
+	var $risk_period_end_date = NULL;
+	var $risk_ear_classification = NULL;
+	var $risk_triggers = NULL;
+	var $risk_is_contingency = NULL;
+	var $risk_cause = NULL;
+	var $risk_consequence = NULL;
 
 	/**
 	 * Call the parent constructor for risks
 	 */
-	function __construct() {
+	function __construct()
+	{
 		parent::__construct('risks', 'risk_id');
 		$this->_module_directory = 'risks';
 	}
@@ -47,11 +49,12 @@ class CRisks extends CDpObject {
 	/**
 	 * Check the risk object
 	 */
-	function check() {
+	function check(): ?string
+	{
 		// ensure the integrity of some variables
 		$this->risk_id = intval($this->risk_id);
 		if ($this->risk_id == 0) {
-			return 0;
+			return NULL; // Se for novo (0), tudo bem. Mas o original retornava 0 (que é int, não string/null)
 		}
 		return NULL; // object is ok
 	}
@@ -59,10 +62,16 @@ class CRisks extends CDpObject {
 	/**
 	 * Delete a risk
 	 */
-	function delete($oid = NULL, $history_desc = '', $history_proj = 0) {
+	function delete(?int $oid = NULL, string $history_desc = '', int $history_proj = 0): ?string
+	{
 		$this->load($this->risk_id);
-		addHistory('risks', $this->risk_id, 'delete', $this->risk_name,
-		           $this->risk_id);
+		addHistory(
+			'risks',
+			$this->risk_id,
+			'delete',
+			$this->risk_name,
+			$this->risk_id
+		);
 		$q = new DBQuery;
 
 		$q->setDelete('risks');

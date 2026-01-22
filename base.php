@@ -53,7 +53,7 @@ function safe_get_env($name)
   if (isset($_SERVER[$name])) {
     return $_SERVER[$name];
   } else if (mb_strpos(php_sapi_name(), 'apache') === false) {
-    getenv($name);
+    return getenv($name);
   } else {
     return '';
   }
@@ -66,7 +66,7 @@ $baseUrl = (((!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] != 'off')
 $baseUrl .= safe_get_env('HTTP_HOST');
 // check if webserver is not running on default port
 // This seems to only apply if using older Apache servers
-if (($_SERVER['SERVER_PORT'] != 80 || $_SERVER['SERVER_PORT'] != 443) && strpos($baseUrl, ':') === FALSE) {
+if (($_SERVER['SERVER_PORT'] != 80 && $_SERVER['SERVER_PORT'] != 443) && strpos($baseUrl, ':') === FALSE) {
   $baseUrl .= ':' . safe_get_env('SERVER_PORT');
 }
 $pathInfo = safe_get_env('PATH_INFO');

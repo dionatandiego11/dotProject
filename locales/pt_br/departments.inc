@@ -1,0 +1,35 @@
+<?php
+// Tradução para Português do Brasil (pt_BR)
+// Arquivo departments.inc - Módulo de Departamentos
+$content = array(
+"Add Department" => "Adicionar Departamento",
+"badCompany" => "Esta empresa é inválida. Você não pode adicionar um departamento.",
+"Company" => "Empresa",
+"delDept" => "Tem certeza que deseja excluir este departamento",
+"delete department" => "excluir departamento",
+"Department" => "Departamento",
+"Department Company" => "Empresa do Departamento",
+"departmentDelete" => "Tem certeza que deseja excluir este departamento",
+"Department Name" => "Nome do Departamento",
+"Department Parent" => "Departamento Pai",
+"deptIndexPage" => "Por favor, acesse departamentos através de uma empresa",
+"deptValidName" => "Por favor, insira um nome de departamento válido",
+"deptWithProject" => "Você não pode excluir um departamento que tem projetos associados",
+"deptWithSub" => "Você não pode excluir um departamento que tem subdepartamentos",
+"Description" => "Descrição",
+"Details" => "Detalhes",
+"Edit Department" => "Editar Departamento",
+"edit this department" => "editar este departamento",
+"Fax" => "Fax",
+"Name" => "Nome",
+"new department" => "novo departamento",
+"Owner" => "Responsável",
+"Phone" => "Telefone",
+"Please choose a Department first!" => "Por favor, escolha um Departamento primeiro!",
+"Select Unit" => "Selecionar Unidade",
+"Telephone" => "Telefone",
+"View Department" => "Visualizar Departamento",
+"view this department" => "visualizar este departamento",
+"Address" => "Endereço"
+);
+?>

@@ -401,8 +401,9 @@ function parseDate(val) {
 	}
 
 function setDate( frm_name, f_date ) {
-	fld_date = eval( "document." + frm_name + "." + f_date );
-	fld_task_date = eval( "document." + frm_name + "." + "add_task_" + f_date );
+	var form = document.forms[frm_name];
+	fld_date = form.elements[f_date];
+	fld_task_date = form.elements["add_task_" + f_date];
 	if (fld_date.value.length>0) {
 	      if ((parseDate(fld_date.value))==null) {
 	            alert('The Date/Time you typed does not match your prefered format, please retype.');
@@ -410,19 +411,19 @@ function setDate( frm_name, f_date ) {
 	            fld_date.style.backgroundColor = 'red';
             } else {
             	fld_task_date.value = formatDate(parseDate(fld_date.value), "yyyyMMddHHmm");
-            	fld_date.value = formatDate(parseDate(fld_date.value), "<?php echo $cal_df ?>");
+	            fld_date.value = formatDate(parseDate(fld_date.value), "<?php echo $cal_df ?>");
 	            fld_date.style.backgroundColor = '';
 	            if (frm_name.indexOf('editFrm')>-1) {
 	               if (f_date.indexOf('start_date')>-1) {
 	                  start_date = fld_task_date;
-	                  end_date = eval( "document." + frm_name + "." + "add_task_" + f_date.replace("start_date","end_date") );
-	                  duration_fld = eval( "document." + frm_name + "." + "add_task_" + f_date.replace("start_date","duration") );
-	                  durntype_fld = eval( "document." + frm_name + "." + "add_task_" + f_date.replace("start_date","durntype") );
+	                  end_date = form.elements["add_task_" + f_date.replace("start_date","end_date")];
+	                  duration_fld = form.elements["add_task_" + f_date.replace("start_date","duration")];
+	                  durntype_fld = form.elements["add_task_" + f_date.replace("start_date","durntype")];
                      } else {
 	                  end_date = fld_task_date;
-	                  start_date = eval( "document." + frm_name + "." + "add_task_" + f_date.replace("end_date","start_date") );
-	                  duration_fld = eval( "document." + frm_name + "." + "add_task_" + f_date.replace("end_date","duration") );
-	                  durntype_fld = eval( "document." + frm_name + "." + "add_task_" + f_date.replace("end_date","durntype") );
+	                  start_date = form.elements["add_task_" + f_date.replace("end_date","start_date")];
+	                  duration_fld = form.elements["add_task_" + f_date.replace("end_date","duration")];
+	                  durntype_fld = form.elements["add_task_" + f_date.replace("end_date","durntype")];
                      }
 	               calcDuration(document.editFrm, start_date, end_date, duration_fld, durntype_fld);
                   }
@@ -476,7 +477,7 @@ function addComponent() {
 	 durntype = sel_durntype.replace('durntype0', 'durntype_'+line_nr);
 	 durntype = durntype.replace('durntype0', 'durntype_'+line_nr);
 
-      eval('oldType_'+line_nr+'=""');
+      window['oldType_'+line_nr] = '';
 
       var trIdName = 'component'+li+'_';
       var newtr = document.createElement('tr');
@@ -561,10 +562,10 @@ function addComponent() {
       newtr.appendChild(oCell);
       ni.appendChild(newtr);
       form.nrcomponents.value = li;
-      end_date = eval( "document.editFrm.add_task_end_date_"+line_nr );
-      start_date = eval( "document.editFrm.add_task_start_date_"+line_nr );
-      duration_fld = eval( "document.editFrm.add_task_duration_"+line_nr );
-      durntype_fld = eval( "document.editFrm.add_task_durntype_"+line_nr );
+      end_date = document.getElementById('add_task_end_date_'+line_nr);
+      start_date = document.getElementById('add_task_start_date_'+line_nr);
+      duration_fld = document.getElementById('add_task_duration_'+line_nr);
+      durntype_fld = form.elements['add_task_durntype_'+line_nr];
       calcDuration(document.editFrm, start_date, end_date, duration_fld, durntype_fld);
 }
 

@@ -47,7 +47,7 @@ $end_date->setTime(23, 59, 59);
 if ($canEdit) {
 ?>
 function checkAll(user_id) {
-	var f = eval("document.assFrm" + user_id);
+	var f = document.forms["assFrm" + user_id];
 	var cFlag = f.master.checked ? false : true;
 	for (var i=0; i< f.elements.length; i++) {
 		var e = f.elements[i];
@@ -59,7 +59,7 @@ function checkAll(user_id) {
 }
 
 function chAssignment(user_id, rmUser, del) {
-	var f = eval("document.assFrm" + user_id);
+	var f = document.forms["assFrm" + user_id];
 	var fl = f.add_users.length - 1;
 	var c = 0;
 	var a = 0;
@@ -107,7 +107,7 @@ function chAssignment(user_id, rmUser, del) {
 }
 
 function chPriority(user_id) {
-	var f = eval("document.assFrm" + user_id);
+	var f = document.forms["assFrm" + user_id];
 	var c = 0;
 
 	f.htasks.value = "";

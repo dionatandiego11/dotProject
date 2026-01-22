@@ -611,11 +611,17 @@ function projects_list_data(int|false $user_id = false): void
 
 	$q->addGroup('p.project_id');
 	$q->addOrder($orderby . ' ' . $orderdir);
-	$obj_project->setAllowedSQL($AppUI->user_id, $q, null, 'p');
-	$projects = $q->loadList();
+	$obj_project->setAllowedSQL((int) $AppUI->user_id, $q, null, 'p');
+	$projects_data = $q->loadList();
+	$projects = [];
+	if ($projects_data) {
+		foreach ($projects_data as $row) {
+			$projects[] = \DotProject\Entity\Project::fromArray($row);
+		}
+	}
 
 	$obj_company = new CCompany();
-	$companies = $obj_company->getAllowedRecords($AppUI->user_id, 'company_id,company_name', 'company_name');
+	$companies = $obj_company->getAllowedRecords((int) $AppUI->user_id, 'company_id,company_name', 'company_name');
 	if (count($companies) === 0) {
 		$companies = [0];
 	}
@@ -628,7 +634,7 @@ function projects_list_data(int|false $user_id = false): void
 	$q->addJoin('projects', 'p', 'p.project_company = c.company_id');
 	$q->addWhere('p.project_status NOT IN (1, 4, 5, 6, 7)');
 	$q->addOrder('c.company_name, dep.dept_parent, dep.dept_name');
-	$obj_company->setAllowedSQL($AppUI->user_id, $q);
+	$obj_company->setAllowedSQL((int) $AppUI->user_id, $q);
 	$active_companies = $q->loadList() ?: [];
 
 	$q->clear();
@@ -637,7 +643,7 @@ function projects_list_data(int|false $user_id = false): void
 	$q->addJoin('departments', 'dep', 'c.company_id = dep.dept_company');
 	$q->addJoin('projects', 'p', 'p.project_company = c.company_id');
 	$q->addOrder('c.company_name, dep.dept_parent, dep.dept_name');
-	$obj_company->setAllowedSQL($AppUI->user_id, $q);
+	$obj_company->setAllowedSQL((int) $AppUI->user_id, $q);
 	$all_companies = $q->loadList() ?: [];
 
 	// Build select list

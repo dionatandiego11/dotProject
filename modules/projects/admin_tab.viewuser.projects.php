@@ -157,10 +157,8 @@ echo $tab; ?>" method="post" name="pickCompany">
 $CR = "\n";
 $CT = "\n\t";
 $none = true;
+$companyViewCache = array();
 foreach ($projects as $row) {
-	if (!(getPermission('projects', 'view', $row['project_id']))) {
-		continue;
-	}
 	// We dont check the percent_completed == 100 because some projects
 	// were being categorized as completed because not all the tasks
 	// have been created (for new projects)
@@ -186,7 +184,11 @@ echo ($row['project_color_identifier']); ?>">
 	</td>
 	<td width="30%">
 <?php
-		if (getPermission('companies', 'view', $row['project_company'])) {
+		$companyId = (int) $row['project_company'];
+		if (!array_key_exists($companyId, $companyViewCache)) {
+			$companyViewCache[$companyId] = getPermission('companies', 'view', $companyId);
+		}
+		if ($companyViewCache[$companyId]) {
 ?>
 		<a href="?m=companies&amp;a=view&amp;company_id=<?php
 echo $row['project_company']; ?>" title="<?php echo htmlspecialchars($row['company_description'], ENT_QUOTES); ?> ">
@@ -195,7 +197,7 @@ echo $row['project_company']; ?>" title="<?php echo htmlspecialchars($row['compa
 
 		echo htmlspecialchars($row['company_name'], ENT_QUOTES);
 
-		if (getPermission('companies', 'view', $row['project_company'])) {
+		if ($companyViewCache[$companyId]) {
 ?>
 		</a>
 <?php

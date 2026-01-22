@@ -1,13 +1,13 @@
 <?php /* ADMIN $Id$ */
 if (!defined('DP_BASE_DIR')) {
-  die('You should not access this file directly.');
+	die('You should not access this file directly.');
 }
 
-require_once $AppUI->getModuleClass('contacts');
-$del = (bool)dPgetParam($_POST, 'del', false);
-$role_id = (int)dPgetParam($_POST, 'role_id', 0);
-$user_id = (int)dPgetParam($_POST, 'user_id', 0);
-$user_role = (int)dPgetParam($_POST, 'user_role', 0);
+require_once DP_BASE_DIR . '/classes/contacts.class.php';
+$del = (bool) dPgetParam($_POST, 'del', false);
+$role_id = (int) dPgetParam($_POST, 'role_id', 0);
+$user_id = (int) dPgetParam($_POST, 'user_id', 0);
+$user_role = (int) dPgetParam($_POST, 'user_role', 0);
 
 if (!(getPermission($m, 'edit', $user_id))) {
 	$AppUI->redirect('m=public&a=access_denied');
@@ -15,11 +15,11 @@ if (!(getPermission($m, 'edit', $user_id))) {
 
 // prepare (and translate) the module name ready for the suffix
 $AppUI->setMsg('Role');
-$perms =& $AppUI->acl();
+$perms = $AppUI->acl();
 if ($del) {
 	if ($perms->deleteUserRole($role_id, $user_id)) {
 		$AppUI->setMsg('deleted', UI_MSG_ALERT, true);
-		if (dPgetConfig('user_contact_inactivate') && ! $perms->checkLogin($user_id)) {
+		if (dPgetConfig('user_contact_inactivate') && !$perms->checkLogin($user_id)) {
 			// Mark contact as private
 			$obj = new CUser();
 			$contact = new CContact();
@@ -34,7 +34,7 @@ if ($del) {
 	}
 } else if ($user_role) {
 	$public_contact = false;
-	if (dPgetConfig('user_contact_activate') && ! $perms->checkLogin($user_id)) {
+	if (dPgetConfig('user_contact_activate') && !$perms->checkLogin($user_id)) {
 		$public_contact = true;
 	}
 	if ($perms->insertUserRole($user_role, $user_id)) {

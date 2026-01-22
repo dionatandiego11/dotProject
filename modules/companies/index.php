@@ -1,6 +1,6 @@
 <?php /* COMPANIES $Id$ */
 if (!defined('DP_BASE_DIR')) {
-  die('You should not access this file directly.');
+	die('You should not access this file directly.');
 }
 
 // First order check if we are allowed to view
@@ -14,12 +14,12 @@ $valid_ordering = array('company_name', 'countp', 'inactive', 'company_type');
 // retrieve any state parameters
 if (isset($_GET['orderby']) && in_array($_GET['orderby'], $valid_ordering)) {
 	$orderdir = (($AppUI->getState('CompIdxOrderDir')
-				  ? (($AppUI->getState('CompIdxOrderDir') == 'asc') ? 'desc' : 'asc') : 'desc'));
+		? (($AppUI->getState('CompIdxOrderDir') == 'asc') ? 'desc' : 'asc') : 'desc'));
 	$AppUI->setState('CompIdxOrderBy', $_GET['orderby']);
-    $AppUI->setState('CompIdxOrderDir', $orderdir);
+	$AppUI->setState('CompIdxOrderDir', $orderdir);
 }
 $orderby = (($AppUI->getState('CompIdxOrderBy'))
-            ? $AppUI->getState('CompIdxOrderBy') : 'company_name');
+	? $AppUI->getState('CompIdxOrderBy') : 'company_name');
 $orderdir = (($AppUI->getState('CompIdxOrderDir')) ? $AppUI->getState('CompIdxOrderDir') : 'asc');
 
 $owner_filter_id = intval(dPgetParam($_REQUEST, 'owner_filter_id', 0));
@@ -51,35 +51,56 @@ $search_string = $AppUI->___($search_string);
 $perms =& $AppUI->acl();
 $owner_list = array(-1 => $AppUI->_('All', UI_OUTPUT_RAW)) + $perms->getPermittedUsers('companies');
 //db_loadHashList($sql);
-$owner_combo = arraySelect($owner_list, 'owner_filter_id',
-                           'class="text" onchange="javascript:document.searchform.submit()"',
-                           $owner_filter_id, false);
+$owner_combo = arraySelect(
+	$owner_list,
+	'owner_filter_id',
+	'class="text" onchange="javascript:document.searchform.submit()"',
+	$owner_filter_id,
+	false
+);
 
 // setup the title block
 $titleBlock = new CTitleBlock('Companies', 'handshake.png', $m, $m . "." . $a);
-$titleBlock->addCell(('<form name="searchform" action="?m=companies&amp;search_string='
-                      . dPformSafe($search_string) . '" method="post">' . PHP_EOL
-                      . '<table><tr><td><strong>' . $AppUI->_('Search')
-                      . '</strong><input autofocus class="text" type="search" name="search_string" value="'
-                      .  dPformSafe($search_string) . '" /><br />'
-                      . '<a href="index.php?m=companies&amp;search_string=-1">'
-                      . $AppUI->_('Reset search') . '</a></td><td valign="top"><strong>'
-                      . $AppUI->_('Owner filter') . '</strong> ' . $owner_combo
-                      . ' </td></tr></table></form>'));
+// Refactored Search and Filter Form
+$searchForm = '
+<form name="searchform" action="?m=companies" method="post" class="flex items-center gap-4">
+    <input type="hidden" name="search_string" value="' . dPformSafe($search_string) . '" />
+    
+    <div class="flex items-center gap-2">
+        <label class="font-bold text-white">' . $AppUI->_('Search') . ':</label>
+        <input autofocus class="text" type="search" name="search_string" value="' . dPformSafe($search_string) . '" />
+        <a href="index.php?m=companies&amp;search_string=-1" class="text-white hover:text-gray-200 text-sm ml-1" title="' . $AppUI->_('Reset search') . '">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+        </a>
+    </div>
+    
+    <div class="flex items-center gap-2 border-l border-white/20 pl-4">
+        <label class="font-bold text-white">' . $AppUI->_('Owner filter') . ':</label>
+        ' . $owner_combo . '
+    </div>
+</form>';
+
+$titleBlock->addCell($searchForm, '', '', '');
 
 $search_string = addslashes($search_string);
 
 if ($canEdit) {
-	$titleBlock->addCell(('<input type="submit" class="button" value="' . $AppUI->_('new company')
-	                      . '">'), '', '<form action="?m=companies&amp;a=addedit" method="post">',
-	                     '</form>');
+	$titleBlock->addCell(
+		('<input type="submit" class="button" value="' . $AppUI->_('new company')
+			. '">'),
+		'',
+		'<form action="?m=companies&amp;a=addedit" method="post">',
+		'</form>'
+	);
 }
 $titleBlock->show();
 
 if (isset($_GET['tab'])) {
 	$AppUI->setState('CompaniesIdxTab', $_GET['tab']);
 }
-$companiesTypeTab = defVal($AppUI->getState('CompaniesIdxTab'),  0);
+$companiesTypeTab = defVal($AppUI->getState('CompaniesIdxTab'), 0);
 
 //$tabTypes = array(getCompanyTypeID('Client'), getCompanyTypeID('Supplier'), 0);
 $companiesType = $companiesTypeTab;

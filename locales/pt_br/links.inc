@@ -1,0 +1,36 @@
+<?php
+// Tradução para Português do Brasil (pt_BR)
+// Arquivo links.inc - Módulo de Links
+$content = array(
+"All" => "Todos",
+"All Links" => "Todos os Links",
+"All Projects" => "Todos os Projetos",
+"Application" => "Aplicação",
+"Are you sure you want to cancel?" => "Tem certeza que deseja cancelar?",
+"Attach a link" => "Anexar um link",
+"cancel" => "cancelar",
+"Category" => "Categoria",
+"Date" => "Data",
+"Description" => "Descrição",
+"Document" => "Documento",
+"Filter" => "Filtro",
+"go" => "ir",
+"Link Name" => "Nome do Link",
+"Link(s)" => "Link(s)",
+"linksDelete" => "Remover este link?",
+"Link URL" => "URL do Link",
+"new link" => "novo link",
+"Owner" => "Responsável",
+"Page(s)" => "Página(s)",
+"Please select a project first!" => "Por favor, selecione um projeto primeiro!",
+"Project" => "Projeto",
+"Search" => "Pesquisar",
+"Search in name and description fields" => "Pesquisar nos campos nome e descrição",
+"select task" => "selecionar tarefa",
+"submit" => "enviar",
+"Task" => "Tarefa",
+"Task Name" => "Nome da Tarefa",
+"Unknown" => "Desconhecido",
+"Uploaded By" => "Enviado Por"
+);
+?>

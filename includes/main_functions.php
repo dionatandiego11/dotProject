@@ -41,7 +41,7 @@ function arraySelect(
 	array $arr,
 	string $select_name,
 	string $select_attribs,
-	int|string $selected,
+	int|string|null $selected,
 	bool $translate = false
 ): string {
 	global $AppUI;
@@ -88,7 +88,7 @@ function arraySelectTree(
 	array &$arr,
 	string $select_name,
 	string $select_attribs,
-	int|string $selected,
+	int|string|null $selected,
 	bool $translate = false
 ): string {
 	reset($arr);
@@ -600,9 +600,13 @@ define('DP_FORM_JSVARS', 4);
 /**
  * Make text safe to output into double-quote enclosed attributes of an HTML tag
  */
-function dPformSafe(object|array|string $txt, int $flag_bits = 0): object|array|string
+function dPformSafe(object|array|string|null $txt, int $flag_bits = 0): object|array|string
 {
 	global $AppUI, $locale_char_set;
+
+	if ($txt === null) {
+		return '';
+	}
 
 	$locale_char_set ??= 'utf-8';
 

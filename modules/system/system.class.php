@@ -38,13 +38,13 @@ class CPreferences
 		}
 	}
 
-	function check()
+	function check(): ?string
 	{
 		// TODO MORE
 		return NULL; // object is ok
 	}
 
-	function store($updateNulls = false)
+	function store(bool $updateNulls = false): ?string
 	{
 		if ($this->pref_user && !isset($this->_default_prefs)) {
 			$this->get_defaults();

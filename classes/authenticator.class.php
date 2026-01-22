@@ -78,10 +78,14 @@ if (!defined('DP_BASE_DIR')) {
 			if (! $userdata = gzuncompress($compressed_data)) {
 				die($AppUI->_('The credentials supplied were missing or corrupted') . ' (2)');
 			}
-			if (! $_REQUEST['check'] = md5($userdata)) {
-				die ($AppUI->_('The credentials supplied were issing or corrupted') . ' (3)');
+			$check = md5($userdata);
+			if (isset($_REQUEST['check']) && $_REQUEST['check'] !== $check) {
+				die ($AppUI->_('The credentials supplied were missing or corrupted') . ' (3)');
 			}
-			$user_data = unserialize($userdata);
+			$user_data = unserialize($userdata, ['allowed_classes' => false]);
+			if (!is_array($user_data)) {
+				die ($AppUI->_('The credentials supplied were missing or corrupted') . ' (4)');
+			}
 
 			// Now we need to check if the user already exists, if so we just
 			// update.  If not we need to create a new user and add a default
@@ -92,18 +96,22 @@ if (!defined('DP_BASE_DIR')) {
 			$last_name = array_pop($names);
 			$first_name = implode(' ', $names);
 			$passwd = trim($user_data['passwd']);
+			$stored_pass = $passwd;
+			if (password_get_info($passwd)['algo'] === 0 && !preg_match('/^[a-f0-9]{32}$/i', $passwd)) {
+				$stored_pass = password_hash($passwd, PASSWORD_DEFAULT);
+			}
 			$email = trim($user_data['email']);
 
 			$q  = new DBQuery;
 			$q->addTable('users');
 			$q->addQuery('user_id, user_password, user_contact');
-			$q->addWhere("user_username = '$username'");
+			$q->addWhere("user_username = '" . db_escape($username) . "'");
 			if (! $rs = $q->exec()) {
 				die($AppUI->_('Failed to get user details') . ' - error was ' . $db->ErrorMsg());
 			}
 			if ($rs->RecordCount() < 1) {
 				$q->clear();
-				$this->createsqluser($username, $passwd, $email, $first_name, $last_name);
+				$this->createsqluser($username, $stored_pass, $email, $first_name, $last_name);
 			} else {
 				if (! $row = $rs->FetchRow())
 					die($AppUI->_('Failed to retrieve user detail'));
@@ -111,7 +119,7 @@ if (!defined('DP_BASE_DIR')) {
 				$this->user_id = $row['user_id'];
 				$q->clear();
 				$q->addTable('users');
-				$q->addUpdate('user_password', $passwd);
+				$q->addUpdate('user_password', $stored_pass);
 				$q->addWhere("user_id = " . $this->user_id);
 				if (! $q->exec()) {
 					die($AppUI->_('Could not update user credentials'));
@@ -150,7 +158,7 @@ if (!defined('DP_BASE_DIR')) {
 			$q  = new DBQuery;
 			$q->addTable('users');
 			$q->addInsert('user_username',$username);
-			$q->addInsert('user_password', $password);
+			$q->addInsert('user_password', password_hash($password, PASSWORD_DEFAULT));
 			$q->addInsert('user_type', '1');
 			$q->addInsert('user_contact', $c->contact_id);
 			if (! $q->exec())
@@ -178,7 +186,7 @@ if (!defined('DP_BASE_DIR')) {
 			$q  = new DBQuery;
 			$q->addTable('users');
 			$q->addQuery('user_id, user_password');
-			$q->addWhere("user_username = '$username'");
+			$q->addWhere("user_username = '" . db_escape($username) . "'");
 			if (!$rs = $q->exec()) {
 				$q->clear();
 				return false;
@@ -190,7 +198,23 @@ if (!defined('DP_BASE_DIR')) {
 
 			$this->user_id = $row["user_id"];
 			$q->clear();
-			if (MD5($password) == $row["user_password"]) return true;
+			$stored = (string) $row["user_password"];
+			if (password_get_info($stored)['algo'] !== 0) {
+				return password_verify($password, $stored);
+			}
+
+			if (MD5($password) == $stored) {
+				$hash = password_hash($password, PASSWORD_DEFAULT);
+				if ($hash) {
+					$u = new DBQuery();
+					$u->addTable('users');
+					$u->addUpdate('user_password', $hash);
+					$u->addWhere('user_id = ' . (int) $this->user_id);
+					$u->exec();
+					$u->clear();
+				}
+				return true;
+			}
 			return false;
 		}
 
@@ -310,7 +334,7 @@ if (!defined('DP_BASE_DIR')) {
 			$q  = new DBQuery;
 			$result = false;
 			$q->addTable('users');
-			$q->addWhere("user_username = '$username'");
+			$q->addWhere("user_username = '" . db_escape($username) . "'");
 			$rs = $q->exec();
 			if ($rs->RecordCount() > 0)
 			  $result = true;
@@ -323,7 +347,7 @@ if (!defined('DP_BASE_DIR')) {
 			GLOBAL $db;
 			$q  = new DBQuery;
 			$q->addTable('users');
-			$q->addWhere("user_username = '$username'");
+			$q->addWhere("user_username = '" . db_escape($username) . "'");
 			$rs = $q->exec();
 			$row = $rs->FetchRow();
 			$q->clear();
@@ -333,7 +357,7 @@ if (!defined('DP_BASE_DIR')) {
 		function createsqluser($username, $password, $ldap_attribs = Array())
 		{
 			GLOBAL $db, $AppUI;
-			$hash_pass = MD5($password);
+			$hash_pass = password_hash($password, PASSWORD_DEFAULT);
 
 			require_once($AppUI->getModuleClass("contacts"));
 

@@ -1,0 +1,28 @@
+<?php
+// Tradução para Português do Brasil (pt_BR)
+// Arquivo public.inc - Páginas Públicas
+$content = array(
+"no departments" => "sem departamentos",
+"Access Denied" => "Acesso Negado",
+"Allowed Companies" => "Empresas Permitidas",
+"Color Selector" => "Seletor de Cor",
+"Contacts for" => "Contatos para",
+"Continue" => "Continuar",
+"Current Password" => "Senha Atual",
+"New Password" => "Nova Senha",
+"Preset" => "Predefinido",
+"Repeat New Password" => "Repetir Nova Senha",
+"View all allowed companies" => "Ver todas as empresas permitidas",
+"[none]" => "[nenhum]",
+"accessDeniedMsg" => "Você tentou acessar um item no dotproject sem as permissões necessárias. Por favor, contate o Administrador do Sistema dotproject.",
+"chgpwLogin" => "Fazer login com nova senha",
+"chgpwUpdated" => "Senha atualizada",
+"chgpwWrongPW" => "Senha incorreta",
+"colorLegend" => "Escolha uma cor para identificar unicamente sua seleção e feche o Seletor de Cor.",
+"companies" => "empresas",
+"nodepartments" => "Nenhum Departamento disponível",
+"notasks" => "Nenhuma Tarefa disponível",
+"permissions" => "permissões",
+"submit" => "enviar"
+);
+?>

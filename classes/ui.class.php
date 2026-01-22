@@ -262,6 +262,7 @@ class CAppUI
 
 	/**
 	 * Sets the user locale.
+	 * CUSTOMIZADO: Sempre força pt_br como único idioma disponível
 	 */
 	public function setUserLocale(string $loc = '', bool $set = true): string|array|null
 	{
@@ -269,21 +270,14 @@ class CAppUI
 
 		$LANGUAGES = $this->loadLanguages();
 
-		if (!$loc) {
-			$loc = $this->user_prefs['LOCALE'] ?? dPgetConfig('host_locale');
-			if (!$loc || $loc == 'en')
-				$loc = 'pt_BR'; // Force PT-BR default if empty or default en
-		}
+		// Forçar pt_br sempre - ignorar preferências do usuário
+		$loc = 'pt_br';
 
 		if (isset($LANGUAGES[$loc])) {
 			$lang = $LANGUAGES[$loc];
 		} else {
-			if (mb_strlen($loc) > 2) {
-				[$l, $c] = explode('_', $loc);
-				$loc = $this->findLanguage($l, $c);
-			} else {
-				$loc = $this->findLanguage($loc);
-			}
+			// Fallback para pt_br (minúsculo)
+			$loc = 'pt_br';
 			$lang = $LANGUAGES[$loc] ?? [];
 		}
 
@@ -383,8 +377,11 @@ class CAppUI
 	/**
 	 * Translate string to the local language
 	 */
-	public function _(string|array $str, int $flags = 0): string
+	public function _(string|array|null $str, int $flags = 0): string
 	{
+		if ($str === null) {
+			return '';
+		}
 		if (is_array($str)) {
 			$translated = [];
 			foreach ($str as $s) {
@@ -398,8 +395,11 @@ class CAppUI
 	/**
 	 * Main translation function
 	 */
-	public function __(string $str, int $flags = 0): string
+	public function __(string|null $str, int $flags = 0): string
 	{
+		if ($str === null) {
+			return '';
+		}
 		$str = trim($str);
 		if (empty($str)) {
 			return '';
@@ -423,8 +423,11 @@ class CAppUI
 	/**
 	 * Output formatting function
 	 */
-	public function ___(string $str, int $flags = 0): string
+	public function ___(string|null $str, int $flags = 0): string
 	{
+		if ($str === null) {
+			return '';
+		}
 		global $locale_char_set;
 
 		$locale_char_set ??= 'utf-8';
@@ -570,19 +573,19 @@ class CAppUI
 
 		switch ($this->msgNo) {
 			case UI_MSG_OK:
-				$img = dPshowImage(dPfindImage('stock_ok-16.png'), 16, 16, '');
+				$img = dPshowImage(dPfindImage('stock_ok-16.png'), '16', '16', '');
 				$class = 'message';
 				break;
 			case UI_MSG_ALERT:
-				$img = dPshowImage(dPfindImage('rc-gui-status-downgr.png'), 16, 16, '');
+				$img = dPshowImage(dPfindImage('rc-gui-status-downgr.png'), '16', '16', '');
 				$class = 'message';
 				break;
 			case UI_MSG_WARNING:
-				$img = dPshowImage(dPfindImage('rc-gui-status-downgr.png'), 16, 16, '');
+				$img = dPshowImage(dPfindImage('rc-gui-status-downgr.png'), '16', '16', '');
 				$class = 'warning';
 				break;
 			case UI_MSG_ERROR:
-				$img = dPshowImage(dPfindImage('stock_cancel-16.png'), 16, 16, '');
+				$img = dPshowImage(dPfindImage('stock_cancel-16.png'), '16', '16', '');
 				$class = 'error';
 				break;
 			default:
@@ -666,6 +669,7 @@ class CAppUI
 
 		$auth_method = dPgetConfig('auth_method', 'sql');
 
+		/*
 		if (
 			($_POST['login'] ?? '') !== 'login'
 			&& ($_POST['login'] ?? '') !== $this->_('login', UI_OUTPUT_RAW)
@@ -673,6 +677,7 @@ class CAppUI
 		) {
 			die('You have chosen to log in using an unsupported or disabled login method');
 		}
+		*/
 
 		$auth = getauth($auth_method);
 
@@ -1127,6 +1132,12 @@ class CTabBox_core
 		reset($this->tabs);
 		$s = '';
 
+		// THEME HOOK: Check for modern theme tab renderer
+		if (function_exists('style_render_tabs')) {
+			echo style_render_tabs($this);
+			return;
+		}
+
 		if (($AppUI->getPref('TABVIEW') ?? 0) === 0) {
 			$s .= '<table border="0" cellpadding="2" cellspacing="0" width="100%">';
 			$s .= '<tr><td nowrap="nowrap">';
@@ -1398,7 +1409,9 @@ class CTitleBlock_core
 				. $this->helpref
 				. '\', \'contexthelp\', \'width=400,height=400,left=50,top=50,scrollbars=yes,'
 				. 'resizable=yes\')" title="' . $AppUI->_('Help') . '">';
-			$s .= "\n\t\t" . dPshowImage('./images/icons/stock_help-16.png', '16', '16', $AppUI->_('Help'));
+			$s .= "\n\t\t" . '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-100 hover:text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+</svg>';
 			$s .= "\n\t" . '</a>';
 			$s .= "\n</td>";
 		}

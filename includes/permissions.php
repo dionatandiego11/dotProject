@@ -22,11 +22,22 @@ function getReadableModule() {
   $perms = $AppUI->acl();  // because PHP 8 dislikes references, let's see if this works better (gwyneth 20210503)
 	$dbprefix = dPgetConfig('dbprefix', '');
 
-	$sql = 'SELECT mod_directory FROM '.$dbprefix.'modules WHERE mod_active > 0 ORDER BY mod_ui_order';
-	$modules = db_loadColumn($sql);
-	foreach ($modules as $mod) {
+	static $cached_modules = null;
+	static $readable_module = null;
+
+	if ($readable_module !== null) {
+		return $readable_module;
+	}
+
+	if ($cached_modules === null) {
+		$sql = 'SELECT mod_directory FROM '.$dbprefix.'modules WHERE mod_active > 0 ORDER BY mod_ui_order';
+		$cached_modules = db_loadColumn($sql);
+	}
+
+	foreach ($cached_modules as $mod) {
 		if ($perms->checkModule($mod, 'access')) {
-			return $mod;
+			$readable_module = $mod;
+			return $readable_module;
 		}
 	}
 	return null;
@@ -76,6 +87,10 @@ function isAllowed($perm_type, $mod, $item_id = 0) {
 
 function getPermission($mod, $perm, $item_id = 0) {
 	global $AppUI;
+	static $perm_cache = array();
+	static $task_log_task_cache = array();
+	static $task_project_cache = array();
+	static $project_company_cache = array();
 	$item_id = intval($item_id);
 //	$perms =& $AppUI->acl();
   $perms = $AppUI->acl();  // removing call by reference to see if it helps (gwyneth 20210503)
@@ -88,6 +103,11 @@ function getPermission($mod, $perm, $item_id = 0) {
     dprint(__FILE__, __LINE__, 2, "[DEBUG]: " . __FUNCTION__ . "() had empty perm(issions); item_id was " . $item_id . ".");
   }
 
+	$cache_key = $mod . '|' . $perm . '|' . $item_id;
+	if (array_key_exists($cache_key, $perm_cache)) {
+		return $perm_cache[$cache_key];
+	}
+
 	// First check if the module is readable, i.e. has view permission.
 	$result = $perms->checkModuleItem($mod, $perm, $item_id);
 
@@ -95,19 +115,35 @@ function getPermission($mod, $perm, $item_id = 0) {
 	// This can be done a lot better in PHPGACL, but is here for compatibility.
 	if ($item_id && $perm == 'view') {
 		if ($mod == 'task_log') {
-			$sql = ('SELECT task_log_task FROM '.$dbprefix.'task_log WHERE task_log_id =' . $item_id);
-			$task_id = db_loadResult($sql);
+			if (array_key_exists($item_id, $task_log_task_cache)) {
+				$task_id = $task_log_task_cache[$item_id];
+			} else {
+				$sql = ('SELECT task_log_task FROM '.$dbprefix.'task_log WHERE task_log_id =' . $item_id);
+				$task_id = (int) db_loadResult($sql);
+				$task_log_task_cache[$item_id] = $task_id;
+			}
 			$result = $result && getPermission('tasks', $perm, $task_id);
 		} else if ($mod == 'tasks') {
-			$sql = ('SELECT task_project FROM '.$dbprefix.'tasks WHERE task_id =' . $item_id);
-			$project_id = db_loadResult($sql);
+			if (array_key_exists($item_id, $task_project_cache)) {
+				$project_id = $task_project_cache[$item_id];
+			} else {
+				$sql = ('SELECT task_project FROM '.$dbprefix.'tasks WHERE task_id =' . $item_id);
+				$project_id = (int) db_loadResult($sql);
+				$task_project_cache[$item_id] = $project_id;
+			}
 			$result = $result && getPermission('projects', $perm, $project_id);
 		} else if ($mod == 'projects') {
-			$sql = ('SELECT project_company FROM '.$dbprefix.'projects WHERE project_id =' . $item_id);
-			$company_id = db_loadResult($sql);
+			if (array_key_exists($item_id, $project_company_cache)) {
+				$company_id = $project_company_cache[$item_id];
+			} else {
+				$sql = ('SELECT project_company FROM '.$dbprefix.'projects WHERE project_id =' . $item_id);
+				$company_id = (int) db_loadResult($sql);
+				$project_company_cache[$item_id] = $company_id;
+			}
 			$result = $result && getPermission('companies', $perm, $company_id);
 		}
 	}
+	$perm_cache[$cache_key] = $result;
 	return $result;
 }
 

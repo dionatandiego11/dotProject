@@ -333,7 +333,7 @@ class Smarty_Compiler extends Smarty {
         }
 
         // remove \n from the end of the file, if any
-        if (($_len=strlen($compiled_content)) && ($compiled_content{$_len - 1} == "\n" )) {
+        if (($_len=strlen($compiled_content)) && ($compiled_content[$_len - 1] == "\n" )) {
             $compiled_content = substr($compiled_content, 0, -1);
         }
 
@@ -397,7 +397,7 @@ class Smarty_Compiler extends Smarty {
     function _compile_tag($template_tag)
     {
         /* Matched comment. */
-        if ($template_tag{0} == '*' && $template_tag{strlen($template_tag) - 1} == '*')
+        if ($template_tag[0] == '*' && $template_tag[strlen($template_tag) - 1] == '*')
             return '';
 
         /* Split tag into two three parts: command, command modifiers and the arguments. */
@@ -505,7 +505,7 @@ class Smarty_Compiler extends Smarty {
 
             case 'strip':
             case '/strip':
-                if ($tag_command{0}=='/') {
+                if ($tag_command[0]=='/') {
                     $this->_pop_tag('strip');
                     if (--$this->_strip_depth==0) { /* outermost closing {/strip} */
                         $this->_additional_newline = "\n";
@@ -641,7 +641,7 @@ class Smarty_Compiler extends Smarty {
      */
     function _compile_block_tag($tag_command, $tag_args, $tag_modifier, &$output)
     {
-        if ($tag_command{0} == '/') {
+        if ($tag_command[0] == '/') {
             $start_tag = false;
             $tag_command = substr($tag_command, 1);
         } else

@@ -222,7 +222,7 @@ class DBQuery
 		$this->create_table = $table;
 	}
 
-	public function dropTemp(string $table): void
+	public function dropTemp(string|array $table): void
 	{
 		$this->type = 'drop';
 		$this->create_table = $table;
@@ -658,7 +658,8 @@ class DBQuery
 	 */
 	public function exec(int $style = ADODB_FETCH_BOTH, bool $debug = false): mixed
 	{
-		global $db, $ADODB_FETCH_MODE;
+		global $ADODB_FETCH_MODE;
+		$db = \DotProject\Core\Database::getInstance()->getConnection();
 
 		if (empty($this->_old_style)) {
 			$this->_old_style = $ADODB_FETCH_MODE;
@@ -713,7 +714,8 @@ class DBQuery
 	 */
 	public function loadList(?int $maxrows = null): array|false
 	{
-		global $db, $AppUI;
+		global $AppUI;
+		$db = \DotProject\Core\Database::getInstance()->getConnection();
 
 		if (empty($this->exec(ADODB_FETCH_ASSOC))) {
 			$AppUI->setMsg(__FUNCTION__ . ": " . $db->ErrorMsg(), UI_MSG_ERROR);
@@ -740,7 +742,8 @@ class DBQuery
 	 */
 	public function loadHashList(?string $index = null): ?array
 	{
-		global $db, $AppUI;
+		global $AppUI;
+		$db = \DotProject\Core\Database::getInstance()->getConnection();
 
 		if (empty($this->exec(ADODB_FETCH_ASSOC))) {
 			dprint(__FILE__, __LINE__, 1, "[ERROR]: " . __FUNCTION__ . " couldn't fetch hash list; error was " . $db->ErrorMsg());
@@ -769,7 +772,8 @@ class DBQuery
 	 */
 	public function loadHash(): ?array
 	{
-		global $db, $AppUI;
+		global $AppUI;
+		$db = \DotProject\Core\Database::getInstance()->getConnection();
 
 		if (empty($this->exec(ADODB_FETCH_ASSOC))) {
 			dprint(__FILE__, __LINE__, 1, "[ERROR]: " . __FUNCTION__ . " couldn't fetch hash; error was " . $db->ErrorMsg());
@@ -787,7 +791,8 @@ class DBQuery
 	 */
 	public function loadArrayList(int $index = 0): ?array
 	{
-		global $db, $AppUI;
+		global $AppUI;
+		$db = \DotProject\Core\Database::getInstance()->getConnection();
 
 		if (empty($this->exec(ADODB_FETCH_NUM))) {
 			dprint(__FILE__, __LINE__, 1, "[ERROR]: " . __FUNCTION__ . " couldn't fetch array list; error was " . $db->ErrorMsg());

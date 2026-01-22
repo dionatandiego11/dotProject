@@ -505,7 +505,10 @@ function changeRecordType(value) {
   // if the record type is changed, then hide everything
   hideAllRows();
   // and how only those fields needed for the current type
-  eval("show" + task_types[value] + "();");
+  var fn = window["show" + task_types[value]];
+  if (typeof fn === "function") {
+    fn();
+  }
 }
 
 var subForm = new Array();

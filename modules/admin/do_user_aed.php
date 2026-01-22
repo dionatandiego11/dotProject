@@ -4,8 +4,8 @@ if (!defined('DP_BASE_DIR')) {
 }
 
 require_once $AppUI->getSystemClass('libmail');
-include $AppUI->getModuleClass('contacts');
-$del = (bool)dPgetParam($_REQUEST, 'del', false);
+require_once DP_BASE_DIR . '/classes/contacts.class.php';
+$del = (bool) dPgetParam($_REQUEST, 'del', false);
 $user_id_aed = intval(dPgetParam($_REQUEST, 'user_id', 0));
 
 $obj = new CUser();
@@ -27,8 +27,10 @@ $AppUI->setMsg('User');
 
 // !User's contact information not deleted - left for history.
 if ($del) {
-	if (! getPermission('admin', 'delete')
-	    || !(getPermission('users', 'delete', $user_id_aed))) {
+	if (
+		!getPermission('admin', 'delete')
+		|| !(getPermission('users', 'delete', $user_id_aed))
+	) {
 		$AppUI->redirect('m=public&a=access_denied');
 	}
 	if (($msg = $obj->delete())) {
@@ -45,7 +47,7 @@ if ($del) {
 
 	//pull a list of existing usernames
 	$q = new DBQuery;
-	$q->addTable('users','u');
+	$q->addTable('users', 'u');
 	$q->addQuery('user_username');
 	$q->addWhere("user_username like '" . $obj->user_username . "'");
 	$userEx = $q->loadResult();
@@ -57,7 +59,7 @@ if ($del) {
 	}
 
 	$contact->contact_owner = $AppUI->user_id;
-} else if (! getPermission('admin', 'edit') || ! getPermission('users', 'edit', $user_id_aed)) {
+} else if (!getPermission('admin', 'edit') || !getPermission('users', 'edit', $user_id_aed)) {
 	$AppUI->redirect('m=public&a=access_denied');
 }
 
@@ -69,11 +71,15 @@ if (($msg = $contact->store())) {
 		$AppUI->setMsg($msg, UI_MSG_ERROR);
 	} else {
 		if ($isNewUser && $_POST['send_user_mail']) {
-			notifyNewUser($contact->contact_email, $contact->contact_first_name,
-			              $obj->user_username, $_POST['user_password']);
+			notifyNewUser(
+				$contact->contact_email,
+				$contact->contact_first_name,
+				$obj->user_username,
+				$_POST['user_password']
+			);
 		}
 		if (isset($_POST['user_role']) && $_POST['user_role']) {
-			$perms =& $AppUI->acl();
+			$perms = $AppUI->acl();
 			if ($perms->insertUserRole($_POST['user_role'], $obj->user_id)) {
 				$AppUI->setMsg('', UI_MSG_ALERT, true);
 			} else {
@@ -85,7 +91,8 @@ if (($msg = $contact->store())) {
 	$AppUI->redirect(($isNewUser ? ('m=admin&a=viewuser&user_id=' . $obj->user_id . '&tab=3') : ''));
 }
 
-function notifyNewUser($address, $username, $logname, $logpwd) {
+function notifyNewUser($address, $username, $logname, $logpwd)
+{
 	global $AppUI, $dPconfig;
 	$mail = new Mail;
 	if ($mail->ValidEmail($address)) {
@@ -95,19 +102,19 @@ function notifyNewUser($address, $username, $logname, $logpwd) {
 			$email = 'dotproject@' . $AppUI->cfg['site_domain'];
 		}
 
-		$name = $AppUI->user_first_name .' ' . $AppUI->user_last_name;
-		$body = $username.',
+		$name = $AppUI->user_first_name . ' ' . $AppUI->user_last_name;
+		$body = $username . ',
 
 An access account has been created for you in our dotProject project management system.
 
 You can access it here at ' . $dPconfig['base_url'] . '
 
 Your username is: ' . $logname . '
-Your password is: ' . $logpwd .'
+Your password is: ' . $logpwd . '
 
 This account will allow you to see and interact with projects. If you have any questions please contact us.';
 
-		$mail->From('"'.$name.'" <'.$email.'>');
+		$mail->From('"' . $name . '" <' . $email . '>');
 		$mail->To($address);
 		$mail->Subject('New Account Created - dotProject Project Management System');
 		$mail->Body($body);

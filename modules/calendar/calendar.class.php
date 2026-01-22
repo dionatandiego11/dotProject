@@ -234,7 +234,7 @@ class CMonthCalendar
 					? ('&amp;uts=' . key($this->highlightedDays)) : ''));
 			$s .= "\n\t\t" . '<td align="left">';
 			$s .= ('<a href="' . $href . '">'
-				. dPshowImage(dPfindImage('prev.gif'), 16, 16, $AppUI->_('previous month'))
+				. dPshowImage(dPfindImage('prev.gif'), '16', '16', $AppUI->_('previous month'))
 				. '</a>');
 			$s .= '</td>';
 
@@ -256,7 +256,7 @@ class CMonthCalendar
 					? ('&amp;uts=' . key($this->highlightedDays)) : ''));
 			$s .= "\n\t\t" . '<td align="right">';
 			$s .= ('<a href="' . $href . '">'
-				. dPshowImage(dPfindImage('next.gif'), 16, 16, $AppUI->_('next month'))
+				. dPshowImage(dPfindImage('next.gif'), '16', '16', $AppUI->_('next month'))
 				. '</a>');
 			$s .= "</td>";
 		}
@@ -321,7 +321,7 @@ class CMonthCalendar
 				$html .= (($this->dayFunc) ? ('<a href="javascript:' . $this->weekFunc . "('"
 					. $firstday . "')" . '">')
 					: '');
-				$html .= dPshowImage(dPfindImage('view.week.gif'), 16, 15, $AppUI->_('Week View'));
+				$html .= dPshowImage(dPfindImage('view.week.gif'), '16', '15', $AppUI->_('Week View'));
 				$html .= (($this->dayFunc) ? ('</a>') : '');
 				$html .= "</td>";
 			}
@@ -385,7 +385,7 @@ class CMonthCalendar
 			$w .= ('<a href="javascript:' . $this->weekFunc . "(" . $dateObj->getTimestamp() . ",'"
 				. $dateObj->toString() . "')" . '">');
 		}
-		$w .= dPshowImage(dPfindImage('view.week.gif'), 16, 15, $AppUI->_('Week View'));
+		$w .= dPshowImage(dPfindImage('view.week.gif'), '16', '15', $AppUI->_('Week View'));
 		$w .= (($this->dayFunc) ? '</a>' : '');
 		$w .= "</td>\n";
 		return $w;
@@ -447,7 +447,7 @@ class CMonthCalendar
 			$html .= '<div class="event">';
 			foreach ($rows as $row) {
 				$years = $y - substr($row['contact_birthday'], 0, 4);
-				$html .= dPshowImage(dPfindImage('birthday.png', 'calendar'), 16, 16, '');
+				$html .= dPshowImage(dPfindImage('birthday.png', 'calendar'), '16', '16', '');
 				$html .= ('<a href="index.php?m=contacts&a=view&contact_id=' . $row['contact_id']
 					. '">' . $AppUI->___($row["contact_first_name"] . ' '
 							. $row["contact_last_name"]) . '</a> (' . $years . ')');

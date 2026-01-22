@@ -2,6 +2,17 @@ navigator.family="ie";
 if (window.navigator.userAgent.toLowerCase().match(/gecko/)) {navigator.family = "gecko"}
 if (navigator.userAgent.toLowerCase().indexOf('opera') + 1 || window.opera) {navigator.family = "opera"}
 
+function setOptViewValue(formName, id, hidden) {
+      var form = document.forms[formName];
+      if (!form) {
+            return;
+      }
+      var field = form.elements['opt_view_'+id];
+      if (field) {
+            field.value = hidden ? 0 : 1;
+      }
+}
+
 function expand_colapse(id, table_name, option) {
       
       var expand = (option == 'expand' ? 1 : 0);
@@ -33,9 +44,9 @@ function expand_colapse(id, table_name, option) {
                               img_expand.style.display = "inline";
                         }
                         if (id.indexOf('component')==-1) {      
-                              (tr.style.display == "none") ? eval('document.frmWorkspace.opt_view_'+id+'.value=0') : eval('document.frmWorkspace.opt_view_'+id+'.value=1');      
-                              (tr.style.display == "none") ? eval('document.editFrm.opt_view_'+id+'.value=0') : eval('document.editFrm.opt_view_'+id+'.value=1');      
-                              (tr.style.display == "none") ? eval('document.frm_bulk.opt_view_'+id+'.value=0') : eval('document.frm_bulk.opt_view_'+id+'.value=1');      
+                              setOptViewValue('frmWorkspace', id, tr.style.display == "none");
+                              setOptViewValue('editFrm', id, tr.style.display == "none");
+                              setOptViewValue('frm_bulk', id, tr.style.display == "none");
                         }                  
                   } else {
                         if (navigator.family == "gecko" || navigator.family == "opera"){            
@@ -53,9 +64,9 @@ function expand_colapse(id, table_name, option) {
                               img_expand.style.display = "none";
                         }
                         if (id.indexOf('component')==-1) {      
-                              (tr.style.display == "none") ? eval('document.frmWorkspace.opt_view_'+id+'.value=0') : eval('document.frmWorkspace.opt_view_'+id+'.value=1');      
-                              (tr.style.display == "none") ? eval('document.editFrm.opt_view_'+id+'.value=0') : eval('document.editFrm.opt_view_'+id+'.value=1');      
-                              (tr.style.display == "none") ? eval('document.frm_bulk.opt_view_'+id+'.value=0') : eval('document.frm_bulk.opt_view_'+id+'.value=1');      
+                              setOptViewValue('frmWorkspace', id, tr.style.display == "none");
+                              setOptViewValue('editFrm', id, tr.style.display == "none");
+                              setOptViewValue('frm_bulk', id, tr.style.display == "none");
                         }                                    
                   }
             } else {
@@ -74,9 +85,9 @@ function expand_colapse(id, table_name, option) {
                         img_expand.style.display = (tr.style.display == 'none') ? "inline" : "none";
                   }
                   if (id.indexOf('component')==-1) {      
-                        (tr.style.display == "none") ? eval('document.frmWorkspace.opt_view_'+id+'.value=0') : eval('document.frmWorkspace.opt_view_'+id+'.value=1');      
-                        (tr.style.display == "none") ? eval('document.editFrm.opt_view_'+id+'.value=0') : eval('document.editFrm.opt_view_'+id+'.value=1');      
-                        (tr.style.display == "none") ? eval('document.frm_bulk.opt_view_'+id+'.value=0') : eval('document.frm_bulk.opt_view_'+id+'.value=1');      
+                        setOptViewValue('frmWorkspace', id, tr.style.display == "none");
+                        setOptViewValue('editFrm', id, tr.style.display == "none");
+                        setOptViewValue('frm_bulk', id, tr.style.display == "none");
                   }
             }      
       }
@@ -556,13 +567,13 @@ function getStyle(nodeName, sStyle, iStyle) {
             var style=document.defaultView.getComputedStyle(element,null);
       	var value = style.getPropertyValue(sStyle);
       } else {
-            var value = eval("element.currentStyle." + iStyle);
+            var value = element.currentStyle[iStyle];
       }
       return value;      
 }
 
 function mult_sel(cmbObj, box_name, form_name) {
-	var f = eval('document.'+form_name);
+	var f = document.forms[form_name];
 	var check = cmbObj.checked;
 
       for (var i=0;i < f.length;i++) 
@@ -601,11 +612,11 @@ function highlight_tds(row, high, id) {
             if (!id) {
                   check = false;
             } else {
-                  var f = eval('document.frm_tasks');
-                  var check = eval('f.selected_task_'+id+'.checked');
+                  var f = document.forms['frm_tasks'];
+                  var check = f.elements['selected_task_'+id].checked;
             }
             for (var j = 0; j < tcs.length; j+=1) {
-                  cell_name = eval('tcs['+j+'].id');
+                  cell_name = tcs[j].id;
                   if(!(cell_name.indexOf('ignore_td_') >= 0)) {
                         if (high == 3)
                               tcs[j].style.background = '#FFFFCC';
@@ -622,9 +633,9 @@ function highlight_tds(row, high, id) {
 
 var is_check;
 function select_box(box, id, form_name){
-	var f = eval('document.'+form_name);
-	var check = eval('f.'+box+'_'+id+'.checked');
-      boxObj = eval('f.elements["'+box+'_'+id+'"]');
+	var f = document.forms[form_name];
+	var check = f.elements[box+'_'+id].checked;
+      boxObj = f.elements[box+'_'+id];
       if ((is_check && boxObj.checked && !boxObj.disabled) || (!is_check && !boxObj.checked && !boxObj.disabled)) {
             row = document.getElementById('row'+id);
             boxObj.checked = true;

@@ -80,10 +80,8 @@ if ($editProjectsAllowed) {
 $CR = "\n";
 $CT = "\n\t";
 $none = true;
+$companyAccessCache = array();
 foreach ($projects as $row) {
-	if (! getPermission('projects', 'view', $row['project_id'])) {
-		continue;
-	}
 	if ($row['project_status'] == 7) {
 		$none = false;
 		$end_date = ((intval(@$row['project_actual_end_date']))
@@ -98,7 +96,11 @@ echo ($row['project_color_identifier']); ?>">
 	</td>
 	<td width="30%">
 <?php
-		$accessProjComp = getPermission('companies', 'access', $row['project_company']);
+		$companyId = (int) $row['project_company'];
+		if (!array_key_exists($companyId, $companyAccessCache)) {
+			$companyAccessCache[$companyId] = getPermission('companies', 'access', $companyId);
+		}
+		$accessProjComp = $companyAccessCache[$companyId];
 		if ($accessProjComp) {
 ?>
 		<a href="?m=companies&amp;a=view&amp;company_id=<?php

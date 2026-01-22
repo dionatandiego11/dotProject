@@ -5,19 +5,20 @@ global $AppUI, $dPconfig, $projects, $project_id;
 <script language="JavaScript">
 function buildTaskName(id) {
       var f = document.editFrm;
-      var taskNameObj = eval('f.add_task_name_'+id);
-      var taskName = eval('f.add_task_name_'+id+'.value');
-      //var oldProj = eval('oldProj');
-      var oldType = eval('oldType_'+id);
+      var taskNameObj = f.elements['add_task_name_'+id];
+      var taskName = taskNameObj.value;
+      //var oldProj = oldProj;
+      var oldType = window['oldType_'+id] || '';
       taskName = taskName.replace(oldProj, '');
       taskName = taskName.replace(oldType, '');
       //var projectName = f.project_name.value;
-      var taskType = eval('f.add_task_type_'+id+'.options[f.add_task_type_'+id+'.selectedIndex].text');
+      var taskTypeSelect = f.elements['add_task_type_'+id];
+      var taskType = taskTypeSelect.options[taskTypeSelect.selectedIndex].text;
       var newTaskName = oldProj+taskName+'-'+taskType;
       taskNameObj.value = newTaskName;
       oldTaskName = newTaskName;
       //eval("oldProj = "+projectName+"+':'");
-      eval("oldType_"+id+" = '-'+'"+taskType+"'");
+      window['oldType_'+id] = '-' + taskType;
 }
 
 function addTasks() {
@@ -41,10 +42,10 @@ function addTasks() {
              var int_en_date = new String(int_st_date.replace(/start_date_/,'end_date_'));
              var st_date = new String(tempobj.name.replace(/add_task_/,''));
              var en_date = new String(st_date.replace(/start_date_/,'end_date_'));
-             st_date = eval('f.'+st_date);
-             en_date = eval('f.'+en_date);
-             int_st_date = eval('f.'+int_st_date+'.value');
-             int_en_date = eval('f.'+int_en_date+'.value');
+             st_date = f.elements[st_date];
+             en_date = f.elements[en_date];
+             int_st_date = f.elements[int_st_date].value;
+             int_en_date = f.elements[int_en_date].value;
              var sDate = new Date(int_st_date.substring(0,4),(int_st_date.substring(4,6)-1),int_st_date.substring(6,8), int_st_date.substring(8,10), int_st_date.substring(10,12));
              var eDate = new Date(int_en_date.substring(0,4),(int_en_date.substring(4,6)-1),int_en_date.substring(6,8), int_en_date.substring(8,10), int_en_date.substring(10,12));
              var s = Date.UTC(int_st_date.substring(0,4),(int_st_date.substring(4,6)-1),int_st_date.substring(6,8), int_st_date.substring(8,10), int_st_date.substring(10,12));

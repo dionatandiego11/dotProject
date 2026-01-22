@@ -68,7 +68,7 @@ $titleBlock->show();
 <script  language="javascript">
 function submitFrm(frmName) {
 
-	eval('document.'+frmName+'.submit();');
+	document.forms[frmName].submit();
 
 }
 </script>

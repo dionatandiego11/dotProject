@@ -81,8 +81,7 @@ if (!db_loadHash($sql, $drow) && $dept_id > 0) {
 ?>
 <script language="javascript">
 function testURL(x) {
-	var test = "document.editFrm.dept_url.value";
-	test = eval(test);
+	var test = document.editFrm.dept_url.value;
 	if (test.length > 6) {
 		newwin = window.open("http://" + test, 'newwin', '');
 	}
