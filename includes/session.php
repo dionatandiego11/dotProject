@@ -236,20 +236,31 @@ function dpSessionStart(string|array $start_vars = 'AppUI'): void
 	$domain = $url_parts[2] ?? '';
 	$secure = ($url_parts[1] ?? '') === 'https://';
 
+	// Fix for localhost - empty domain works better for local development
+	if ($domain === 'localhost' || $domain === '127.0.0.1') {
+		$domain = '';
+	}
+
 	if (!session_set_cookie_params($max_time, $cookie_dir, $domain, $secure, true)) {
 		dprint(__FILE__, __LINE__, 2, "[WARN] Failed to set cookie parameters on session!");
 	} else {
 		dprint(__FILE__, __LINE__, 8, "[INFO] Cookie parameters set: Max Time: $max_time, Cookie Dir: $cookie_dir, Domain: $domain, Secure: $secure .");
 	}
 
+	session_start();
+
+	// Only register globals if session is empty (new session) or if explicitly needed
 	if (is_array($start_vars)) {
 		foreach ($start_vars as $var) {
-			$_SESSION[$var] = $GLOBALS[$var] ?? '';
+			if (!isset($_SESSION[$var]) && isset($GLOBALS[$var])) {
+				$_SESSION[$var] = $GLOBALS[$var];
+			}
 		}
 	} elseif (!empty($start_vars)) {
-		$_SESSION[$start_vars] = $GLOBALS[$start_vars] ?? '';
+		if (!isset($_SESSION[$start_vars]) && isset($GLOBALS[$start_vars])) {
+			$_SESSION[$start_vars] = $GLOBALS[$start_vars];
+		}
 	}
 
 	dprint(__FILE__, __LINE__, 8, "[DEBUG]: SESSION: " . print_r($_SESSION, true));
-	session_start();
 }

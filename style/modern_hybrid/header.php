@@ -84,9 +84,19 @@ else
                         </div>
                         <div class="mt-5 flex-1 h-0 overflow-y-auto">
                             <nav class="px-2 space-y-1">
-                                <?php foreach ($nav as $module) {
+                                <?php
+                                // Import Feature Flags for module filtering
+                                $featureFlags = \DotProject\Core\FeatureFlags::getInstance();
+
+                                foreach ($nav as $module) {
+                                    // Skip contacts (legacy behavior)
                                     if ($module['mod_directory'] == 'contacts')
                                         continue;
+
+                                    // Skip deprecated modules (modernization)
+                                    if ($featureFlags->isModuleDeprecated($module['mod_directory']))
+                                        continue;
+
                                     if (getPermission($module['mod_directory'], 'access')) {
                                         $active = (isset($_GET['m']) && $_GET['m'] == $module['mod_directory']) ? 'bg-gray-100 text-gray-900' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900';
                                         ?>
@@ -126,7 +136,8 @@ else
                                     if (!empty($file_id))
                                         echo '<input type="hidden" name="file_id" value="' . $file_id . '" />';
 
-                                    $newItemPermCheck = array('companies' => 'Company', 'calendar' => 'Event', 'files' => 'File', 'projects' => 'Project');
+                                    // Modernization: Removed calendar and files (now Google integrations)
+                                    $newItemPermCheck = array('companies' => 'Company', 'projects' => 'Project');
                                     $newItem = array(0 => '+ ' . $AppUI->_('New Item'));
                                     foreach ($newItemPermCheck as $mod_check => $mod_check_title) {
                                         if (getPermission($mod_check, 'add'))
@@ -146,9 +157,21 @@ else
                             <div class="text-xs font-semibold text-gray-400 uppercase tracking-wider pl-4 mt-6 mb-2">Main
                                 Menu</div>
 
-                            <?php foreach ($nav as $module) {
+                            <?php
+                            // Reuse feature flags from mobile sidebar
+                            if (!isset($featureFlags)) {
+                                $featureFlags = \DotProject\Core\FeatureFlags::getInstance();
+                            }
+
+                            foreach ($nav as $module) {
+                                // Skip contacts (legacy behavior)
                                 if ($module['mod_directory'] == 'contacts')
                                     continue;
+
+                                // Skip deprecated modules (modernization)
+                                if ($featureFlags->isModuleDeprecated($module['mod_directory']))
+                                    continue;
+
                                 if (getPermission($module['mod_directory'], 'access')) {
                                     $active = (isset($_GET['m']) && $_GET['m'] == $module['mod_directory']) ? 'bg-primary-50 text-primary-700' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900';
                                     ?>

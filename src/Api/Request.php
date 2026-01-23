@@ -1,0 +1,171 @@
+<?php
+/**
+ * DotProject API Request
+ * 
+ * Abstração de requisições HTTP para a API REST.
+ * 
+ * @package DotProject\Api
+ * @license GPL-2.0-or-later
+ */
+
+declare(strict_types=1);
+
+namespace DotProject\Api;
+
+/**
+ * Representa uma requisição HTTP para a API
+ */
+class Request
+{
+    private string $method;
+    private string $uri;
+    private array $params;
+    private array $queryParams;
+    private array $body;
+    private array $headers;
+
+    public function __construct()
+    {
+        $this->method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+        $this->uri = $this->parseUri();
+        $this->queryParams = $_GET;
+        $this->body = $this->parseBody();
+        $this->headers = $this->parseHeaders();
+        $this->params = [];
+    }
+
+    /**
+     * Parse the request URI
+     */
+    private function parseUri(): string
+    {
+        $uri = $_SERVER['REQUEST_URI'] ?? '/';
+
+        // Remove query string
+        if (($pos = strpos($uri, '?')) !== false) {
+            $uri = substr($uri, 0, $pos);
+        }
+
+        // Remove base path if present
+        $scriptName = dirname($_SERVER['SCRIPT_NAME'] ?? '');
+        if ($scriptName !== '/' && strpos($uri, $scriptName) === 0) {
+            $uri = substr($uri, strlen($scriptName));
+        }
+
+        // Remove api.php if present
+        $uri = preg_replace('#^/api\.php#', '', $uri);
+
+        return $uri ?: '/';
+    }
+
+    /**
+     * Parse request body (JSON)
+     */
+    private function parseBody(): array
+    {
+        $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
+
+        if (strpos($contentType, 'application/json') !== false) {
+            $input = file_get_contents('php://input');
+            $data = json_decode($input, true);
+            return is_array($data) ? $data : [];
+        }
+
+        return $_POST;
+    }
+
+    /**
+     * Parse HTTP headers
+     */
+    private function parseHeaders(): array
+    {
+        $headers = [];
+
+        foreach ($_SERVER as $key => $value) {
+            if (strpos($key, 'HTTP_') === 0) {
+                $header = str_replace('_', '-', substr($key, 5));
+                $headers[$header] = $value;
+            }
+        }
+
+        // Authorization header special case
+        if (isset($_SERVER['Authorization'])) {
+            $headers['AUTHORIZATION'] = $_SERVER['Authorization'];
+        } elseif (function_exists('apache_request_headers')) {
+            $apacheHeaders = apache_request_headers();
+            if (isset($apacheHeaders['Authorization'])) {
+                $headers['AUTHORIZATION'] = $apacheHeaders['Authorization'];
+            }
+        }
+
+        return $headers;
+    }
+
+    public function getMethod(): string
+    {
+        return strtoupper($this->method);
+    }
+
+    public function getUri(): string
+    {
+        return $this->uri;
+    }
+
+    public function getQueryParam(string $key, mixed $default = null): mixed
+    {
+        return $this->queryParams[$key] ?? $default;
+    }
+
+    public function getQueryParams(): array
+    {
+        return $this->queryParams;
+    }
+
+    public function getBody(): array
+    {
+        return $this->body;
+    }
+
+    public function getBodyParam(string $key, mixed $default = null): mixed
+    {
+        return $this->body[$key] ?? $default;
+    }
+
+    public function getHeader(string $name): ?string
+    {
+        $name = strtoupper(str_replace('-', '_', $name));
+        return $this->headers[$name] ?? null;
+    }
+
+    public function getBearerToken(): ?string
+    {
+        $auth = $this->getHeader('Authorization');
+        if ($auth && preg_match('/Bearer\s+(.+)/i', $auth, $matches)) {
+            return $matches[1];
+        }
+        return null;
+    }
+
+    /**
+     * Set route parameters (from Router)
+     */
+    public function setParams(array $params): void
+    {
+        $this->params = $params;
+    }
+
+    public function getParam(string $key, mixed $default = null): mixed
+    {
+        return $this->params[$key] ?? $default;
+    }
+
+    public function getParams(): array
+    {
+        return $this->params;
+    }
+
+    public function isMethod(string $method): bool
+    {
+        return $this->getMethod() === strtoupper($method);
+    }
+}

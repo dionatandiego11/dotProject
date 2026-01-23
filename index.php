@@ -83,6 +83,11 @@ if (!(isset($_SESSION['AppUI'])) || isset($_GET['logout'])) {
 	$_SESSION['AppUI'] = new CAppUI;
 }
 $AppUI =& $_SESSION['AppUI'];
+// FIX: Ensure AppUI is a valid object, otherwise reset session
+if (!is_object($AppUI) || !($AppUI instanceof CAppUI)) {
+	$_SESSION['AppUI'] = new CAppUI;
+	$AppUI =& $_SESSION['AppUI'];
+}
 $last_insert_id = $AppUI->last_insert_id;
 
 $AppUI->checkStyle();

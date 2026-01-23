@@ -5,6 +5,8 @@ services:
     restart: always
     volumes:
       - dpdb:/var/lib/mysql
+      - ./db/dotproject.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./db/upgrade_google_integration.sql:/docker-entrypoint-initdb.d/02-google.sql
     environment:
       MYSQL_ROOT_PASSWORD: secretpw
       MYSQL_USER: ${DB_USER}
@@ -36,5 +38,34 @@ services:
     ports:
       - "80:80"
 
+  # Frontend React (opcional - para desenvolvimento)
+  frontend:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+    ports:
+      - "5173:5173"
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    profiles:
+      - frontend
+
+  # phpMyAdmin (opcional - para gerenciamento do banco)
+  phpmyadmin:
+    image: phpmyadmin:latest
+    restart: unless-stopped
+    environment:
+      PMA_HOST: mariadb
+      PMA_USER: ${DB_USER}
+      PMA_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "8081:80"
+    depends_on:
+      - mariadb
+    profiles:
+      - tools
+
 volumes:
   dpdb:
+
+
