@@ -1,6 +1,5 @@
-<?php
 // Arquivo calendar.inc - Tradução pt_BR
-$content = array(
+ = (
 "Add Event" => "Adicionar Evento",
 "All Events" => "Todos os Eventos",
 "Bi-Weekly" => "Quinzenal",
@@ -67,5 +66,3 @@ $content = array(
 "submit" => "enviar",
 "today" => "hoje",
 "week view" => "visão semanal"
-);
-?>

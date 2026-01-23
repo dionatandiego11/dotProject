@@ -1,7 +1,6 @@
-<?php
 // Tradução para Português do Brasil (pt_BR)
 // Arquivo history.inc - Módulo de Histórico
-$content = array(
+ = (
 "Added new" => "Novo adicionado",
 "Add history" => "Adicionar histórico",
 "any" => "qualquer",
@@ -25,5 +24,3 @@ $content = array(
 "Show all" => "Mostrar todos",
 "Tasks" => "Tarefas",
 "User" => "Usuário"
-);
-?>

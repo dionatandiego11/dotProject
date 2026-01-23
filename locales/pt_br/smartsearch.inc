@@ -1,7 +1,6 @@
-<?php
 // Tradução para Português do Brasil (pt_BR)
 // Arquivo smartsearch.inc - Pesquisa Inteligente
-$content = array(
+ = (
 "All words" => "Todas as palavras",
 "Display all fields" => "Exibir todos os campos",
 "Empty" => "Vazio",
@@ -17,5 +16,3 @@ $content = array(
 "Show empty" => "Mostrar vazios",
 "Task Log" => "Log de Tarefa",
 "Total records found" => "Total de registros encontrados"
-);
-?>

@@ -1,7 +1,3 @@
-<?php
-// Tradução para Português do Brasil (pt_BR)
-// Arquivo common.inc - Termos comuns do sistema
-$content = array(
 // Navegação e Ações
 "- New Item -" => "- Novo Item -",
 "About" => "Sobre",
@@ -176,7 +172,7 @@ $content = array(
 "Reminder" => "Lembrete",
 "Start Date" => "Data Início",
 "Starts" => "Começa",
-"State" => "Estado",
+"State" => "Estado", "Status" => "Status",
 "Status" => "Status",
 "Task Logs" => "Logs de Tarefa",
 "Today" => "Hoje",
@@ -301,7 +297,6 @@ $content = array(
 "sendpass1" => "tem este e-mail associado.
 Um usuário web de",
 "sendpass2" => "acabou de solicitar que uma nova senha seja enviada.
-
 Sua Nova Senha é:",
 "sendpass3" => "Se você não solicitou isso, não se preocupe. Você está vendo esta mensagem, não eles. Se foi um erro, apenas faça login com sua nova senha e depois altere para a senha que desejar.",
 "sendpass4" => "Nova senha para",
@@ -312,6 +307,4 @@ Sua Nova Senha é:",
 // Outros
 "My" => "Meu",
 "Log" => "Log",
-"Show Projects with assigned Tasks" => "Mostrar Projetos com Tarefas atribuídas"
-);
-?>
+"Show Projects with assigned Tasks" => "Mostrar Projetos com Tarefas atribuídas",

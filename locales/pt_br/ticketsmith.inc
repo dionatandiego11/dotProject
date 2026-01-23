@@ -1,7 +1,6 @@
-<?php
 // Tradução para Português do Brasil (pt_BR)
 // Arquivo ticketsmith.inc - Módulo de Tickets
-$content = array(
+ = (
 "Activity" => "Atividade",
 "All" => "Todos",
 "All Tickets" => "Todos os Tickets",
@@ -125,5 +124,3 @@ $content = array(
 "year" => "ano",
 "years" => "anos",
 "911" => "Emergência"
-);
-?>

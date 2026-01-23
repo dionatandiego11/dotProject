@@ -1,7 +1,6 @@
-<?php
 // Tradução para Português do Brasil (pt_BR)
 // Arquivo files.inc - Módulo de Arquivos
-$content = array(
+ = (
 "No Project Association" => "Sem Associação a Projeto",
 "Add File" => "Adicionar Arquivo",
 "All Files" => "Todos os Arquivos",
@@ -79,5 +78,3 @@ $content = array(
 "new folder" => "nova pasta",
 "reverted" => "revertido",
 "select task" => "selecionar tarefa"
-);
-?>

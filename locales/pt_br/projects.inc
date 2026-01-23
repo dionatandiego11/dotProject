@@ -1,7 +1,6 @@
-<?php
 // Tradução para Português do Brasil (pt_BR)
 // Arquivo projects.inc - Módulo de Projetos
-$content = array(
+ = (
 // Interface
 "Collapse All" => "Recolher Todos",
 "% of work done (based on duration)" => "% do trabalho feito (baseado na duração)",
@@ -286,5 +285,3 @@ $content = array(
 "users" => "usuários",
 "value for the previous buttons" => "valor para os botões anteriores",
 "view this project" => "visualizar este projeto"
-);
-?>

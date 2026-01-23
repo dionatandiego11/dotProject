@@ -1,7 +1,6 @@
-<?php
 // Tradução para Português do Brasil (pt_BR)
 // Arquivo help.inc - Sistema de Ajuda
-$content = array(
+ = (
 "About Modules" => "Sobre os Módulos",
 "Access Denied" => "Acesso Negado",
 "Adding a Company" => "Adicionando uma Empresa",
@@ -17,5 +16,3 @@ $content = array(
 "Top Menu" => "Menu Superior",
 "helpIntro" => "Aqui estão alguns links rápidos para tópicos no arquivo de ajuda que não são diretamente acessíveis pela ajuda contextual.",
 "index" => "índice"
-);
-?>

@@ -1,7 +1,6 @@
-<?php
 // Tradução para Português do Brasil (pt_BR)
 // Arquivo forums.inc - Módulo de Fóruns
-$content = array(
+ = (
 "Add Forum" => "Adicionar Fórum",
 "Add Message" => "Adicionar Mensagem",
 "add new forum" => "adicionar novo fórum",
@@ -83,5 +82,3 @@ $content = array(
 "Watch Forced" => "Monitoramento Forçado",
 "Watch Unforced" => "Monitoramento Não-Forçado",
 "Watch updated" => "Monitoramento atualizado"
-);
-?>

@@ -1,7 +1,6 @@
-<?php
 // Tradução para Português do Brasil (pt_BR)
 // Arquivo resources.inc - Módulo de Recursos
-$content = array(
+ = (
 "Add Resource" => "Adicionar Recurso",
 "All Resources" => "Todos os Recursos",
 "back" => "voltar",
@@ -22,5 +21,3 @@ $content = array(
 "Tool" => "Ferramenta",
 "Type" => "Tipo",
 "Venue" => "Local"
-);
-?>

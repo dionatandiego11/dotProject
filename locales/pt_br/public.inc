@@ -1,7 +1,6 @@
-<?php
 // Tradução para Português do Brasil (pt_BR)
 // Arquivo public.inc - Páginas Públicas
-$content = array(
+ = (
 "no departments" => "sem departamentos",
 "Access Denied" => "Acesso Negado",
 "Allowed Companies" => "Empresas Permitidas",
@@ -24,5 +23,3 @@ $content = array(
 "notasks" => "Nenhuma Tarefa disponível",
 "permissions" => "permissões",
 "submit" => "enviar"
-);
-?>

@@ -1,7 +1,6 @@
-<?php
 // Tradução para Português do Brasil (pt_BR)
 // Arquivo links.inc - Módulo de Links
-$content = array(
+ = (
 "All" => "Todos",
 "All Links" => "Todos os Links",
 "All Projects" => "Todos os Projetos",
@@ -32,5 +31,3 @@ $content = array(
 "Task Name" => "Nome da Tarefa",
 "Unknown" => "Desconhecido",
 "Uploaded By" => "Enviado Por"
-);
-?>

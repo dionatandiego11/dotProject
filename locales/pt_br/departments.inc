@@ -1,7 +1,6 @@
-<?php
 // Tradução para Português do Brasil (pt_BR)
 // Arquivo departments.inc - Módulo de Departamentos
-$content = array(
+ = (
 "Add Department" => "Adicionar Departamento",
 "badCompany" => "Esta empresa é inválida. Você não pode adicionar um departamento.",
 "Company" => "Empresa",
@@ -31,5 +30,3 @@ $content = array(
 "View Department" => "Visualizar Departamento",
 "view this department" => "visualizar este departamento",
 "Address" => "Endereço"
-);
-?>

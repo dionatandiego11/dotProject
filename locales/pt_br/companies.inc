@@ -1,7 +1,6 @@
-<?php
 // Tradução para Português do Brasil (pt_BR)
 // Arquivo companies.inc - Módulo de Empresas
-$content = array(
+ = (
 "Projects gantt" => "Gantt de Projetos",
 "Active Projects" => "Projetos Ativos",
 "Add Company" => "Adicionar Empresa",
@@ -70,5 +69,3 @@ $content = array(
 "submit" => "enviar",
 "test" => "teste",
 "view this company" => "visualizar esta empresa"
-);
-?>

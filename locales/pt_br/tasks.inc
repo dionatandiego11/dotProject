@@ -1,7 +1,6 @@
-<?php
 // Tradução para Português do Brasil (pt_BR)
 // Arquivo tasks.inc - Módulo de Tarefas
-$content = array(
+ = (
 // Interface
 "End" => "Fim",
 "-" => "-",
@@ -299,5 +298,3 @@ $content = array(
 "tasksComment" => "Por favor, insira um comentário relevante.",
 "tasksPercent" => "O percentual completo deve ser um número inteiro.",
 "tasksPercentValue" => "O percentual completo deve ser um valor entre 0 e 100."
-);
-?>

@@ -1,7 +1,6 @@
-<?php
 // Tradução para Português do Brasil (pt_BR)
 // Arquivo system.inc - Configuração do Sistema
-$content = array(
+ = (
 // Cabeçalhos
 "Import Users" => "Importar Usuários",
 "#" => "#",
@@ -357,5 +356,3 @@ $content = array(
 "user_contact_inactivate_tooltip" => "Quando um usuário é inativado (removendo todos os papéis), também marcar o contato associado como privado",
 "username_min_len_title" => "Tamanho Mínimo de Nome de Usuário",
 "username_min_len_tooltip" => "Estabeleça o tamanho mínimo de quaisquer nomes de usuário para dotProject. Isso NÃO pode ser maior que o tamanho da coluna no BD"
-);
-?>

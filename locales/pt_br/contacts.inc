@@ -1,7 +1,6 @@
-<?php
 // Tradução para Português do Brasil (pt_BR)
 // Arquivo contacts.inc - Módulo de Contatos
-$content = array(
+ = (
 "Add Contact" => "Adicionar Contato",
 "Address" => "Endereço",
 "back" => "voltar",
@@ -55,5 +54,3 @@ $content = array(
 "View Contact" => "Visualizar Contato",
 "view this contact" => "visualizar este contato",
 "yyyy-mm-dd" => "aaaa-mm-dd"
-);
-?>

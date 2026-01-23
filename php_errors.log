@@ -1171,3 +1171,143 @@ Stack trace:
 [23-Jan-2026 17:33:24 UTC] PHP Warning:  Constant PERM_EDIT already defined in /var/www/html/includes/permissions.php on line 14
 [23-Jan-2026 17:33:24 UTC] PHP Warning:  Constant PERM_READ already defined in /var/www/html/includes/permissions.php on line 15
 [23-Jan-2026 17:33:24 UTC] PHP Warning:  Constant PERM_ALL already defined in /var/www/html/includes/permissions.php on line 17
+[23-Jan-2026 17:35:18 UTC] PHP Warning:  Constant PERM_DENY already defined in /var/www/html/includes/permissions.php on line 13
+[23-Jan-2026 17:35:18 UTC] PHP Warning:  Constant PERM_EDIT already defined in /var/www/html/includes/permissions.php on line 14
+[23-Jan-2026 17:35:18 UTC] PHP Warning:  Constant PERM_READ already defined in /var/www/html/includes/permissions.php on line 15
+[23-Jan-2026 17:35:18 UTC] PHP Warning:  Constant PERM_ALL already defined in /var/www/html/includes/permissions.php on line 17
+[23-Jan-2026 17:35:19 UTC] PHP Warning:  Undefined array key "" in /var/www/html/modules/system/translate.php on line 89
+[23-Jan-2026 17:35:27 UTC] PHP Warning:  Constant PERM_DENY already defined in /var/www/html/includes/permissions.php on line 13
+[23-Jan-2026 17:35:27 UTC] PHP Warning:  Constant PERM_EDIT already defined in /var/www/html/includes/permissions.php on line 14
+[23-Jan-2026 17:35:27 UTC] PHP Warning:  Constant PERM_READ already defined in /var/www/html/includes/permissions.php on line 15
+[23-Jan-2026 17:35:27 UTC] PHP Warning:  Constant PERM_ALL already defined in /var/www/html/includes/permissions.php on line 17
+[23-Jan-2026 17:35:27 UTC] PHP Parse error:  syntax error, unexpected token "<", expecting ")" in /var/www/html/modules/system/translate.php(53) : eval()'d code on line 1
+[23-Jan-2026 17:35:35 UTC] PHP Warning:  Constant PERM_DENY already defined in /var/www/html/includes/permissions.php on line 13
+[23-Jan-2026 17:35:35 UTC] PHP Warning:  Constant PERM_EDIT already defined in /var/www/html/includes/permissions.php on line 14
+[23-Jan-2026 17:35:35 UTC] PHP Warning:  Constant PERM_READ already defined in /var/www/html/includes/permissions.php on line 15
+[23-Jan-2026 17:35:35 UTC] PHP Warning:  Constant PERM_ALL already defined in /var/www/html/includes/permissions.php on line 17
+[23-Jan-2026 17:35:39 UTC] PHP Warning:  Constant PERM_DENY already defined in /var/www/html/includes/permissions.php on line 13
+[23-Jan-2026 17:35:39 UTC] PHP Warning:  Constant PERM_EDIT already defined in /var/www/html/includes/permissions.php on line 14
+[23-Jan-2026 17:35:39 UTC] PHP Warning:  Constant PERM_READ already defined in /var/www/html/includes/permissions.php on line 15
+[23-Jan-2026 17:35:39 UTC] PHP Warning:  Constant PERM_ALL already defined in /var/www/html/includes/permissions.php on line 17
+[23-Jan-2026 17:35:41 UTC] PHP Warning:  Constant PERM_DENY already defined in /var/www/html/includes/permissions.php on line 13
+[23-Jan-2026 17:35:41 UTC] PHP Warning:  Constant PERM_EDIT already defined in /var/www/html/includes/permissions.php on line 14
+[23-Jan-2026 17:35:41 UTC] PHP Warning:  Constant PERM_READ already defined in /var/www/html/includes/permissions.php on line 15
+[23-Jan-2026 17:35:41 UTC] PHP Warning:  Constant PERM_ALL already defined in /var/www/html/includes/permissions.php on line 17
+[23-Jan-2026 17:40:12 UTC] PHP Warning:  Constant PERM_DENY already defined in /var/www/html/includes/permissions.php on line 13
+[23-Jan-2026 17:40:12 UTC] PHP Warning:  Constant PERM_EDIT already defined in /var/www/html/includes/permissions.php on line 14
+[23-Jan-2026 17:40:12 UTC] PHP Warning:  Constant PERM_READ already defined in /var/www/html/includes/permissions.php on line 15
+[23-Jan-2026 17:40:12 UTC] PHP Warning:  Constant PERM_ALL already defined in /var/www/html/includes/permissions.php on line 17
+[23-Jan-2026 17:40:20 UTC] PHP Warning:  Constant PERM_DENY already defined in /var/www/html/includes/permissions.php on line 13
+[23-Jan-2026 17:40:20 UTC] PHP Warning:  Constant PERM_EDIT already defined in /var/www/html/includes/permissions.php on line 14
+[23-Jan-2026 17:40:20 UTC] PHP Warning:  Constant PERM_READ already defined in /var/www/html/includes/permissions.php on line 15
+[23-Jan-2026 17:40:20 UTC] PHP Warning:  Constant PERM_ALL already defined in /var/www/html/includes/permissions.php on line 17
+[23-Jan-2026 17:40:21 UTC] PHP Warning:  Constant PERM_DENY already defined in /var/www/html/includes/permissions.php on line 13
+[23-Jan-2026 17:40:21 UTC] PHP Warning:  Constant PERM_EDIT already defined in /var/www/html/includes/permissions.php on line 14
+[23-Jan-2026 17:40:21 UTC] PHP Warning:  Constant PERM_READ already defined in /var/www/html/includes/permissions.php on line 15
+[23-Jan-2026 17:40:21 UTC] PHP Warning:  Constant PERM_ALL already defined in /var/www/html/includes/permissions.php on line 17
+[23-Jan-2026 17:40:29 UTC] PHP Warning:  Constant PERM_DENY already defined in /var/www/html/includes/permissions.php on line 13
+[23-Jan-2026 17:40:29 UTC] PHP Warning:  Constant PERM_EDIT already defined in /var/www/html/includes/permissions.php on line 14
+[23-Jan-2026 17:40:29 UTC] PHP Warning:  Constant PERM_READ already defined in /var/www/html/includes/permissions.php on line 15
+[23-Jan-2026 17:40:29 UTC] PHP Warning:  Constant PERM_ALL already defined in /var/www/html/includes/permissions.php on line 17
+[23-Jan-2026 17:40:33 UTC] PHP Warning:  Constant PERM_DENY already defined in /var/www/html/includes/permissions.php on line 13
+[23-Jan-2026 17:40:33 UTC] PHP Warning:  Constant PERM_EDIT already defined in /var/www/html/includes/permissions.php on line 14
+[23-Jan-2026 17:40:33 UTC] PHP Warning:  Constant PERM_READ already defined in /var/www/html/includes/permissions.php on line 15
+[23-Jan-2026 17:40:33 UTC] PHP Warning:  Constant PERM_ALL already defined in /var/www/html/includes/permissions.php on line 17
+[23-Jan-2026 17:40:33 UTC] PHP Warning:  Constant PERM_DENY already defined in /var/www/html/includes/permissions.php on line 13
+[23-Jan-2026 17:40:33 UTC] PHP Warning:  Constant PERM_EDIT already defined in /var/www/html/includes/permissions.php on line 14
+[23-Jan-2026 17:40:33 UTC] PHP Warning:  Constant PERM_READ already defined in /var/www/html/includes/permissions.php on line 15
+[23-Jan-2026 17:40:33 UTC] PHP Warning:  Constant PERM_ALL already defined in /var/www/html/includes/permissions.php on line 17
+[23-Jan-2026 17:40:35 UTC] PHP Warning:  Constant PERM_DENY already defined in /var/www/html/includes/permissions.php on line 13
+[23-Jan-2026 17:40:35 UTC] PHP Warning:  Constant PERM_EDIT already defined in /var/www/html/includes/permissions.php on line 14
+[23-Jan-2026 17:40:35 UTC] PHP Warning:  Constant PERM_READ already defined in /var/www/html/includes/permissions.php on line 15
+[23-Jan-2026 17:40:35 UTC] PHP Warning:  Constant PERM_ALL already defined in /var/www/html/includes/permissions.php on line 17
+[23-Jan-2026 17:40:47 UTC] PHP Warning:  Constant PERM_DENY already defined in /var/www/html/includes/permissions.php on line 13
+[23-Jan-2026 17:40:47 UTC] PHP Warning:  Constant PERM_EDIT already defined in /var/www/html/includes/permissions.php on line 14
+[23-Jan-2026 17:40:47 UTC] PHP Warning:  Constant PERM_READ already defined in /var/www/html/includes/permissions.php on line 15
+[23-Jan-2026 17:40:47 UTC] PHP Warning:  Constant PERM_ALL already defined in /var/www/html/includes/permissions.php on line 17
+[23-Jan-2026 17:43:38 UTC] PHP Warning:  session_name(): Session name cannot be changed when a session is active in /var/www/html/debug_locale.php on line 17
+[23-Jan-2026 17:43:38 UTC] PHP Warning:  main(): The script tried to access a property on an incomplete object. Please ensure that the class definition &quot;CAppUI&quot; of the object you are trying to operate on was loaded _before_ unserialize() gets called or provide an autoloader to load the class definition in /var/www/html/debug_locale.php on line 26
+[23-Jan-2026 17:43:38 UTC] PHP Warning:  main(): The script tried to access a property on an incomplete object. Please ensure that the class definition &quot;CAppUI&quot; of the object you are trying to operate on was loaded _before_ unserialize() gets called or provide an autoloader to load the class definition in /var/www/html/debug_locale.php on line 27
+[23-Jan-2026 17:43:38 UTC] PHP Warning:  main(): The script tried to access a property on an incomplete object. Please ensure that the class definition &quot;CAppUI&quot; of the object you are trying to operate on was loaded _before_ unserialize() gets called or provide an autoloader to load the class definition in /var/www/html/debug_locale.php on line 28
+[23-Jan-2026 17:43:38 UTC] PHP Fatal error:  Uncaught Error: The script tried to call a method on an incomplete object. Please ensure that the class definition "CAppUI" of the object you are trying to operate on was loaded _before_ unserialize() gets called or provide an autoloader to load the class definition in /var/www/html/debug_locale.php:53
+Stack trace:
+#0 {main}
+  thrown in /var/www/html/debug_locale.php on line 53
+[23-Jan-2026 17:46:23 UTC] PHP Warning:  session_name(): Session name cannot be changed when a session is active in /var/www/html/clear_lang_cache.php on line 17
+[23-Jan-2026 17:46:23 UTC] PHP Fatal error:  Uncaught Error: The script tried to call a method on an incomplete object. Please ensure that the class definition "CAppUI" of the object you are trying to operate on was loaded _before_ unserialize() gets called or provide an autoloader to load the class definition in /var/www/html/clear_lang_cache.php:27
+Stack trace:
+#0 {main}
+  thrown in /var/www/html/clear_lang_cache.php on line 27
+[23-Jan-2026 17:46:28 UTC] PHP Parse error:  syntax error, unexpected token "<", expecting ")" in /var/www/html/locales/core.php(30) : eval()'d code on line 1
+[23-Jan-2026 17:46:29 UTC] PHP Parse error:  syntax error, unexpected token "<", expecting ")" in /var/www/html/locales/core.php(30) : eval()'d code on line 1
+[23-Jan-2026 17:48:38 UTC] PHP Parse error:  syntax error, unexpected token "<", expecting ")" in /var/www/html/locales/core.php(30) : eval()'d code on line 1
+[23-Jan-2026 17:48:39 UTC] PHP Parse error:  syntax error, unexpected token "<", expecting ")" in /var/www/html/locales/core.php(30) : eval()'d code on line 1
+[23-Jan-2026 17:48:48 UTC] PHP Warning:  session_name(): Session name cannot be changed when a session is active in /var/www/html/clear_lang_cache.php on line 17
+[23-Jan-2026 17:48:48 UTC] PHP Fatal error:  Uncaught Error: The script tried to call a method on an incomplete object. Please ensure that the class definition "CAppUI" of the object you are trying to operate on was loaded _before_ unserialize() gets called or provide an autoloader to load the class definition in /var/www/html/clear_lang_cache.php:27
+Stack trace:
+#0 {main}
+  thrown in /var/www/html/clear_lang_cache.php on line 27
+[23-Jan-2026 17:48:52 UTC] PHP Parse error:  syntax error, unexpected token "<", expecting ")" in /var/www/html/locales/core.php(30) : eval()'d code on line 1
+[23-Jan-2026 17:48:52 UTC] PHP Parse error:  syntax error, unexpected token "<", expecting ")" in /var/www/html/locales/core.php(30) : eval()'d code on line 1
+[23-Jan-2026 17:50:50 UTC] PHP Warning:  session_name(): Session name cannot be changed when a session is active in /var/www/html/clear_lang_cache.php on line 17
+[23-Jan-2026 17:50:50 UTC] PHP Fatal error:  Uncaught Error: The script tried to call a method on an incomplete object. Please ensure that the class definition "CAppUI" of the object you are trying to operate on was loaded _before_ unserialize() gets called or provide an autoloader to load the class definition in /var/www/html/clear_lang_cache.php:27
+Stack trace:
+#0 {main}
+  thrown in /var/www/html/clear_lang_cache.php on line 27
+[23-Jan-2026 17:50:53 UTC] PHP Warning:  Constant PERM_DENY already defined in /var/www/html/includes/permissions.php on line 13
+[23-Jan-2026 17:50:53 UTC] PHP Warning:  Constant PERM_EDIT already defined in /var/www/html/includes/permissions.php on line 14
+[23-Jan-2026 17:50:53 UTC] PHP Warning:  Constant PERM_READ already defined in /var/www/html/includes/permissions.php on line 15
+[23-Jan-2026 17:50:53 UTC] PHP Warning:  Constant PERM_ALL already defined in /var/www/html/includes/permissions.php on line 17
+[23-Jan-2026 17:50:57 UTC] PHP Warning:  Constant PERM_DENY already defined in /var/www/html/includes/permissions.php on line 13
+[23-Jan-2026 17:50:57 UTC] PHP Warning:  Constant PERM_EDIT already defined in /var/www/html/includes/permissions.php on line 14
+[23-Jan-2026 17:50:57 UTC] PHP Warning:  Constant PERM_READ already defined in /var/www/html/includes/permissions.php on line 15
+[23-Jan-2026 17:50:57 UTC] PHP Warning:  Constant PERM_ALL already defined in /var/www/html/includes/permissions.php on line 17
+[23-Jan-2026 17:50:59 UTC] PHP Warning:  Constant PERM_DENY already defined in /var/www/html/includes/permissions.php on line 13
+[23-Jan-2026 17:50:59 UTC] PHP Warning:  Constant PERM_EDIT already defined in /var/www/html/includes/permissions.php on line 14
+[23-Jan-2026 17:50:59 UTC] PHP Warning:  Constant PERM_READ already defined in /var/www/html/includes/permissions.php on line 15
+[23-Jan-2026 17:50:59 UTC] PHP Warning:  Constant PERM_ALL already defined in /var/www/html/includes/permissions.php on line 17
+[23-Jan-2026 17:52:00 UTC] PHP Warning:  Constant PERM_DENY already defined in /var/www/html/includes/permissions.php on line 13
+[23-Jan-2026 17:52:00 UTC] PHP Warning:  Constant PERM_EDIT already defined in /var/www/html/includes/permissions.php on line 14
+[23-Jan-2026 17:52:00 UTC] PHP Warning:  Constant PERM_READ already defined in /var/www/html/includes/permissions.php on line 15
+[23-Jan-2026 17:52:00 UTC] PHP Warning:  Constant PERM_ALL already defined in /var/www/html/includes/permissions.php on line 17
+[23-Jan-2026 17:52:05 UTC] PHP Warning:  Constant PERM_DENY already defined in /var/www/html/includes/permissions.php on line 13
+[23-Jan-2026 17:52:05 UTC] PHP Warning:  Constant PERM_EDIT already defined in /var/www/html/includes/permissions.php on line 14
+[23-Jan-2026 17:52:05 UTC] PHP Warning:  Constant PERM_READ already defined in /var/www/html/includes/permissions.php on line 15
+[23-Jan-2026 17:52:05 UTC] PHP Warning:  Constant PERM_ALL already defined in /var/www/html/includes/permissions.php on line 17
+[23-Jan-2026 17:52:12 UTC] PHP Warning:  Constant PERM_DENY already defined in /var/www/html/includes/permissions.php on line 13
+[23-Jan-2026 17:52:12 UTC] PHP Warning:  Constant PERM_EDIT already defined in /var/www/html/includes/permissions.php on line 14
+[23-Jan-2026 17:52:12 UTC] PHP Warning:  Constant PERM_READ already defined in /var/www/html/includes/permissions.php on line 15
+[23-Jan-2026 17:52:12 UTC] PHP Warning:  Constant PERM_ALL already defined in /var/www/html/includes/permissions.php on line 17
+[23-Jan-2026 17:53:16 UTC] PHP Warning:  session_name(): Session name cannot be changed when a session is active in /var/www/html/clear_lang_cache.php on line 17
+[23-Jan-2026 17:53:16 UTC] PHP Fatal error:  Uncaught Error: The script tried to call a method on an incomplete object. Please ensure that the class definition "CAppUI" of the object you are trying to operate on was loaded _before_ unserialize() gets called or provide an autoloader to load the class definition in /var/www/html/clear_lang_cache.php:27
+Stack trace:
+#0 {main}
+  thrown in /var/www/html/clear_lang_cache.php on line 27
+[23-Jan-2026 17:53:19 UTC] PHP Warning:  Constant PERM_DENY already defined in /var/www/html/includes/permissions.php on line 13
+[23-Jan-2026 17:53:19 UTC] PHP Warning:  Constant PERM_EDIT already defined in /var/www/html/includes/permissions.php on line 14
+[23-Jan-2026 17:53:19 UTC] PHP Warning:  Constant PERM_READ already defined in /var/www/html/includes/permissions.php on line 15
+[23-Jan-2026 17:53:19 UTC] PHP Warning:  Constant PERM_ALL already defined in /var/www/html/includes/permissions.php on line 17
+[23-Jan-2026 17:53:22 UTC] PHP Warning:  Constant PERM_DENY already defined in /var/www/html/includes/permissions.php on line 13
+[23-Jan-2026 17:53:22 UTC] PHP Warning:  Constant PERM_EDIT already defined in /var/www/html/includes/permissions.php on line 14
+[23-Jan-2026 17:53:22 UTC] PHP Warning:  Constant PERM_READ already defined in /var/www/html/includes/permissions.php on line 15
+[23-Jan-2026 17:53:22 UTC] PHP Warning:  Constant PERM_ALL already defined in /var/www/html/includes/permissions.php on line 17
+[23-Jan-2026 17:53:24 UTC] PHP Warning:  Constant PERM_DENY already defined in /var/www/html/includes/permissions.php on line 13
+[23-Jan-2026 17:53:24 UTC] PHP Warning:  Constant PERM_EDIT already defined in /var/www/html/includes/permissions.php on line 14
+[23-Jan-2026 17:53:24 UTC] PHP Warning:  Constant PERM_READ already defined in /var/www/html/includes/permissions.php on line 15
+[23-Jan-2026 17:53:24 UTC] PHP Warning:  Constant PERM_ALL already defined in /var/www/html/includes/permissions.php on line 17
+[23-Jan-2026 17:53:26 UTC] PHP Warning:  Constant PERM_DENY already defined in /var/www/html/includes/permissions.php on line 13
+[23-Jan-2026 17:53:26 UTC] PHP Warning:  Constant PERM_EDIT already defined in /var/www/html/includes/permissions.php on line 14
+[23-Jan-2026 17:53:26 UTC] PHP Warning:  Constant PERM_READ already defined in /var/www/html/includes/permissions.php on line 15
+[23-Jan-2026 17:53:26 UTC] PHP Warning:  Constant PERM_ALL already defined in /var/www/html/includes/permissions.php on line 17
+[23-Jan-2026 17:53:26 UTC] PHP Warning:  Constant PERM_DENY already defined in /var/www/html/includes/permissions.php on line 13
+[23-Jan-2026 17:53:26 UTC] PHP Warning:  Constant PERM_EDIT already defined in /var/www/html/includes/permissions.php on line 14
+[23-Jan-2026 17:53:26 UTC] PHP Warning:  Constant PERM_READ already defined in /var/www/html/includes/permissions.php on line 15
+[23-Jan-2026 17:53:26 UTC] PHP Warning:  Constant PERM_ALL already defined in /var/www/html/includes/permissions.php on line 17
+[23-Jan-2026 17:53:28 UTC] PHP Warning:  Constant PERM_DENY already defined in /var/www/html/includes/permissions.php on line 13
+[23-Jan-2026 17:53:28 UTC] PHP Warning:  Constant PERM_EDIT already defined in /var/www/html/includes/permissions.php on line 14
+[23-Jan-2026 17:53:28 UTC] PHP Warning:  Constant PERM_READ already defined in /var/www/html/includes/permissions.php on line 15
+[23-Jan-2026 17:53:28 UTC] PHP Warning:  Constant PERM_ALL already defined in /var/www/html/includes/permissions.php on line 17
+[23-Jan-2026 17:53:31 UTC] PHP Warning:  Constant PERM_DENY already defined in /var/www/html/includes/permissions.php on line 13
+[23-Jan-2026 17:53:31 UTC] PHP Warning:  Constant PERM_EDIT already defined in /var/www/html/includes/permissions.php on line 14
+[23-Jan-2026 17:53:31 UTC] PHP Warning:  Constant PERM_READ already defined in /var/www/html/includes/permissions.php on line 15
+[23-Jan-2026 17:53:31 UTC] PHP Warning:  Constant PERM_ALL already defined in /var/www/html/includes/permissions.php on line 17

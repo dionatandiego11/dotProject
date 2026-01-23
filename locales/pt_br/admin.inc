@@ -1,7 +1,6 @@
-<?php
 // Tradução para Português do Brasil (pt_BR)
 // Arquivo admin.inc - Módulo de Administração
-$content = array(
+ = (
 // Cabeçalhos e Títulos
 "ALL" => "TODOS",
 "Access" => "Acesso",
@@ -178,5 +177,3 @@ $content = array(
 "failed to update task owner" => "falha ao atualizar responsável da tarefa",
 "logout_session" => "encerrar sessão do usuário",
 "logout_user" => "forçar logout do usuário"
-);
-?>
