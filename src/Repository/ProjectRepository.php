@@ -1,8 +1,6 @@
 <?php
 /**
- * DotProject Project Repository
- * 
- * Repository for Project entity data access.
+ * Repository para Project
  * 
  * @package DotProject\Repository
  * @license GPL-2.0-or-later
@@ -12,156 +10,212 @@ declare(strict_types=1);
 
 namespace DotProject\Repository;
 
-use DotProject\Entity\Project;
+use DotProject\Entity\ProjectEntity;
+use DateTime;
 
 /**
- * Project Repository
- * 
- * @extends BaseRepository<Project>
+ * Repository para gerenciar projetos
  */
 class ProjectRepository extends BaseRepository
 {
-    protected function getEntityClass(): string
-    {
-        return Project::class;
-    }
+    protected string $table = 'dotp_projects';
+    protected string $primaryKey = 'project_id';
 
-    protected function getTable(): string
+    /**
+     * {@inheritdoc}
+     */
+    protected function hydrate(array $data): ProjectEntity
     {
-        return 'projects';
-    }
+        $entity = new ProjectEntity();
+        $entity->setId((int) $data['project_id']);
+        $entity->setName($data['project_name']);
+        $entity->setShortName($data['project_short_name'] ?? null);
+        $entity->setDescription($data['project_description'] ?? null);
+        
+        if (!empty($data['project_start_date'])) {
+            $entity->setStartDate(new DateTime($data['project_start_date']));
+        }
+        
+        if (!empty($data['project_end_date'])) {
+            $entity->setEndDate(new DateTime($data['project_end_date']));
+        }
+        
+        if (!empty($data['project_actual_end_date'])) {
+            $entity->setActualEndDate(new DateTime($data['project_actual_end_date']));
+        }
+        
+        $entity->setStatus((int) ($data['project_status'] ?? 0));
+        $entity->setPriority((int) ($data['project_priority'] ?? 3));
+        $entity->setPercentComplete((int) ($data['project_percent_complete'] ?? 0));
+        $entity->setOwnerId($data['project_owner'] ? (int) $data['project_owner'] : null);
+        $entity->setCompanyId($data['project_company'] ? (int) $data['project_company'] : null);
+        $entity->setColorIdentifier($data['project_color_identifier'] ?? null);
+        $entity->setUrl($data['project_url'] ?? null);
+        
+        if (!empty($data['project_created'])) {
+            $entity->setCreatedAt(new DateTime($data['project_created']));
+        }
+        
+        if (!empty($data['project_updated'])) {
+            $entity->setUpdatedAt(new DateTime($data['project_updated']));
+        }
 
-    protected function getPrimaryKey(): string
-    {
-        return 'project_id';
+        return $entity;
     }
 
     /**
-     * Find active projects (status = 3)
-     * 
-     * @return array<int, Project>
+     * {@inheritdoc}
      */
-    public function findActive(): array
+    protected function extract(object $entity): array
     {
-        return $this->findBy(['project_status' => 3], 'project_name ASC');
+        if (!$entity instanceof ProjectEntity) {
+            throw new \InvalidArgumentException('Entity must be ProjectEntity');
+        }
+
+        return [
+            'project_id' => $entity->getId(),
+            'project_name' => $entity->getName(),
+            'project_short_name' => $entity->getShortName(),
+            'project_description' => $entity->getDescription(),
+            'project_start_date' => $entity->getStartDate()?->format('Y-m-d'),
+            'project_end_date' => $entity->getEndDate()?->format('Y-m-d'),
+            'project_actual_end_date' => $entity->getActualEndDate()?->format('Y-m-d'),
+            'project_status' => $entity->getStatus(),
+            'project_priority' => $entity->getPriority(),
+            'project_percent_complete' => $entity->getPercentComplete(),
+            'project_owner' => $entity->getOwnerId(),
+            'project_company' => $entity->getCompanyId(),
+            'project_color_identifier' => $entity->getColorIdentifier(),
+            'project_url' => $entity->getUrl(),
+        ];
     }
 
     /**
-     * Find projects by status
-     * 
-     * @param int $status Project status
-     * @return array<int, Project>
+     * {@inheritdoc}
      */
-    public function findByStatus(int $status): array
+    public function save(object $entity): bool
     {
-        return $this->findBy(['project_status' => $status], 'project_name ASC');
-    }
+        if (!$entity instanceof ProjectEntity) {
+            throw new \InvalidArgumentException('Entity must be ProjectEntity');
+        }
 
-    /**
-     * Find projects by company
-     * 
-     * @param int $companyId Company ID
-     * @return array<int, Project>
-     */
-    public function findByCompany(int $companyId): array
-    {
-        return $this->findBy(['project_company' => $companyId], 'project_name ASC');
-    }
+        $data = $this->extract($entity);
+        
+        if ($entity->getId() === null) {
+            // Insert
+            unset($data['project_id']);
+            $result = $this->db->insert($this->table, $data);
+            if ($result) {
+                $entity->setId((int) $this->db->lastInsertId());
+            }
+        } else {
+            // Update
+            $id = $data['project_id'];
+            unset($data['project_id']);
+            $result = $this->db->update(
+                $this->table,
+                $data,
+                "{$this->primaryKey} = {$id}"
+            );
+        }
 
-    /**
-     * Find projects by owner
-     * 
-     * @param int $ownerId Owner user ID
-     * @return array<int, Project>
-     */
-    public function findByOwner(int $ownerId): array
-    {
-        return $this->findBy(['project_owner' => $ownerId], 'project_name ASC');
-    }
-
-    /**
-     * Search projects by name
-     * 
-     * @param string $query Search query
-     * @return array<int, Project>
-     */
-    public function search(string $query): array
-    {
-        $escaped = $this->db->escape($query);
-
-        $sql = sprintf(
-            "SELECT * FROM `%s` WHERE project_name LIKE '%%%s%%' OR project_short_name LIKE '%%%s%%' ORDER BY project_name ASC",
-            $this->db->table($this->getTable()),
-            $escaped,
-            $escaped
-        );
-
-        return $this->query($sql);
-    }
-
-    /**
-     * Find recent projects
-     * 
-     * @param int $limit Number of projects
-     * @return array<int, Project>
-     */
-    public function findRecent(int $limit = 10): array
-    {
-        $sql = sprintf(
-            "SELECT * FROM `%s` ORDER BY project_id DESC LIMIT %d",
-            $this->db->table($this->getTable()),
-            $limit
-        );
-
-        return $this->query($sql);
-    }
-
-    /**
-     * Count projects by status
-     * 
-     * @return array<int, int> Status => count
-     */
-    public function countByStatus(): array
-    {
-        $sql = sprintf(
-            "SELECT project_status, COUNT(*) as cnt FROM `%s` GROUP BY project_status",
-            $this->db->table($this->getTable())
-        );
-
-        $rows = $this->db->fetchAll($sql);
-        $result = [];
-
-        foreach ($rows as $row) {
-            $result[(int) $row['project_status']] = (int) $row['cnt'];
+        if ($result) {
+            $this->clearCache();
         }
 
         return $result;
     }
 
     /**
-     * Find projects with task statistics
-     * 
-     * @param int|null $status Optional status filter
-     * @return array<int, array<string, mixed>>
+     * {@inheritdoc}
      */
-    public function findWithTaskStats(?int $status = null): array
+    public function delete(int $id): bool
     {
-        $sql = sprintf(
-            "SELECT p.*, 
-                    COUNT(t.task_id) as total_tasks,
-                    SUM(CASE WHEN t.task_percent_complete = 100 THEN 1 ELSE 0 END) as completed_tasks
-             FROM `%s` p
-             LEFT JOIN `%s` t ON t.task_project = p.project_id",
-            $this->db->table('projects'),
-            $this->db->table('tasks')
+        $result = $this->db->delete(
+            $this->table,
+            "{$this->primaryKey} = {$id}"
         );
 
-        if ($status !== null) {
-            $sql .= sprintf(' WHERE p.project_status = %d', $status);
+        if ($result) {
+            $this->cache->delete($this->cacheKey("find:{$id}"));
+            $this->cache->invalidate($this->cacheKey('findAll'));
         }
 
-        $sql .= ' GROUP BY p.project_id ORDER BY p.project_name ASC';
+        return $result;
+    }
 
-        return $this->db->fetchAll($sql);
+    /**
+     * Encontra projetos ativos
+     * 
+     * @return array<ProjectEntity>
+     */
+    public function findActive(): array
+    {
+        return $this->findBy(['project_status' => 0], ['project_name' => 'ASC']);
+    }
+
+    /**
+     * Encontra projetos por dono
+     * 
+     * @return array<ProjectEntity>
+     */
+    public function findByOwner(int $ownerId): array
+    {
+        return $this->findBy(
+            ['project_owner' => $ownerId],
+            ['project_start_date' => 'DESC']
+        );
+    }
+
+    /**
+     * Encontra projetos atrasados
+     * 
+     * @return array<ProjectEntity>
+     */
+    public function findOverdue(): array
+    {
+        $sql = "SELECT * FROM {$this->table} 
+                WHERE project_end_date < CURDATE() 
+                AND project_status = 0
+                ORDER BY project_end_date ASC";
+        
+        $results = $this->db->fetchAll($sql);
+        return array_map([$this, 'hydrate'], $results);
+    }
+
+    /**
+     * Busca projetos por nome (LIKE)
+     * 
+     * @return array<ProjectEntity>
+     */
+    public function searchByName(string $query): array
+    {
+        $sql = "SELECT * FROM {$this->table} 
+                WHERE project_name LIKE ? 
+                OR project_short_name LIKE ?
+                ORDER BY project_name ASC
+                LIMIT 20";
+        
+        $pattern = '%' . $query . '%';
+        $results = $this->db->fetchAll($sql, [$pattern, $pattern]);
+        return array_map([$this, 'hydrate'], $results);
+    }
+
+    /**
+     * Atualiza percentual completo
+     */
+    public function updatePercentComplete(int $projectId, int $percent): bool
+    {
+        $result = $this->db->update(
+            $this->table,
+            ['project_percent_complete' => $percent],
+            "{$this->primaryKey} = {$projectId}"
+        );
+
+        if ($result) {
+            $this->cache->delete($this->cacheKey("find:{$projectId}"));
+        }
+
+        return $result;
     }
 }

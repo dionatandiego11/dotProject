@@ -54,6 +54,9 @@ class Request
 
         // Remove api.php if present
         $uri = preg_replace('#^/api\.php#', '', $uri);
+        
+        // Remove /api prefix (when using nginx rewrite)
+        $uri = preg_replace('#^/api#', '', $uri);
 
         return $uri ?: '/';
     }

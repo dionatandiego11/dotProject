@@ -1,9 +1,6 @@
 <?php
 /**
- * DotProject Base Repository
- * 
- * Abstract repository class providing common data access patterns.
- * Repositories handle database queries and return entities.
+ * Repository base com implementações comuns
  * 
  * @package DotProject\Repository
  * @license GPL-2.0-or-later
@@ -14,226 +11,192 @@ declare(strict_types=1);
 namespace DotProject\Repository;
 
 use DotProject\Core\Database;
-use DotProject\Entity\BaseEntity;
+use DotProject\Core\Cache;
 
 /**
- * Abstract Base Repository
- * 
- * Provides common CRUD operations for repositories.
- * 
- * @template T of BaseEntity
+ * Repository base com cache integrado
  */
-abstract class BaseRepository
+abstract class BaseRepository implements RepositoryInterface
 {
     protected Database $db;
+    protected Cache $cache;
+    protected string $table;
+    protected string $primaryKey;
+    protected int $cacheTtl;
 
-    public function __construct(?Database $db = null)
+    public function __construct(?Database $db = null, ?Cache $cache = null)
     {
         $this->db = $db ?? Database::getInstance();
+        $this->cache = $cache ?? new Cache();
+        $this->primaryKey = 'id';
+        $this->cacheTtl = 300; // 5 minutos
     }
 
     /**
-     * Get the entity class name
-     * 
-     * @return class-string<T>
+     * Gera chave de cache
      */
-    abstract protected function getEntityClass(): string;
-
-    /**
-     * Get the table name
-     */
-    abstract protected function getTable(): string;
-
-    /**
-     * Get the primary key column name
-     */
-    abstract protected function getPrimaryKey(): string;
-
-    /**
-     * Find entity by ID
-     * 
-     * @param int $id Entity ID
-     * @return T|null
-     */
-    public function find(int $id): ?BaseEntity
+    protected function cacheKey(string $suffix): string
     {
-        $sql = sprintf(
-            "SELECT * FROM `%s` WHERE %s = %d LIMIT 1",
-            $this->db->table($this->getTable()),
-            $this->getPrimaryKey(),
-            $id
+        return sprintf('%s:%s:%s', static::class, $this->table, $suffix);
+    }
+
+    /**
+     * Invalida cache do repository
+     */
+    protected function clearCache(): void
+    {
+        $this->cache->invalidate($this->cacheKey('*'));
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function find(int $id): ?object
+    {
+        $cacheKey = $this->cacheKey("find:{$id}");
+        
+        $cached = $this->cache->get($cacheKey);
+        if ($cached !== null) {
+            return $cached;
+        }
+
+        $data = $this->db->fetchOne(
+            "SELECT * FROM {$this->table} WHERE {$this->primaryKey} = ?",
+            [$id]
         );
 
-        $row = $this->db->fetchOne($sql);
-
-        if ($row === null) {
+        if ($data === null) {
             return null;
         }
 
-        $entityClass = $this->getEntityClass();
-        return $entityClass::fromArray($row);
+        $entity = $this->hydrate($data);
+        $this->cache->set($cacheKey, $entity, $this->cacheTtl);
+
+        return $entity;
     }
 
     /**
-     * Find all entities
-     * 
-     * @param string|null $orderBy Order clause
-     * @return array<int, T>
+     * {@inheritdoc}
      */
-    public function findAll(?string $orderBy = null): array
+    public function findAll(): array
     {
-        $sql = sprintf("SELECT * FROM `%s`", $this->db->table($this->getTable()));
-
-        if ($orderBy) {
-            $sql .= ' ORDER BY ' . $orderBy;
+        $cacheKey = $this->cacheKey('findAll');
+        
+        $cached = $this->cache->get($cacheKey);
+        if ($cached !== null) {
+            return $cached;
         }
 
-        $rows = $this->db->fetchAll($sql);
-        $entityClass = $this->getEntityClass();
+        $results = $this->db->fetchAll("SELECT * FROM {$this->table}");
+        $entities = array_map([$this, 'hydrate'], $results);
+        
+        $this->cache->set($cacheKey, $entities, $this->cacheTtl);
 
-        return array_map(fn($row) => $entityClass::fromArray($row), $rows);
+        return $entities;
     }
 
     /**
-     * Find entities by criteria
-     * 
-     * @param array<string, mixed> $criteria Column => value pairs
-     * @param string|null $orderBy Order clause
-     * @param int|null $limit Limit results
-     * @return array<int, T>
+     * {@inheritdoc}
      */
-    public function findBy(array $criteria, ?string $orderBy = null, ?int $limit = null): array
+    public function findBy(array $criteria, ?array $orderBy = null, ?int $limit = null, ?int $offset = null): array
     {
-        $sql = sprintf("SELECT * FROM `%s`", $this->db->table($this->getTable()));
+        $cacheKey = $this->cacheKey('findBy:' . md5(serialize(func_get_args())));
+        
+        $cached = $this->cache->get($cacheKey);
+        if ($cached !== null) {
+            return $cached;
+        }
 
-        if (!empty($criteria)) {
-            $conditions = [];
-            foreach ($criteria as $column => $value) {
-                if ($value === null) {
-                    $conditions[] = "`{$column}` IS NULL";
-                } else {
-                    $conditions[] = sprintf("`%s` = %s", $column, $this->db->quote($value));
-                }
+        $where = [];
+        $params = [];
+        
+        foreach ($criteria as $field => $value) {
+            $where[] = "{$field} = ?";
+            $params[] = $value;
+        }
+        
+        $sql = "SELECT * FROM {$this->table}";
+        
+        if (!empty($where)) {
+            $sql .= " WHERE " . implode(' AND ', $where);
+        }
+        
+        if ($orderBy !== null) {
+            $orderParts = [];
+            foreach ($orderBy as $field => $direction) {
+                $orderParts[] = "{$field} {$direction}";
             }
-            $sql .= ' WHERE ' . implode(' AND ', $conditions);
+            $sql .= " ORDER BY " . implode(', ', $orderParts);
+        }
+        
+        if ($limit !== null) {
+            $sql .= " LIMIT {$limit}";
+        }
+        
+        if ($offset !== null) {
+            $sql .= " OFFSET {$offset}";
         }
 
-        if ($orderBy) {
-            $sql .= ' ORDER BY ' . $orderBy;
-        }
+        $results = $this->db->fetchAll($sql, $params);
+        $entities = array_map([$this, 'hydrate'], $results);
+        
+        $this->cache->set($cacheKey, $entities, $this->cacheTtl);
 
-        if ($limit) {
-            $sql .= ' LIMIT ' . $limit;
-        }
-
-        $rows = $this->db->fetchAll($sql);
-        $entityClass = $this->getEntityClass();
-
-        return array_map(fn($row) => $entityClass::fromArray($row), $rows);
+        return $entities;
     }
 
     /**
-     * Find one entity by criteria
-     * 
-     * @param array<string, mixed> $criteria Column => value pairs
-     * @return T|null
+     * {@inheritdoc}
      */
-    public function findOneBy(array $criteria): ?BaseEntity
+    public function findOneBy(array $criteria): ?object
     {
         $results = $this->findBy($criteria, null, 1);
-        return !empty($results) ? $results[0] : null;
+        return $results[0] ?? null;
     }
 
     /**
-     * Count entities
-     * 
-     * @param array<string, mixed>|null $criteria Optional filter criteria
-     * @return int
+     * {@inheritdoc}
      */
-    public function count(?array $criteria = null): int
+    public function count(array $criteria = []): int
     {
-        $sql = sprintf("SELECT COUNT(*) FROM `%s`", $this->db->table($this->getTable()));
-
-        if (!empty($criteria)) {
-            $conditions = [];
-            foreach ($criteria as $column => $value) {
-                if ($value === null) {
-                    $conditions[] = "`{$column}` IS NULL";
-                } else {
-                    $conditions[] = sprintf("`%s` = %s", $column, $this->db->quote($value));
-                }
-            }
-            $sql .= ' WHERE ' . implode(' AND ', $conditions);
+        $cacheKey = $this->cacheKey('count:' . md5(serialize($criteria)));
+        
+        $cached = $this->cache->get($cacheKey);
+        if ($cached !== null) {
+            return $cached;
         }
 
-        return (int) ($this->db->fetchValue($sql) ?? 0);
+        $where = [];
+        $params = [];
+        
+        foreach ($criteria as $field => $value) {
+            $where[] = "{$field} = ?";
+            $params[] = $value;
+        }
+        
+        $sql = "SELECT COUNT(*) FROM {$this->table}";
+        
+        if (!empty($where)) {
+            $sql .= " WHERE " . implode(' AND ', $where);
+        }
+
+        $count = (int) $this->db->fetchColumn($sql, $params);
+        $this->cache->set($cacheKey, $count, $this->cacheTtl);
+
+        return $count;
     }
 
     /**
-     * Save an entity (insert or update)
+     * Hidrata dados em entidade
      * 
-     * @param T $entity Entity to save
-     * @return bool Success
+     * @param array<string, mixed> $data
      */
-    public function save(BaseEntity $entity): bool
-    {
-        return $entity->save();
-    }
+    abstract protected function hydrate(array $data): object;
 
     /**
-     * Delete an entity
+     * Extrai dados da entidade
      * 
-     * @param T $entity Entity to delete
-     * @return bool Success
+     * @return array<string, mixed>
      */
-    public function delete(BaseEntity $entity): bool
-    {
-        return $entity->delete();
-    }
-
-    /**
-     * Delete by ID
-     * 
-     * @param int $id Entity ID
-     * @return bool Success
-     */
-    public function deleteById(int $id): bool
-    {
-        return $this->db->delete(
-            $this->getTable(),
-            sprintf('%s = %d', $this->getPrimaryKey(), $id)
-        );
-    }
-
-    /**
-     * Check if entity exists
-     * 
-     * @param int $id Entity ID
-     * @return bool
-     */
-    public function exists(int $id): bool
-    {
-        $sql = sprintf(
-            "SELECT 1 FROM `%s` WHERE %s = %d LIMIT 1",
-            $this->db->table($this->getTable()),
-            $this->getPrimaryKey(),
-            $id
-        );
-
-        return $this->db->fetchValue($sql) !== null;
-    }
-
-    /**
-     * Execute raw SQL and return entities
-     * 
-     * @param string $sql SQL query
-     * @return array<int, T>
-     */
-    protected function query(string $sql): array
-    {
-        $rows = $this->db->fetchAll($sql);
-        $entityClass = $this->getEntityClass();
-
-        return array_map(fn($row) => $entityClass::fromArray($row), $rows);
-    }
+    abstract protected function extract(object $entity): array;
 }

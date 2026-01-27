@@ -1,11 +1,14 @@
-import { Routes, Route, Navigate } from 'react-router-dom'
-import { useState, useEffect } from 'react'
-import Layout from './components/Layout'
-import Dashboard from './pages/Dashboard'
-import Projects from './pages/Projects'
-import Tasks from './pages/Tasks'
-import Login from './pages/Login'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { lazy, Suspense, useState, useEffect } from 'react'
+import Loading from './components/Loading'
 import { isAuthenticated } from './services/api'
+
+// Lazy loading das páginas
+const Layout = lazy(() => import('./components/Layout'))
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const Projects = lazy(() => import('./pages/Projects'))
+const Tasks = lazy(() => import('./pages/Tasks'))
+const Login = lazy(() => import('./pages/Login'))
 
 function PrivateRoute({ children }) {
     if (!isAuthenticated()) {
@@ -16,6 +19,7 @@ function PrivateRoute({ children }) {
 
 function App() {
     const [loading, setLoading] = useState(true)
+    const location = useLocation()
 
     useEffect(() => {
         // Check auth on mount
@@ -23,30 +27,50 @@ function App() {
     }, [])
 
     if (loading) {
-        return (
-            <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                height: '100vh'
-            }}>
-                Carregando...
-            </div>
-        )
+        return <Loading fullScreen />
+    }
+
+    if (location.pathname.startsWith('/app')) {
+        const nextPath = location.pathname.replace(/^\/app/, '') || '/'
+        return <Navigate to={`${nextPath}${location.search}${location.hash}`} replace />
     }
 
     return (
         <Routes>
-            <Route path="/login" element={<Login />} />
+            <Route 
+                path="/login" 
+                element={
+                    <Suspense fallback={<Loading fullScreen />}>
+                        <Login />
+                    </Suspense>
+                } 
+            />
 
-            <Route path="/" element={
-                <PrivateRoute>
-                    <Layout />
-                </PrivateRoute>
-            }>
-                <Route index element={<Dashboard />} />
-                <Route path="projects" element={<Projects />} />
-                <Route path="tasks" element={<Tasks />} />
+            <Route 
+                path="/" 
+                element={
+                    <PrivateRoute>
+                        <Suspense fallback={<Loading />}>
+                            <Layout />
+                        </Suspense>
+                    </PrivateRoute>
+                }
+            >
+                <Route index element={
+                    <Suspense fallback={<Loading />}>
+                        <Dashboard />
+                    </Suspense>
+                } />
+                <Route path="projects" element={
+                    <Suspense fallback={<Loading />}>
+                        <Projects />
+                    </Suspense>
+                } />
+                <Route path="tasks" element={
+                    <Suspense fallback={<Loading />}>
+                        <Tasks />
+                    </Suspense>
+                } />
             </Route>
         </Routes>
     )

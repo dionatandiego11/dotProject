@@ -26,7 +26,6 @@ class AuthMiddleware
         '/v1/auth/login',
         '/v1/auth/register',
         '/v1/health',
-        '/',
     ];
 
     /**
@@ -40,7 +39,7 @@ class AuthMiddleware
 
         // Rotas públicas não precisam de autenticação
         foreach (self::$publicRoutes as $publicRoute) {
-            if ($uri === $publicRoute || strpos($uri, $publicRoute) === 0) {
+            if ($uri === $publicRoute) {
                 return true;
             }
         }

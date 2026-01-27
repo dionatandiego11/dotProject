@@ -146,6 +146,7 @@ if (isset($_REQUEST['login'])) {
 		($AppUI->user_first_name . ' ' . $AppUI->user_last_name)
 	);
 	$AppUI->redirect($redirect);
+	die('DEBUG: Redirect called to ' . $redirect);
 }
 
 // supported since PHP 4.2

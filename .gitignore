@@ -10,6 +10,7 @@ files/*
 !files/index.html
 !files/temp/index.html
 lib/ezpdf/fonts/php_*
+php_errors.log
 /nbproject/private/
 /nbproject
 /dotProject/
@@ -48,3 +49,22 @@ Temporary Items
 # Stuff from the Nova editor
 .nova
 .editorconfig
+
+# Node / Vite
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/.cache/
+**/node_modules/
+**/dist/
+**/.vite/
+**/.cache/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Env / secrets
+.env
+.env.*
+!.env.example

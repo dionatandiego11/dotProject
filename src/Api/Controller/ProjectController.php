@@ -28,6 +28,10 @@ class ProjectController extends BaseController
      */
     public function index(): Response
     {
+        if (!$this->checkPermission('projects', 'view')) {
+            return $this->response->forbidden('Insufficient permissions');
+        }
+
         $pagination = $this->getPagination();
 
         // Filtros opcionais
@@ -37,21 +41,23 @@ class ProjectController extends BaseController
 
         // Monta a query
         $where = '1=1';
+        $params = [];
 
         if ($companyId !== null) {
-            $where .= sprintf(' AND project_company = %d', (int) $companyId);
+            $where .= ' AND project_company = ?';
+            $params[] = (int) $companyId;
         }
 
         if ($status !== null) {
-            $where .= sprintf(' AND project_status = %d', (int) $status);
+            $where .= ' AND project_status = ?';
+            $params[] = (int) $status;
         }
 
         if ($search !== null) {
-            $where .= sprintf(
-                " AND (project_name LIKE %s OR project_description LIKE %s)",
-                $this->db->quote("%$search%"),
-                $this->db->quote("%$search%")
-            );
+            $where .= " AND (project_name LIKE ? OR project_description LIKE ?)";
+            $like = '%' . $search . '%';
+            $params[] = $like;
+            $params[] = $like;
         }
 
         // Conta total
@@ -60,7 +66,7 @@ class ProjectController extends BaseController
             $this->db->table('projects'),
             $where
         );
-        $total = (int) ($this->db->fetchValue($totalSql) ?? 0);
+        $total = (int) ($this->db->fetchValueParams($totalSql, $params) ?? 0);
 
         // Busca projetos
         $sql = sprintf(
@@ -69,15 +75,15 @@ class ProjectController extends BaseController
              LEFT JOIN %s c ON p.project_company = c.company_id
              WHERE %s
              ORDER BY p.project_name ASC
-             LIMIT %d OFFSET %d",
+             LIMIT ? OFFSET ?",
             $this->db->table('projects'),
             $this->db->table('companies'),
-            $where,
-            $pagination['per_page'],
-            $pagination['offset']
+            $where
         );
-
-        $rows = $this->db->fetchAll($sql);
+        $rows = $this->db->fetchAllParams($sql, array_merge($params, [
+            $pagination['per_page'],
+            $pagination['offset'],
+        ]));
 
         $projects = array_map(fn($row) => $this->formatProject($row), $rows);
 
@@ -97,6 +103,14 @@ class ProjectController extends BaseController
     public function show(): Response
     {
         $id = (int) $this->request->getParam('id');
+
+        if (!$this->checkPermission('projects', 'view')) {
+            return $this->response->forbidden('Insufficient permissions');
+        }
+
+        if ($guard = $this->ensureProjectAccess($id)) {
+            return $guard;
+        }
 
         $sql = sprintf(
             "SELECT p.*, c.company_name 
@@ -124,12 +138,23 @@ class ProjectController extends BaseController
      */
     public function store(): Response
     {
-        $errors = $this->validateRequired(['name', 'company_id']);
-        if ($errors !== null) {
-            return $this->response->validationError($errors);
+        if (!$this->checkPermission('projects', 'add')) {
+            return $this->response->forbidden('Insufficient permissions');
         }
 
         $body = $this->request->getBody();
+        $validationData = [
+            'project_name' => $body['name'] ?? '',
+            'project_short_name' => $body['short_name'] ?? '',
+            'project_company' => $body['company_id'] ?? null,
+            'project_status' => $body['status'] ?? 0,
+            'project_priority' => $body['priority'] ?? 0,
+        ];
+        $validation = $this->validation()->validateProject($validationData);
+
+        if ($validation->fails()) {
+            return $this->response->validationError($validation->errors());
+        }
 
         $project = new Project();
         $project->fill([
@@ -171,6 +196,14 @@ class ProjectController extends BaseController
     {
         $id = (int) $this->request->getParam('id');
 
+        if (!$this->checkPermission('projects', 'edit')) {
+            return $this->response->forbidden('Insufficient permissions');
+        }
+
+        if ($guard = $this->ensureProjectAccess($id)) {
+            return $guard;
+        }
+
         $project = Project::find($id);
         if ($project === null) {
             return $this->notFound('Project not found');
@@ -194,6 +227,30 @@ class ProjectController extends BaseController
             'description' => 'project_description',
             'priority' => 'project_priority',
         ];
+
+        $validationData = [];
+        if (isset($body['name'])) {
+            $validationData['project_name'] = $body['name'];
+        }
+        if (isset($body['short_name'])) {
+            $validationData['project_short_name'] = $body['short_name'];
+        }
+        if (array_key_exists('company_id', $body)) {
+            $validationData['project_company'] = $body['company_id'];
+        }
+        if (array_key_exists('status', $body)) {
+            $validationData['project_status'] = $body['status'];
+        }
+        if (array_key_exists('priority', $body)) {
+            $validationData['project_priority'] = $body['priority'];
+        }
+
+        if (!empty($validationData)) {
+            $validation = $this->validation()->validate($validationData)->validateProject($validationData);
+            if ($validation->fails()) {
+                return $this->response->validationError($validation->errors());
+            }
+        }
 
         foreach ($updateFields as $apiField => $dbField) {
             if (isset($body[$apiField])) {
@@ -219,6 +276,14 @@ class ProjectController extends BaseController
     public function destroy(): Response
     {
         $id = (int) $this->request->getParam('id');
+
+        if (!$this->checkPermission('projects', 'delete')) {
+            return $this->response->forbidden('Insufficient permissions');
+        }
+
+        if ($guard = $this->ensureProjectAccess($id)) {
+            return $guard;
+        }
 
         $project = Project::find($id);
         if ($project === null) {
@@ -252,6 +317,14 @@ class ProjectController extends BaseController
     {
         $id = (int) $this->request->getParam('id');
         $pagination = $this->getPagination();
+
+        if (!$this->checkPermission('projects', 'view')) {
+            return $this->response->forbidden('Insufficient permissions');
+        }
+
+        if ($guard = $this->ensureProjectAccess($id)) {
+            return $guard;
+        }
 
         // Verifica se projeto existe
         $exists = $this->db->fetchValue(sprintf(
@@ -348,5 +421,36 @@ class ProjectController extends BaseController
             'duration' => (int) ($row['task_duration'] ?? 0),
             'owner_id' => $row['task_owner'] ? (int) $row['task_owner'] : null,
         ];
+    }
+
+    /**
+     * Ensure authenticated user can access a project.
+     * Allows project owner/creator to proceed.
+     */
+    private function ensureProjectAccess(int $projectId): ?Response
+    {
+        $userId = $this->getUserId();
+        if ($userId === null) {
+            return $this->response->unauthorized();
+        }
+
+        $row = $this->db->fetchOne(sprintf(
+            "SELECT project_owner, project_creator FROM %s WHERE project_id = %d",
+            $this->db->table('projects'),
+            $projectId
+        ));
+
+        if ($row === null) {
+            return $this->notFound('Project not found');
+        }
+
+        $ownerId = $row['project_owner'] ? (int) $row['project_owner'] : null;
+        $creatorId = $row['project_creator'] ? (int) $row['project_creator'] : null;
+
+        if (($ownerId && $ownerId === $userId) || ($creatorId && $creatorId === $userId)) {
+            return null;
+        }
+
+        return $this->response->forbidden('Access denied');
     }
 }

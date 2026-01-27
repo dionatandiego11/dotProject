@@ -52,6 +52,33 @@ class CProject extends CDpObject
 	public function __construct()
 	{
 		parent::__construct('projects', 'project_id');
+
+		// Security: Define allowed fields for bind()
+		$this->setAllowedFields([
+			'project_id',
+			'project_company',
+			'project_department',
+			'project_name',
+			'project_short_name',
+			'project_owner',
+			'project_url',
+			'project_demo_url',
+			'project_start_date',
+			'project_end_date',
+			'project_actual_end_date',
+			'project_status',
+			'project_percent_complete',
+			'project_color_identifier',
+			'project_description',
+			'project_target_budget',
+			'project_actual_budget',
+			'project_creator',
+			'project_private',
+			'project_departments',
+			'project_contacts',
+			'project_priority',
+			'project_type'
+		]);
 	}
 
 	public function check(): ?string

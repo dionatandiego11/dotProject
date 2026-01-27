@@ -37,21 +37,40 @@ class AuthController extends BaseController
         $password = $this->request->getBodyParam('password');
 
         // Busca o usuário no banco
-        $user = $this->db->fetchOne(sprintf(
-            "SELECT user_id, user_username, user_password, user_first_name, user_last_name, user_email 
-             FROM %s 
-             WHERE user_username = %s",
+        $user = $this->db->fetchOneParams(sprintf(
+            "SELECT u.user_id, u.user_username, u.user_password,
+                    c.contact_first_name, c.contact_last_name, c.contact_email
+             FROM %s u
+             LEFT JOIN %s c ON c.contact_id = u.user_contact
+             WHERE u.user_username = ?",
             $this->db->table('users'),
-            $this->db->quote($username)
-        ));
+            $this->db->table('contacts')
+        ), [$username]);
 
         if ($user === null) {
             return $this->error('Invalid credentials', Response::HTTP_UNAUTHORIZED);
         }
 
-        // Verifica a senha (dotProject usa MD5)
-        $passwordHash = md5($password);
-        if ($user['user_password'] !== $passwordHash) {
+        // Verifica a senha (compatÃ­vel com MD5 legado e password_hash moderno)
+        $stored = trim((string) $user['user_password']);
+        $verified = false;
+
+        if (strlen($stored) === 32 && md5($password) === $stored) {
+            $verified = true;
+            // Migra para password_hash no login bem-sucedido
+            $newHash = password_hash($password, PASSWORD_DEFAULT);
+            if ($newHash) {
+                $this->db->update(
+                    'users',
+                    ['user_password' => $newHash],
+                    sprintf('user_id = %d', (int) $user['user_id'])
+                );
+            }
+        } elseif (password_get_info($stored)['algo'] !== 0) {
+            $verified = password_verify($password, $stored);
+        }
+
+        if (!$verified) {
             return $this->error('Invalid credentials', Response::HTTP_UNAUTHORIZED);
         }
 
@@ -60,8 +79,8 @@ class AuthController extends BaseController
         $token = $jwt->generate([
             'user_id' => (int) $user['user_id'],
             'username' => $user['user_username'],
-            'name' => $user['user_first_name'] . ' ' . $user['user_last_name'],
-            'email' => $user['user_email'],
+            'name' => trim(($user['contact_first_name'] ?? '') . ' ' . ($user['contact_last_name'] ?? '')),
+            'email' => $user['contact_email'] ?? null,
         ]);
 
         $refreshToken = $jwt->generateRefreshToken((int) $user['user_id']);
@@ -72,8 +91,8 @@ class AuthController extends BaseController
             'user' => [
                 'id' => (int) $user['user_id'],
                 'username' => $user['user_username'],
-                'name' => $user['user_first_name'] . ' ' . $user['user_last_name'],
-                'email' => $user['user_email'],
+                'name' => trim(($user['contact_first_name'] ?? '') . ' ' . ($user['contact_last_name'] ?? '')),
+                'email' => $user['contact_email'] ?? null,
             ],
         ]);
     }
@@ -102,13 +121,15 @@ class AuthController extends BaseController
         $userId = $payload['user_id'];
 
         // Busca dados atualizados do usuário
-        $user = $this->db->fetchOne(sprintf(
-            "SELECT user_id, user_username, user_first_name, user_last_name, user_email 
-             FROM %s 
-             WHERE user_id = %d",
+        $user = $this->db->fetchOneParams(sprintf(
+            "SELECT u.user_id, u.user_username, u.user_company,
+                    c.contact_first_name, c.contact_last_name, c.contact_email
+             FROM %s u
+             LEFT JOIN %s c ON c.contact_id = u.user_contact
+             WHERE u.user_id = ?",
             $this->db->table('users'),
-            $userId
-        ));
+            $this->db->table('contacts')
+        ), [$userId]);
 
         if ($user === null) {
             return $this->error('User not found', Response::HTTP_UNAUTHORIZED);
@@ -118,12 +139,14 @@ class AuthController extends BaseController
         $newToken = $jwt->generate([
             'user_id' => (int) $user['user_id'],
             'username' => $user['user_username'],
-            'name' => $user['user_first_name'] . ' ' . $user['user_last_name'],
-            'email' => $user['user_email'],
+            'name' => trim(($user['contact_first_name'] ?? '') . ' ' . ($user['contact_last_name'] ?? '')),
+            'email' => $user['contact_email'] ?? null,
         ]);
+        $newRefreshToken = $jwt->generateRefreshToken((int) $user['user_id']);
 
         return $this->json([
             'token' => $newToken,
+            'refresh_token' => $newRefreshToken,
         ]);
     }
 
@@ -140,13 +163,15 @@ class AuthController extends BaseController
             return $this->response->unauthorized();
         }
 
-        $user = $this->db->fetchOne(sprintf(
-            "SELECT user_id, user_username, user_first_name, user_last_name, user_email, user_company 
-             FROM %s 
-             WHERE user_id = %d",
+        $user = $this->db->fetchOneParams(sprintf(
+            "SELECT u.user_id, u.user_username, u.user_company,
+                    c.contact_first_name, c.contact_last_name, c.contact_email
+             FROM %s u
+             LEFT JOIN %s c ON c.contact_id = u.user_contact
+             WHERE u.user_id = ?",
             $this->db->table('users'),
-            $userId
-        ));
+            $this->db->table('contacts')
+        ), [$userId]);
 
         if ($user === null) {
             return $this->notFound('User not found');
@@ -155,9 +180,9 @@ class AuthController extends BaseController
         return $this->json([
             'id' => (int) $user['user_id'],
             'username' => $user['user_username'],
-            'first_name' => $user['user_first_name'],
-            'last_name' => $user['user_last_name'],
-            'email' => $user['user_email'],
+            'first_name' => $user['contact_first_name'] ?? null,
+            'last_name' => $user['contact_last_name'] ?? null,
+            'email' => $user['contact_email'] ?? null,
             'company_id' => $user['user_company'] ? (int) $user['user_company'] : null,
         ]);
     }

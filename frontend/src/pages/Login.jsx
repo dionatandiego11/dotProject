@@ -11,6 +11,7 @@ function Login() {
 
     async function handleSubmit(e) {
         e.preventDefault()
+        console.log('[login] submit', { username, hasPassword: !!password })
         setError(null)
 
         if (!username || !password) {
@@ -23,6 +24,7 @@ function Login() {
             await login(username, password)
             navigate('/')
         } catch (err) {
+            console.error('[login] error', err)
             setError(err.message || 'Falha no login')
         } finally {
             setLoading(false)

@@ -28,7 +28,10 @@ class JwtManager
     private function __construct()
     {
         // Usa a senha do banco como base para o secret (ou configure um específico)
-        $this->secret = dPgetConfig('dbpass', 'dotproject_secret_key') . '_jwt_secret';
+        $envSecret = getenv('JWT_SECRET') ?: null;
+        $configSecret = dPgetConfig('jwt_secret', null);
+        $baseSecret = $configSecret ?? $envSecret ?? dPgetConfig('dbpass', 'dotproject_secret_key');
+        $this->secret = $baseSecret . '_jwt_secret';
         $this->ttl = 3600 * 24; // 24 horas
     }
 
@@ -108,6 +111,7 @@ class JwtManager
         return $this->generate([
             'user_id' => $userId,
             'type' => 'refresh',
+            'jti' => bin2hex(random_bytes(16)),
             'exp' => time() + (3600 * 24 * 30), // 30 dias
         ]);
     }

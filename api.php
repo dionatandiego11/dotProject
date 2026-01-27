@@ -23,6 +23,14 @@ if (file_exists(DP_BASE_DIR . '/includes/config.php')) {
     require_once DP_BASE_DIR . '/includes/config.php';
 }
 
+if (!(isset($GLOBALS['OS_WIN']))) {
+    $GLOBALS['OS_WIN'] = (mb_stristr(PHP_OS, 'WIN') !== false);
+}
+
+// Required before main_functions
+require_once DP_BASE_DIR . '/classes/csscolor.class.php';
+require_once DP_BASE_DIR . '/includes/main_functions.php';
+
 // Carrega conexão com banco de dados
 require_once DP_BASE_DIR . '/includes/db_adodb.php';
 require_once DP_BASE_DIR . '/includes/db_connect.php';
@@ -245,6 +253,56 @@ $router->get('/v1/integrations/google/drive/project/{id}/files', function (Reque
 $router->get('/v1/integrations/google/drive/task/{id}/files', function (Request $req, Response $res) {
     $controller = new IntegrationController($req, $res);
     return $controller->taskDriveFiles();
+});
+
+// ===========================================
+// ROTA DE CACHE (admin only)
+// ===========================================
+
+use DotProject\Core\Cache;
+use DotProject\Core\FeatureFlag;
+use DotProject\Core\LegacyAdapter;
+
+$router->get('/v1/cache/stats', function (Request $req, Response $res) {
+    $cache = new Cache();
+    return $res->json($cache->getStats());
+});
+
+// Feature Flags endpoints
+$router->get('/v1/features', function (Request $req, Response $res) {
+    $features = FeatureFlag::getInstance();
+    return $res->json([
+        'features' => $features->getAllFeatures(),
+    ]);
+});
+
+$router->get('/v1/features/{name}', function (Request $req, Response $res) {
+    $userId = $req->getParam('_user_id');
+    $featureName = $req->getParam('name');
+    $features = FeatureFlag::getInstance();
+    
+    return $res->json([
+        'feature' => $featureName,
+        'enabled' => $features->isEnabled($featureName, $userId),
+        'user_id' => $userId,
+    ]);
+});
+
+// Migration status
+$router->get('/v1/migration/status', function (Request $req, Response $res) {
+    return $res->json([
+        'modules' => LegacyAdapter::getMigrationStatus(),
+        'overall_progress' => '80%', // 4 de 5 fases
+    ]);
+});
+
+$router->delete('/v1/cache/clear', function (Request $req, Response $res) {
+    $cache = new Cache();
+    $result = $cache->clear();
+    return $res->json([
+        'success' => $result,
+        'message' => $result ? 'Cache cleared' : 'Failed to clear cache'
+    ]);
 });
 
 // ===========================================

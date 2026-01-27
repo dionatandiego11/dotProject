@@ -167,7 +167,22 @@ class Response
         }
 
         // CORS headers
-        header('Access-Control-Allow-Origin: *');
+        $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+        $allowedOrigins = [];
+        $envOrigins = getenv('CORS_ALLOWED_ORIGINS') ?: '';
+        $configOrigins = function_exists('dPgetConfig') ? (string) dPgetConfig('cors_allowed_origins', '') : '';
+        $rawOrigins = $configOrigins !== '' ? $configOrigins : $envOrigins;
+
+        if ($rawOrigins !== '') {
+            $allowedOrigins = array_filter(array_map('trim', explode(',', $rawOrigins)));
+        }
+
+        if ($allowedOrigins === [] || in_array('*', $allowedOrigins, true)) {
+            header('Access-Control-Allow-Origin: *');
+        } elseif ($origin !== '' && in_array($origin, $allowedOrigins, true)) {
+            header('Access-Control-Allow-Origin: ' . $origin);
+            header('Vary: Origin');
+        }
         header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
         header('Access-Control-Allow-Headers: Content-Type, Authorization');
 

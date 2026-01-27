@@ -1,4 +1,5 @@
 /* dotProject Frontend - Global Styles */
+@import './styles/tokens.css';
 
 :root {
     /* Colors */

@@ -1,6 +1,5 @@
-// Tradução para Português do Brasil (pt_BR)
 // Arquivo system.inc - Configuração do Sistema
- = (
+
 // Cabeçalhos
 "Import Users" => "Importar Usuários",
 "#" => "#",

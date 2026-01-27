@@ -14,7 +14,9 @@ namespace DotProject\Api\Controller;
 
 use DotProject\Api\Request;
 use DotProject\Api\Response;
+use DotProject\Core\Cache;
 use DotProject\Core\Database;
+use DotProject\Service\ValidationService;
 
 /**
  * Controller base com funcionalidades comuns
@@ -24,12 +26,16 @@ abstract class BaseController
     protected Request $request;
     protected Response $response;
     protected Database $db;
+    protected ValidationService $validator;
+    protected Cache $cache;
 
     public function __construct(Request $request, Response $response)
     {
         $this->request = $request;
         $this->response = $response;
         $this->db = Database::getInstance();
+        $this->validator = new ValidationService();
+        $this->cache = new Cache();
     }
 
     /**
@@ -131,5 +137,36 @@ abstract class BaseController
     protected function notFound(string $message = 'Resource not found'): Response
     {
         return $this->response->notFound($message);
+    }
+
+    /**
+     * Return the validation service instance.
+     */
+    protected function validation(): ValidationService
+    {
+        return $this->validator;
+    }
+
+    /**
+     * Gera chave de cache para o controller
+     */
+    protected function cacheKey(string $suffix = ''): string
+    {
+        $key = static::class . ':' . $this->request->getUri();
+        if ($suffix) {
+            $key .= ':' . $suffix;
+        }
+        return $key;
+    }
+
+    /**
+     * Limpa cache relacionado ao controller
+     */
+    protected function clearCache(?string $pattern = null): void
+    {
+        if ($pattern === null) {
+            $pattern = static::class . ':*';
+        }
+        $this->cache->invalidate($pattern);
     }
 }

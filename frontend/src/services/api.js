@@ -25,14 +25,16 @@ export function setToken(token) {
  * Get current token
  */
 export function getToken() {
-    return authToken;
+    // Sempre lê do localStorage para garantir valor atualizado
+    return localStorage.getItem('dp_token');
 }
 
 /**
  * Check if user is authenticated
  */
 export function isAuthenticated() {
-    return !!authToken;
+    // Sempre lê do localStorage para garantir valor atualizado
+    return !!localStorage.getItem('dp_token');
 }
 
 /**
@@ -46,27 +48,40 @@ async function apiRequest(endpoint, options = {}) {
         ...options.headers,
     };
 
-    if (authToken) {
-        headers['Authorization'] = `Bearer ${authToken}`;
+    const token = getToken();
+    if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
     }
 
-    const response = await fetch(url, {
-        ...options,
-        headers,
-    });
+    try {
+        const response = await fetch(url, {
+            ...options,
+            headers,
+        });
 
-    const data = await response.json();
-
-    if (!response.ok) {
-        if (response.status === 401) {
-            // Token expired
-            setToken(null);
-            window.location.href = '/login';
+        const rawText = await response.text();
+        let data = null;
+        if (rawText) {
+            try {
+                data = JSON.parse(rawText);
+            } catch {
+                data = { message: 'Resposta da API não é JSON', raw: rawText };
+            }
         }
-        throw new Error(data.message || 'Request failed');
-    }
 
-    return data;
+        if (!response.ok) {
+            if (response.status === 401) {
+                // Token expired
+                setToken(null);
+                window.location.href = '/login';
+            }
+            throw new Error((data && data.message) ? data.message : 'Request failed');
+        }
+
+        return data;
+    } catch (err) {
+        throw err;
+    }
 }
 
 // ===========================================

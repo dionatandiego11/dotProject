@@ -86,6 +86,18 @@ class Database
     }
 
     /**
+     * Execute a parameterized SQL query
+     * 
+     * @param string $sql SQL query with placeholders
+     * @param array<int, mixed> $params Parameters to bind
+     * @return mixed Query result
+     */
+    public function queryParams(string $sql, array $params): mixed
+    {
+        return $this->connection->Execute($sql, $params);
+    }
+
+    /**
      * Execute a SELECT query and return all rows as an array
      * 
      * @param string $sql SQL query
@@ -104,6 +116,29 @@ class Database
         }
         $result->Close();
         
+        return $rows;
+    }
+
+    /**
+     * Execute a parameterized SELECT query and return all rows as an array
+     * 
+     * @param string $sql SQL query with placeholders
+     * @param array<int, mixed> $params Parameters to bind
+     * @return array<int, array<string, mixed>>
+     */
+    public function fetchAllParams(string $sql, array $params): array
+    {
+        $result = $this->connection->Execute($sql, $params);
+        if (!$result) {
+            return [];
+        }
+
+        $rows = [];
+        while ($row = $result->FetchRow()) {
+            $rows[] = $row;
+        }
+        $result->Close();
+
         return $rows;
     }
 
@@ -127,6 +162,26 @@ class Database
     }
 
     /**
+     * Execute a parameterized SELECT query and return a single row
+     * 
+     * @param string $sql SQL query with placeholders
+     * @param array<int, mixed> $params Parameters to bind
+     * @return array<string, mixed>|null
+     */
+    public function fetchOneParams(string $sql, array $params): ?array
+    {
+        $result = $this->connection->Execute($sql, $params);
+        if (!$result) {
+            return null;
+        }
+
+        $row = $result->FetchRow();
+        $result->Close();
+
+        return $row ?: null;
+    }
+
+    /**
      * Execute a SELECT query and return a single value
      * 
      * @param string $sql SQL query
@@ -135,6 +190,22 @@ class Database
     public function fetchValue(string $sql): mixed
     {
         $row = $this->fetchOne($sql);
+        if ($row === null) {
+            return null;
+        }
+        return reset($row);
+    }
+
+    /**
+     * Execute a parameterized SELECT query and return a single value
+     * 
+     * @param string $sql SQL query with placeholders
+     * @param array<int, mixed> $params Parameters to bind
+     * @return mixed
+     */
+    public function fetchValueParams(string $sql, array $params): mixed
+    {
+        $row = $this->fetchOneParams($sql, $params);
         if ($row === null) {
             return null;
         }

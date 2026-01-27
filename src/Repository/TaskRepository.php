@@ -1,8 +1,6 @@
 <?php
 /**
- * DotProject Task Repository
- * 
- * Repository for Task entity data access.
+ * Repository Task
  * 
  * @package DotProject\Repository
  * @license GPL-2.0-or-later
@@ -12,240 +10,168 @@ declare(strict_types=1);
 
 namespace DotProject\Repository;
 
-use DotProject\Entity\Task;
+use DotProject\Entity\TaskEntity;
+use DateTime;
 
-/**
- * Task Repository
- * 
- * @extends BaseRepository<Task>
- */
 class TaskRepository extends BaseRepository
 {
-    protected function getEntityClass(): string
-    {
-        return Task::class;
-    }
+    protected string $table = 'dotp_tasks';
+    protected string $primaryKey = 'task_id';
 
-    protected function getTable(): string
+    protected function hydrate(array $data): TaskEntity
     {
-        return 'tasks';
-    }
-
-    protected function getPrimaryKey(): string
-    {
-        return 'task_id';
-    }
-
-    /**
-     * Find tasks by project
-     * 
-     * @param int $projectId Project ID
-     * @param bool $parentOnly Return only parent tasks
-     * @return array<int, Task>
-     */
-    public function findByProject(int $projectId, bool $parentOnly = false): array
-    {
-        $sql = sprintf(
-            "SELECT * FROM `%s` WHERE task_project = %d",
-            $this->db->table($this->getTable()),
-            $projectId
-        );
-
-        if ($parentOnly) {
-            $sql .= ' AND task_id = task_parent';
+        $entity = new TaskEntity();
+        $entity->setId((int) $data['task_id']);
+        $entity->setName($data['task_name']);
+        $entity->setDescription($data['task_description'] ?? null);
+        $entity->setProjectId((int) $data['task_project']);
+        $entity->setParentTaskId($data['task_parent'] ? (int) $data['task_parent'] : null);
+        $entity->setAssignedTo($data['task_assigned_to'] ? (int) $data['task_assigned_to'] : null);
+        $entity->setOwnerId((int) ($data['task_owner'] ?? 0));
+        $entity->setStatus((int) ($data['task_status'] ?? 0));
+        $entity->setPriority((int) ($data['task_priority'] ?? 3));
+        $entity->setPercentComplete((int) ($data['task_percent_complete'] ?? 0));
+        $entity->setEstimatedHours($data['task_hours'] ? (float) $data['task_hours'] : null);
+        $entity->setActualHours($data['task_actual_hours'] ? (float) $data['task_actual_hours'] : null);
+        
+        if (!empty($data['task_start_date'])) {
+            $entity->setStartDate(new DateTime($data['task_start_date']));
+        }
+        if (!empty($data['task_end_date'])) {
+            $entity->setEndDate(new DateTime($data['task_end_date']));
+        }
+        if (!empty($data['task_actual_end_date'])) {
+            $entity->setActualEndDate(new DateTime($data['task_actual_end_date']));
+        }
+        if (!empty($data['task_created'])) {
+            $entity->setCreatedAt(new DateTime($data['task_created']));
+        }
+        if (!empty($data['task_updated'])) {
+            $entity->setUpdatedAt(new DateTime($data['task_updated']));
         }
 
-        $sql .= ' ORDER BY task_start_date ASC, task_order ASC';
-
-        return $this->query($sql);
+        return $entity;
     }
 
-    /**
-     * Find child tasks
-     * 
-     * @param int $parentId Parent task ID
-     * @return array<int, Task>
-     */
-    public function findChildren(int $parentId): array
+    protected function extract(object $entity): array
     {
-        $sql = sprintf(
-            "SELECT * FROM `%s` WHERE task_parent = %d AND task_id != task_parent ORDER BY task_order ASC",
-            $this->db->table($this->getTable()),
-            $parentId
-        );
-
-        return $this->query($sql);
-    }
-
-    /**
-     * Find overdue tasks
-     * 
-     * @param int|null $projectId Optional project filter
-     * @return array<int, Task>
-     */
-    public function findOverdue(?int $projectId = null): array
-    {
-        $sql = sprintf(
-            "SELECT * FROM `%s` WHERE task_percent_complete < 100 
-             AND task_end_date < NOW() 
-             AND task_end_date != '0000-00-00 00:00:00'",
-            $this->db->table($this->getTable())
-        );
-
-        if ($projectId !== null) {
-            $sql .= sprintf(' AND task_project = %d', $projectId);
+        if (!$entity instanceof TaskEntity) {
+            throw new \InvalidArgumentException('Entity must be TaskEntity');
         }
 
-        $sql .= ' ORDER BY task_end_date ASC';
-
-        return $this->query($sql);
+        return [
+            'task_id' => $entity->getId(),
+            'task_name' => $entity->getName(),
+            'task_description' => $entity->getDescription(),
+            'task_project' => $entity->getProjectId(),
+            'task_parent' => $entity->getParentTaskId(),
+            'task_assigned_to' => $entity->getAssignedTo(),
+            'task_owner' => $entity->getOwnerId(),
+            'task_status' => $entity->getStatus(),
+            'task_priority' => $entity->getPriority(),
+            'task_percent_complete' => $entity->getPercentComplete(),
+            'task_hours' => $entity->getEstimatedHours(),
+            'task_actual_hours' => $entity->getActualHours(),
+            'task_start_date' => $entity->getStartDate()?->format('Y-m-d'),
+            'task_end_date' => $entity->getEndDate()?->format('Y-m-d'),
+            'task_actual_end_date' => $entity->getActualEndDate()?->format('Y-m-d'),
+        ];
     }
 
-    /**
-     * Find milestones
-     * 
-     * @param int $projectId Project ID
-     * @return array<int, Task>
-     */
-    public function findMilestones(int $projectId): array
+    public function save(object $entity): bool
     {
-        return $this->findBy(
-            ['task_project' => $projectId, 'task_milestone' => 1],
-            'task_end_date ASC'
-        );
-    }
-
-    /**
-     * Find tasks by owner
-     * 
-     * @param int $ownerId Owner user ID
-     * @return array<int, Task>
-     */
-    public function findByOwner(int $ownerId): array
-    {
-        return $this->findBy(['task_owner' => $ownerId], 'task_end_date ASC');
-    }
-
-    /**
-     * Find tasks due in next N days
-     * 
-     * @param int $days Number of days
-     * @param int|null $userId Optional user filter
-     * @return array<int, Task>
-     */
-    public function findUpcoming(int $days = 7, ?int $userId = null): array
-    {
-        $sql = sprintf(
-            "SELECT * FROM `%s` 
-             WHERE task_end_date BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL %d DAY)
-             AND task_percent_complete < 100",
-            $this->db->table($this->getTable()),
-            $days
-        );
-
-        if ($userId !== null) {
-            $sql .= sprintf(' AND task_owner = %d', $userId);
+        if (!$entity instanceof TaskEntity) {
+            throw new \InvalidArgumentException('Entity must be TaskEntity');
         }
 
-        $sql .= ' ORDER BY task_end_date ASC';
+        $data = $this->extract($entity);
+        
+        if ($entity->getId() === null) {
+            unset($data['task_id']);
+            $result = $this->db->insert($this->table, $data);
+            if ($result) {
+                $entity->setId((int) $this->db->lastInsertId());
+            }
+        } else {
+            $id = $data['task_id'];
+            unset($data['task_id']);
+            $result = $this->db->update($this->table, $data, "task_id = {$id}");
+        }
 
-        return $this->query($sql);
+        if ($result) {
+            $this->clearCache();
+        }
+        return $result;
     }
 
-    /**
-     * Find assigned tasks for a user
-     * 
-     * @param int $userId User ID
-     * @return array<int, Task>
-     */
-    public function findAssignedTo(int $userId): array
+    public function delete(int $id): bool
     {
-        $sql = sprintf(
-            "SELECT t.* FROM `%s` t
-             JOIN `%s` ut ON ut.task_id = t.task_id
-             WHERE ut.user_id = %d
-             ORDER BY t.task_end_date ASC",
-            $this->db->table('tasks'),
-            $this->db->table('user_tasks'),
-            $userId
-        );
-
-        return $this->query($sql);
-    }
-
-    /**
-     * Count tasks by project
-     * 
-     * @param int $projectId Project ID
-     * @return array<string, int> Keys: total, completed, overdue
-     */
-    public function countByProject(int $projectId): array
-    {
-        $result = ['total' => 0, 'completed' => 0, 'overdue' => 0];
-
-        // Total
-        $result['total'] = $this->count(['task_project' => $projectId]);
-
-        // Completed
-        $sql = sprintf(
-            "SELECT COUNT(*) FROM `%s` WHERE task_project = %d AND task_percent_complete = 100",
-            $this->db->table($this->getTable()),
-            $projectId
-        );
-        $result['completed'] = (int) ($this->db->fetchValue($sql) ?? 0);
-
-        // Overdue
-        $sql = sprintf(
-            "SELECT COUNT(*) FROM `%s` 
-             WHERE task_project = %d 
-             AND task_percent_complete < 100 
-             AND task_end_date < NOW() 
-             AND task_end_date != '0000-00-00 00:00:00'",
-            $this->db->table($this->getTable()),
-            $projectId
-        );
-        $result['overdue'] = (int) ($this->db->fetchValue($sql) ?? 0);
-
+        $result = $this->db->delete($this->table, "task_id = {$id}");
+        if ($result) {
+            $this->cache->delete($this->cacheKey("find:{$id}"));
+            $this->cache->invalidate($this->cacheKey('*'));
+        }
         return $result;
     }
 
     /**
-     * Get task dependencies
-     * 
-     * @param int $taskId Task ID
-     * @return array<int, Task>
+     * Busca tarefas por projeto
+     * @return array<TaskEntity>
      */
-    public function getDependencies(int $taskId): array
+    public function findByProject(int $projectId): array
     {
-        $sql = sprintf(
-            "SELECT t.* FROM `%s` td
-             JOIN `%s` t ON t.task_id = td.dependencies_req_task_id
-             WHERE td.dependencies_task_id = %d",
-            $this->db->table('task_dependencies'),
-            $this->db->table('tasks'),
-            $taskId
-        );
-
-        return $this->query($sql);
+        return $this->findBy(['task_project' => $projectId], ['task_priority' => 'ASC', 'task_end_date' => 'ASC']);
     }
 
     /**
-     * Get tasks that depend on this task
-     * 
-     * @param int $taskId Task ID
-     * @return array<int, Task>
+     * Busca tarefas por responsável
+     * @return array<TaskEntity>
      */
-    public function getDependents(int $taskId): array
+    public function findByAssignee(int $userId): array
     {
-        $sql = sprintf(
-            "SELECT t.* FROM `%s` td
-             JOIN `%s` t ON t.task_id = td.dependencies_task_id
-             WHERE td.dependencies_req_task_id = %d",
-            $this->db->table('task_dependencies'),
-            $this->db->table('tasks'),
-            $taskId
-        );
+        return $this->findBy(['task_assigned_to' => $userId, 'task_status' => 0], ['task_end_date' => 'ASC']);
+    }
 
-        return $this->query($sql);
+    /**
+     * Busca tarefas atrasadas
+     * @return array<TaskEntity>
+     */
+    public function findOverdue(): array
+    {
+        $sql = "SELECT * FROM {$this->table} 
+                WHERE task_end_date < CURDATE() 
+                AND task_status = 0
+                ORDER BY task_end_date ASC";
+        $results = $this->db->fetchAll($sql);
+        return array_map([$this, 'hydrate'], $results);
+    }
+
+    /**
+     * Busca tarefas próximas do vencimento (próximos 3 dias)
+     * @return array<TaskEntity>
+     */
+    public function findDueSoon(int $days = 3): array
+    {
+        $sql = "SELECT * FROM {$this->table} 
+                WHERE task_end_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL ? DAY)
+                AND task_status = 0
+                ORDER BY task_end_date ASC";
+        $results = $this->db->fetchAll($sql, [$days]);
+        return array_map([$this, 'hydrate'], $results);
+    }
+
+    /**
+     * Conta tarefas por status em um projeto
+     */
+    public function countByStatus(int $projectId): array
+    {
+        $sql = "SELECT 
+                    SUM(CASE WHEN task_status = 0 THEN 1 ELSE 0 END) as pending,
+                    SUM(CASE WHEN task_status = 1 THEN 1 ELSE 0 END) as completed,
+                    SUM(CASE WHEN task_end_date < CURDATE() AND task_status = 0 THEN 1 ELSE 0 END) as overdue,
+                    COUNT(*) as total
+                FROM {$this->table} 
+                WHERE task_project = ?";
+        return $this->db->fetchOne($sql, [$projectId]) ?: ['pending' => 0, 'completed' => 0, 'overdue' => 0, 'total' => 0];
     }
 }

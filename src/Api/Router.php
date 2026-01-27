@@ -12,6 +12,8 @@ declare(strict_types=1);
 
 namespace DotProject\Api;
 
+use DotProject\Core\Logger;
+
 /**
  * Roteador para requisições da API
  */
@@ -96,6 +98,9 @@ class Router
     {
         $method = $this->request->getMethod();
         $uri = $this->request->getUri();
+        $requestId = $_SERVER['HTTP_X_REQUEST_ID'] ?? bin2hex(random_bytes(8));
+        $this->response->setHeader('X-Request-Id', $requestId);
+        $start = microtime(true);
 
         // Handle OPTIONS for CORS
         if ($method === 'OPTIONS') {
@@ -144,7 +149,15 @@ class Router
             }
         } catch (\Throwable $e) {
             // Log do erro
-            error_log('API Error: ' . $e->getMessage());
+            Logger::error('API Error', [
+                'message' => $e->getMessage(),
+                'type' => $e::class,
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'request_id' => $requestId,
+                'method' => $method,
+                'uri' => $uri,
+            ]);
 
             // Em desenvolvimento, mostra detalhes
             if (defined('DP_DEBUG') && DP_DEBUG) {
@@ -156,6 +169,13 @@ class Router
                 $this->response->serverError()->send();
             }
         }
+        // Log response time (info level)
+        Logger::log('info', 'API Request', [
+            'request_id' => $requestId,
+            'method' => $method,
+            'uri' => $uri,
+            'duration_ms' => (int) round((microtime(true) - $start) * 1000),
+        ]);
     }
 
     /**
@@ -171,7 +191,9 @@ class Router
         foreach ($routes as $pattern => $handler) {
             $params = $this->matchPattern($pattern, $uri);
             if ($params !== null) {
-                $this->request->setParams($params);
+                // Merge com params existentes (preserva _user_id setado pelo middleware)
+                $existingParams = $this->request->getParams();
+                $this->request->setParams(array_merge($existingParams, $params));
                 return $handler;
             }
         }

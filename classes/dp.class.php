@@ -43,6 +43,12 @@ class CDpObject
     protected string $_module_directory = '';
 
     /**
+     * White list of fields allowed to be bound
+     * @var array<string>|null
+     */
+    protected ?array $_allowed_fields = null;
+
+    /**
      * Error message
      */
     protected string $_error = '';
@@ -98,6 +104,15 @@ class CDpObject
     }
 
     /**
+     * Set allowed fields for bind()
+     * @param array<string> $fields
+     */
+    public function setAllowedFields(array $fields): void
+    {
+        $this->_allowed_fields = $fields;
+    }
+
+    /**
      * Binds a named array/hash to this object
      *
      * Can be overloaded/supplemented by the child class
@@ -113,6 +128,12 @@ class CDpObject
 
         // Filter out any object values from the array/hash
         $filtered_hash = array_filter($hash, fn($v) => !is_object($v));
+
+        // Security: Filter by allowed fields if defined
+        if ($this->_allowed_fields !== null) {
+            $filtered_hash = array_intersect_key($filtered_hash, array_flip($this->_allowed_fields));
+        }
+
         bindHashToObject($filtered_hash, $this);
         return true;
     }
@@ -538,7 +559,7 @@ class CDpObject
             if (str_starts_with($k, '_')) { // internal field
                 continue;
             }
-            $this->$k = htmlspecialchars_decode((string)$v);
+            $this->$k = htmlspecialchars_decode((string) $v);
         }
     }
 

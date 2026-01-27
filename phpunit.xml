@@ -18,9 +18,30 @@
         </testsuite>
     </testsuites>
 
+    <coverage>
+        <report>
+            <clover outputFile="coverage.xml"/>
+            <html outputDirectory="coverage-html"/>
+            <text outputFile="php://stdout"/>
+        </report>
+    </coverage>
+
     <source>
         <include>
             <directory>src</directory>
+            <directory>classes</directory>
         </include>
+        <exclude>
+            <directory>src/Integration/Google</directory>
+        </exclude>
     </source>
+
+    <php>
+        <env name="APP_ENV" value="testing"/>
+        <env name="DB_HOST" value="127.0.0.1"/>
+        <env name="DB_NAME" value="dotproject_test"/>
+        <env name="DB_USER" value="dotproject"/>
+        <env name="DB_PASS" value="dotproject123"/>
+        <env name="JWT_SECRET" value="test-secret-key"/>
+    </php>
 </phpunit>

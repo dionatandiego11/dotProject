@@ -28,6 +28,10 @@ class TaskController extends BaseController
      */
     public function index(): Response
     {
+        if (!$this->checkPermission('tasks', 'view')) {
+            return $this->response->forbidden('Insufficient permissions');
+        }
+
         $pagination = $this->getPagination();
 
         // Filtros opcionais
@@ -39,32 +43,33 @@ class TaskController extends BaseController
 
         // Monta a query
         $where = '1=1';
+        $params = [];
 
         if ($projectId !== null) {
-            $where .= sprintf(' AND t.task_project = %d', (int) $projectId);
+            $where .= ' AND t.task_project = ?';
+            $params[] = (int) $projectId;
         }
 
         if ($status !== null) {
-            $where .= sprintf(' AND t.task_status = %d', (int) $status);
+            $where .= ' AND t.task_status = ?';
+            $params[] = (int) $status;
         }
 
         if ($ownerId !== null) {
-            $where .= sprintf(' AND t.task_owner = %d', (int) $ownerId);
+            $where .= ' AND t.task_owner = ?';
+            $params[] = (int) $ownerId;
         }
 
         if ($search !== null) {
-            $where .= sprintf(
-                " AND (t.task_name LIKE %s OR t.task_description LIKE %s)",
-                $this->db->quote("%$search%"),
-                $this->db->quote("%$search%")
-            );
+            $where .= " AND (t.task_name LIKE ? OR t.task_description LIKE ?)";
+            $like = '%' . $search . '%';
+            $params[] = $like;
+            $params[] = $like;
         }
 
         if ($overdue === 'true') {
-            $where .= sprintf(
-                " AND t.task_end_date < %s AND t.task_percent_complete < 100",
-                $this->db->quote(date('Y-m-d'))
-            );
+            $where .= " AND t.task_end_date < ? AND t.task_percent_complete < 100";
+            $params[] = date('Y-m-d');
         }
 
         // Conta total
@@ -73,7 +78,7 @@ class TaskController extends BaseController
             $this->db->table('tasks'),
             $where
         );
-        $total = (int) ($this->db->fetchValue($totalSql) ?? 0);
+        $total = (int) ($this->db->fetchValueParams($totalSql, $params) ?? 0);
 
         // Busca tarefas
         $sql = sprintf(
@@ -82,15 +87,15 @@ class TaskController extends BaseController
              LEFT JOIN %s p ON t.task_project = p.project_id
              WHERE %s
              ORDER BY t.task_start_date ASC, t.task_order ASC
-             LIMIT %d OFFSET %d",
+             LIMIT ? OFFSET ?",
             $this->db->table('tasks'),
             $this->db->table('projects'),
-            $where,
-            $pagination['per_page'],
-            $pagination['offset']
+            $where
         );
-
-        $rows = $this->db->fetchAll($sql);
+        $rows = $this->db->fetchAllParams($sql, array_merge($params, [
+            $pagination['per_page'],
+            $pagination['offset'],
+        ]));
 
         $tasks = array_map(fn($row) => $this->formatTask($row), $rows);
 
@@ -110,6 +115,14 @@ class TaskController extends BaseController
     public function show(): Response
     {
         $id = (int) $this->request->getParam('id');
+
+        if (!$this->checkPermission('tasks', 'view')) {
+            return $this->response->forbidden('Insufficient permissions');
+        }
+
+        if ($guard = $this->ensureTaskAccess($id)) {
+            return $guard;
+        }
 
         $sql = sprintf(
             "SELECT t.*, p.project_name 
@@ -137,12 +150,21 @@ class TaskController extends BaseController
      */
     public function store(): Response
     {
-        $errors = $this->validateRequired(['name', 'project_id']);
-        if ($errors !== null) {
-            return $this->response->validationError($errors);
+        if (!$this->checkPermission('tasks', 'add')) {
+            return $this->response->forbidden('Insufficient permissions');
         }
 
         $body = $this->request->getBody();
+        $validationData = [
+            'task_name' => $body['name'] ?? '',
+            'task_project' => $body['project_id'] ?? null,
+            'task_percent_complete' => $body['percent_complete'] ?? 0,
+            'task_duration' => $body['duration'] ?? 1,
+        ];
+        $validation = $this->validation()->validateTask($validationData);
+        if ($validation->fails()) {
+            return $this->response->validationError($validation->errors());
+        }
 
         // Verifica se projeto existe
         $projectExists = $this->db->fetchValue(sprintf(
@@ -153,6 +175,10 @@ class TaskController extends BaseController
 
         if ($projectExists === null) {
             return $this->error('Project not found', Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        if ($guard = $this->ensureProjectAccess((int) $body['project_id'])) {
+            return $guard;
         }
 
         // Calcula próxima ordem
@@ -203,6 +229,14 @@ class TaskController extends BaseController
     {
         $id = (int) $this->request->getParam('id');
 
+        if (!$this->checkPermission('tasks', 'edit')) {
+            return $this->response->forbidden('Insufficient permissions');
+        }
+
+        if ($guard = $this->ensureTaskAccess($id)) {
+            return $guard;
+        }
+
         $task = Task::find($id);
         if ($task === null) {
             return $this->notFound('Task not found');
@@ -225,6 +259,27 @@ class TaskController extends BaseController
             'parent_id' => 'task_parent',
             'order' => 'task_order',
         ];
+
+        $validationData = [];
+        if (isset($body['name'])) {
+            $validationData['task_name'] = $body['name'];
+        }
+        if (array_key_exists('project_id', $body)) {
+            $validationData['task_project'] = $body['project_id'];
+        }
+        if (array_key_exists('percent_complete', $body)) {
+            $validationData['task_percent_complete'] = $body['percent_complete'];
+        }
+        if (array_key_exists('duration', $body)) {
+            $validationData['task_duration'] = $body['duration'];
+        }
+
+        if (!empty($validationData)) {
+            $validation = $this->validation()->validateTask($validationData);
+            if ($validation->fails()) {
+                return $this->response->validationError($validation->errors());
+            }
+        }
 
         foreach ($updateFields as $apiField => $dbField) {
             if (isset($body[$apiField])) {
@@ -250,6 +305,14 @@ class TaskController extends BaseController
     public function destroy(): Response
     {
         $id = (int) $this->request->getParam('id');
+
+        if (!$this->checkPermission('tasks', 'delete')) {
+            return $this->response->forbidden('Insufficient permissions');
+        }
+
+        if ($guard = $this->ensureTaskAccess($id)) {
+            return $guard;
+        }
 
         $task = Task::find($id);
         if ($task === null) {
@@ -309,5 +372,77 @@ class TaskController extends BaseController
         }
 
         return $data;
+    }
+
+    /**
+     * Ensure authenticated user can access a task.
+     * Allows task owner/creator or owning project owner/creator.
+     */
+    private function ensureTaskAccess(int $taskId): ?Response
+    {
+        $userId = $this->getUserId();
+        if ($userId === null) {
+            return $this->response->unauthorized();
+        }
+
+        $row = $this->db->fetchOne(sprintf(
+            "SELECT t.task_owner, t.task_creator, p.project_owner, p.project_creator
+             FROM %s t
+             LEFT JOIN %s p ON t.task_project = p.project_id
+             WHERE t.task_id = %d",
+            $this->db->table('tasks'),
+            $this->db->table('projects'),
+            $taskId
+        ));
+
+        if ($row === null) {
+            return $this->notFound('Task not found');
+        }
+
+        $taskOwner = $row['task_owner'] ? (int) $row['task_owner'] : null;
+        $taskCreator = $row['task_creator'] ? (int) $row['task_creator'] : null;
+        $projectOwner = $row['project_owner'] ? (int) $row['project_owner'] : null;
+        $projectCreator = $row['project_creator'] ? (int) $row['project_creator'] : null;
+
+        if (
+            ($taskOwner && $taskOwner === $userId) ||
+            ($taskCreator && $taskCreator === $userId) ||
+            ($projectOwner && $projectOwner === $userId) ||
+            ($projectCreator && $projectCreator === $userId)
+        ) {
+            return null;
+        }
+
+        return $this->response->forbidden('Access denied');
+    }
+
+    /**
+     * Ensure authenticated user can access a project.
+     */
+    private function ensureProjectAccess(int $projectId): ?Response
+    {
+        $userId = $this->getUserId();
+        if ($userId === null) {
+            return $this->response->unauthorized();
+        }
+
+        $row = $this->db->fetchOne(sprintf(
+            "SELECT project_owner, project_creator FROM %s WHERE project_id = %d",
+            $this->db->table('projects'),
+            $projectId
+        ));
+
+        if ($row === null) {
+            return $this->notFound('Project not found');
+        }
+
+        $ownerId = $row['project_owner'] ? (int) $row['project_owner'] : null;
+        $creatorId = $row['project_creator'] ? (int) $row['project_creator'] : null;
+
+        if (($ownerId && $ownerId === $userId) || ($creatorId && $creatorId === $userId)) {
+            return null;
+        }
+
+        return $this->response->forbidden('Access denied');
     }
 }
