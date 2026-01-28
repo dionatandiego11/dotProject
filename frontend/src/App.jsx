@@ -8,6 +8,7 @@ const Layout = lazy(() => import('./components/Layout'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Projects = lazy(() => import('./pages/Projects'))
 const Tasks = lazy(() => import('./pages/Tasks'))
+const Kanban = lazy(() => import('./pages/Kanban'))
 const Login = lazy(() => import('./pages/Login'))
 
 function PrivateRoute({ children }) {
@@ -69,6 +70,11 @@ function App() {
                 <Route path="tasks" element={
                     <Suspense fallback={<Loading />}>
                         <Tasks />
+                    </Suspense>
+                } />
+                <Route path="kanban" element={
+                    <Suspense fallback={<Loading />}>
+                        <Kanban />
                     </Suspense>
                 } />
             </Route>

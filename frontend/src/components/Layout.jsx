@@ -1,6 +1,7 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { getCurrentUser, logout } from '../services/api'
+import { NotificationBell } from './notifications'
 
 function Layout() {
     const [user, setUser] = useState(null)
@@ -22,6 +23,15 @@ function Layout() {
     function handleLogout() {
         logout()
         navigate('/login')
+    }
+
+    const handleNotificationClick = (notification) => {
+        // Navega para a entidade da notificação
+        if (notification.entity_type === 'task' && notification.entity_id) {
+            navigate(`/tasks/${notification.entity_id}`)
+        } else if (notification.entity_type === 'project' && notification.entity_id) {
+            navigate(`/projects/${notification.entity_id}`)
+        }
     }
 
     return (
@@ -57,6 +67,14 @@ function Layout() {
                                 <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
                             </svg>
                             Tarefas
+                        </NavLink>
+                        <NavLink to="/kanban" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <rect x="3" y="3" width="6" height="18" rx="2" />
+                                <rect x="10" y="3" width="6" height="18" rx="2" />
+                                <rect x="17" y="3" width="4" height="18" rx="2" />
+                            </svg>
+                            Kanban
                         </NavLink>
                     </div>
                 </nav>
@@ -102,7 +120,27 @@ function Layout() {
 
             {/* Main Content */}
             <main className="main-content">
-                <Outlet />
+                {/* Header com NotificationBell */}
+                <header style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '1rem 1.5rem',
+                    borderBottom: '1px solid var(--color-gray-200)',
+                    backgroundColor: 'white',
+                }}>
+                    <div>
+                        {/* Breadcrumbs ou título da página podem ir aqui */}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                        <NotificationBell onNotificationClick={handleNotificationClick} />
+                    </div>
+                </header>
+
+                {/* Page Content */}
+                <div style={{ padding: '1.5rem', flex: 1, overflow: 'auto' }}>
+                    <Outlet />
+                </div>
             </main>
         </div>
     )

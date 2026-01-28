@@ -256,6 +256,79 @@ export async function getGoogleDriveFiles(query = '') {
     return apiRequest(`/integrations/google/drive/files${params}`);
 }
 
+// ===========================================
+// KANBAN ENDPOINTS
+// ===========================================
+
+export async function getKanbanBoards(projectId = null) {
+    const params = projectId ? `?project_id=${projectId}` : '';
+    return apiRequest(`/kanban/boards${params}`);
+}
+
+export async function getKanbanBoard(boardId) {
+    return apiRequest(`/kanban/boards/${boardId}`);
+}
+
+export async function createKanbanBoard(data) {
+    return apiRequest('/kanban/boards', {
+        method: 'POST',
+        body: JSON.stringify(data),
+    });
+}
+
+export async function createKanbanColumn(boardId, data) {
+    return apiRequest(`/kanban/boards/${boardId}/columns`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+    });
+}
+
+export async function updateKanbanColumn(columnId, data) {
+    return apiRequest(`/kanban/columns/${columnId}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+    });
+}
+
+export async function moveKanbanTask(taskId, columnId, order) {
+    return apiRequest(`/kanban/tasks/${taskId}/move`, {
+        method: 'PUT',
+        body: JSON.stringify({ column_id: columnId, order }),
+    });
+}
+
+export async function getKanbanAnalytics(boardId) {
+    return apiRequest(`/kanban/boards/${boardId}/analytics`);
+}
+
+// ===========================================
+// NOTIFICATIONS ENDPOINTS
+// ===========================================
+
+export async function getNotifications(unreadOnly = false, limit = 50) {
+    const params = new URLSearchParams();
+    if (unreadOnly) params.append('unread', 'true');
+    if (limit) params.append('limit', limit.toString());
+    const query = params.toString() ? `?${params.toString()}` : '';
+    return apiRequest(`/notifications${query}`);
+}
+
+export async function getUnreadNotificationsCount() {
+    return apiRequest('/notifications/unread-count');
+}
+
+export async function markNotificationAsRead(notificationId) {
+    return apiRequest(`/notifications/${notificationId}/read`, {
+        method: 'POST',
+    });
+}
+
+export async function markAllNotificationsAsRead() {
+    return apiRequest('/notifications/mark-all-read', {
+        method: 'POST',
+    });
+}
+
 export default {
     // Auth
     login,

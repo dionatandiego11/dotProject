@@ -41,14 +41,8 @@ export default defineConfig(({ mode }) => ({
         outDir: 'dist',
         sourcemap: true,
         
-        // Otimizações de build
-        minify: 'terser',
-        terserOptions: {
-            compress: {
-                drop_console: true,
-                drop_debugger: true,
-            },
-        },
+        // Otimizações de build (usando esbuild padrão)
+        minify: 'esbuild',
         
         // Code splitting
         rollupOptions: {
@@ -56,9 +50,6 @@ export default defineConfig(({ mode }) => ({
                 manualChunks: {
                     // Vendor separado
                     'vendor-react': ['react', 'react-dom', 'react-router-dom'],
-                    
-                    // Grupos dinâmicos por tamanho
-                    'vendor-charts': ['recharts'],
                 },
                 // Nomenclatura de arquivos otimizada
                 entryFileNames: 'assets/[name]-[hash].js',

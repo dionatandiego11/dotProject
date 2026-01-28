@@ -1,0 +1,340 @@
+openapi: 3.0.3
+info:
+  title: dotProject API
+  description: API REST moderna do sistema de gerenciamento de projetos dotProject
+  version: 2.0.0
+  contact:
+    name: dotProject Team
+    url: https://github.com/dotproject/dotProject
+  license:
+    name: GPL-2.0-or-later
+    url: https://www.gnu.org/licenses/gpl-2.0.html
+
+servers:
+  - url: https://localhost:8443/api/v1
+    description: Servidor local HTTPS
+  - url: http://localhost:8088/api/v1
+    description: Servidor local HTTP
+
+security:
+  - BearerAuth: []
+
+paths:
+  /health:
+    get:
+      summary: Verifica saúde da API
+      description: Retorna status da API e timestamp
+      security: []
+      responses:
+        200:
+          description: API funcionando
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /auth/login:
+    post:
+      summary: Autenticação
+      description: Autentica usuário e retorna token JWT
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - password
+              properties:
+                username:
+                  type: string
+                  example: admin
+                password:
+                  type: string
+                  format: password
+                  example: admin
+      responses:
+        200:
+          description: Login bem-sucedido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        401:
+          description: Credenciais inválidas
+
+  /projects:
+    get:
+      summary: Listar projetos
+      description: Retorna lista de projetos com paginação
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+        - name: status
+          in: query
+          schema:
+            type: integer
+            enum: [0, 1, 2]
+            description: 0=ativo, 1=completado, 2=arquivado
+      responses:
+        200:
+          description: Lista de projetos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectListResponse'
+    
+    post:
+      summary: Criar projeto
+      description: Cria um novo projeto
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectCreateRequest'
+      responses:
+        201:
+          description: Projeto criado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+
+  /projects/{id}:
+    get:
+      summary: Detalhes do projeto
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Projeto encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        404:
+          description: Projeto não encontrado
+    
+    put:
+      summary: Atualizar projeto
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectUpdateRequest'
+      responses:
+        200:
+          description: Projeto atualizado
+    
+    delete:
+      summary: Deletar projeto
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        204:
+          description: Projeto deletado
+
+  /tasks:
+    get:
+      summary: Listar tarefas
+      description: Retorna lista de tarefas
+      parameters:
+        - name: project_id
+          in: query
+          schema:
+            type: integer
+        - name: status
+          in: query
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Lista de tarefas
+
+  /analytics/dashboard:
+    get:
+      summary: Dashboard
+      description: Retorna dados do dashboard do usuário
+      responses:
+        200:
+          description: Dados do dashboard
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardResponse'
+
+  /cache/stats:
+    get:
+      summary: Estatísticas do cache
+      description: Retorna estatísticas do sistema de cache
+      responses:
+        200:
+          description: Estatísticas do cache
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: healthy
+        timestamp:
+          type: string
+          format: date-time
+
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        refresh_token:
+          type: string
+        user:
+          $ref: '#/components/schemas/User'
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+
+    Project:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        short_name:
+          type: string
+        description:
+          type: string
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        status:
+          type: integer
+          enum: [0, 1, 2]
+        priority:
+          type: integer
+          enum: [1, 2, 3, 4]
+        percent_complete:
+          type: integer
+          minimum: 0
+          maximum: 100
+        owner_id:
+          type: integer
+        is_active:
+          type: boolean
+        is_overdue:
+          type: boolean
+
+    ProjectCreateRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        short_name:
+          type: string
+          maxLength: 10
+        description:
+          type: string
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        priority:
+          type: integer
+          default: 3
+
+    ProjectUpdateRequest:
+      allOf:
+        - $ref: '#/components/schemas/ProjectCreateRequest'
+
+    ProjectListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Project'
+        meta:
+          type: object
+          properties:
+            total:
+              type: integer
+            page:
+              type: integer
+            per_page:
+              type: integer
+            total_pages:
+              type: integer
+
+    DashboardResponse:
+      type: object
+      properties:
+        projects:
+          type: object
+          properties:
+            total:
+              type: integer
+            active:
+              type: integer
+        tasks:
+          type: object
+          properties:
+            total:
+              type: integer
+            pending:
+              type: integer
+            overdue:
+              type: integer

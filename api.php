@@ -296,6 +296,73 @@ $router->get('/v1/migration/status', function (Request $req, Response $res) {
     ]);
 });
 
+// ===========================================
+// ROTAS DE KANBAN
+// ===========================================
+
+use DotProject\Api\Controller\KanbanController;
+
+$router->get('/v1/kanban/boards', function (Request $req, Response $res) {
+    $controller = new KanbanController($req, $res);
+    $controller->listBoards();
+});
+
+$router->get('/v1/kanban/boards/{id}', function (Request $req, Response $res) {
+    $controller = new KanbanController($req, $res);
+    $controller->getBoard((int) $req->getParam('id'));
+});
+
+$router->post('/v1/kanban/boards', function (Request $req, Response $res) {
+    $controller = new KanbanController($req, $res);
+    $controller->createBoard();
+});
+
+$router->post('/v1/kanban/boards/{id}/columns', function (Request $req, Response $res) {
+    $controller = new KanbanController($req, $res);
+    $controller->addColumn((int) $req->getParam('id'));
+});
+
+$router->put('/v1/kanban/columns/{id}', function (Request $req, Response $res) {
+    $controller = new KanbanController($req, $res);
+    $controller->updateColumn((int) $req->getParam('id'));
+});
+
+$router->put('/v1/kanban/tasks/{id}/move', function (Request $req, Response $res) {
+    $controller = new KanbanController($req, $res);
+    $controller->moveTask((int) $req->getParam('id'));
+});
+
+$router->get('/v1/kanban/boards/{id}/analytics', function (Request $req, Response $res) {
+    $controller = new KanbanController($req, $res);
+    $controller->getAnalytics((int) $req->getParam('id'));
+});
+
+// ===========================================
+// ROTAS DE NOTIFICAÇÕES
+// ===========================================
+
+use DotProject\Api\Controller\NotificationController;
+
+$router->get('/v1/notifications', function (Request $req, Response $res) {
+    $controller = new NotificationController($req, $res);
+    $controller->list();
+});
+
+$router->get('/v1/notifications/unread-count', function (Request $req, Response $res) {
+    $controller = new NotificationController($req, $res);
+    $controller->count();
+});
+
+$router->post('/v1/notifications/{id}/read', function (Request $req, Response $res) {
+    $controller = new NotificationController($req, $res);
+    $controller->markAsRead((int) $req->getParam('id'));
+});
+
+$router->post('/v1/notifications/mark-all-read', function (Request $req, Response $res) {
+    $controller = new NotificationController($req, $res);
+    $controller->markAllAsRead();
+});
+
 $router->delete('/v1/cache/clear', function (Request $req, Response $res) {
     $cache = new Cache();
     $result = $cache->clear();

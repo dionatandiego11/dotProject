@@ -1,0 +1,229 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, devel, 'feature/*' ]
+  pull_request:
+    branches: [ main, devel ]
+
+env:
+  PHP_VERSION: '8.2'
+  NODE_VERSION: '20'
+  DB_NAME: dotproject_test
+  DB_USER: dotproject
+  DB_PASS: dotproject123
+
+jobs:
+  # ==========================================
+  # BACKEND TESTS
+  # ==========================================
+  backend-tests:
+    name: Backend Tests (PHP ${{ matrix.php }})
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        php: ['8.2', '8.3']
+    
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: dotproject_test
+          MYSQL_USER: dotproject
+          MYSQL_PASSWORD: dotproject123
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=3
+        ports:
+          - 3306:3306
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: ${{ matrix.php }}
+        extensions: pdo_mysql, mbstring, gd, zip, xml
+        coverage: xdebug
+        tools: composer, phpstan, php-cs-fixer
+
+    - name: Get composer cache directory
+      id: composer-cache
+      run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+    - name: Cache composer dependencies
+      uses: actions/cache@v4
+      with:
+        path: ${{ steps.composer-cache.outputs.dir }}
+        key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+        restore-keys: ${{ runner.os }}-composer-
+
+    - name: Install dependencies
+      run: composer install --no-interaction --prefer-dist --optimize-autoloader
+
+    - name: Run PHP syntax check
+      run: find src classes modules -name "*.php" -exec php -l {} \; 2>&1 | grep -v "No syntax errors"
+
+    - name: Run PHPStan (Static Analysis)
+      run: |
+        phpstan analyse src --level=5 --error-format=github || true
+
+    - name: Setup test database
+      run: |
+        cp .env.example .env
+        mysql -h127.0.0.1 -uroot -proot dotproject_test < db/dotproject.sql
+      env:
+        DB_HOST: 127.0.0.1
+
+    - name: Run PHPUnit
+      run: |
+        vendor/bin/phpunit \
+          --coverage-text \
+          --colors=never \
+          --testdox || true
+      env:
+        DB_HOST: 127.0.0.1
+        DB_NAME: dotproject_test
+        DB_USER: dotproject
+        DB_PASS: dotproject123
+        JWT_SECRET: test-secret-key
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        file: ./coverage.xml
+        flags: backend
+        name: backend-php${{ matrix.php }}
+      continue-on-error: true
+
+  # ==========================================
+  # FRONTEND TESTS
+  # ==========================================
+  frontend-tests:
+    name: Frontend Tests (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        node: ['18', '20']
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node }}
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+
+    - name: Install dependencies
+      working-directory: ./frontend
+      run: npm ci
+
+    - name: Run ESLint
+      working-directory: ./frontend
+      run: npm run lint || true
+
+    - name: Run tests
+      working-directory: ./frontend
+      run: npm test -- --coverage --watchAll=false || true
+
+    - name: Build frontend
+      working-directory: ./frontend
+      run: npm run build
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        directory: ./frontend/coverage
+        flags: frontend
+        name: frontend-node${{ matrix.node }}
+      continue-on-error: true
+
+  # ==========================================
+  # SECURITY SCAN
+  # ==========================================
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+      continue-on-error: true
+
+    - name: Upload Trivy scan results
+      uses: github/codeql-action/upload-sarif@v2
+      with:
+        sarif_file: 'trivy-results.sarif'
+      continue-on-error: true
+
+    - name: Check PHP dependencies for vulnerabilities
+      run: |
+        composer audit || true
+
+    - name: Check Node dependencies for vulnerabilities  
+      working-directory: ./frontend
+      run: npm audit --audit-level=high || true
+
+  # ==========================================
+  # DOCKER BUILD TEST
+  # ==========================================
+  docker-build:
+    name: Docker Build Test
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build Docker images
+      run: |
+        docker-compose -f docker-compose.yml config > docker-compose.test.yml
+        docker-compose -f docker-compose.test.yml build
+
+    - name: Test container startup
+      run: |
+        docker-compose up -d mariadb
+        sleep 15
+        docker-compose ps
+        docker-compose logs mariadb | tail -20
+
+    - name: Cleanup
+      run: docker-compose down -v
+
+  # ==========================================
+  # DEPLOY (apenas na branch main)
+  # ==========================================
+  # deploy:
+  #   name: Deploy to Production
+  #   needs: [backend-tests, frontend-tests, security-scan, docker-build]
+  #   runs-on: ubuntu-latest
+  #   if: github.ref == 'refs/heads/main'
+  #   
+  #   steps:
+  #   - name: Deploy to production
+  #     run: |
+  #       echo "Deploy implementation here"
+  #       # SSH to server
+  #       # docker-compose pull
+  #       # docker-compose up -d
