@@ -15,6 +15,8 @@ namespace DotProject\Api\Middleware;
 use DotProject\Api\Request;
 use DotProject\Api\Response;
 use DotProject\Auth\JwtManager;
+use DotProject\Entity\UserEntity;
+use DotProject\Service\AuthorizationService;
 
 /**
  * Middleware de autenticação
@@ -61,10 +63,22 @@ class AuthMiddleware
         }
 
         // Armazena dados do usuário autenticado na request
+        $userId = $payload['user_id'] ?? null;
         $request->setParams(array_merge($request->getParams(), [
-            '_user_id' => $payload['user_id'] ?? null,
+            '_user_id' => $userId,
             '_user_data' => $payload,
         ]));
+
+        // Seta o usuário no AuthorizationService para uso nos services
+        if ($userId !== null) {
+            $user = new UserEntity();
+            $user->setId($userId);
+            $user->setUsername($payload['username'] ?? '');
+            $user->setFirstName($payload['name'] ?? '');
+            $user->setEmail($payload['email'] ?? '');
+            
+            AuthorizationService::getInstance()->setCurrentUser($user);
+        }
 
         return true;
     }

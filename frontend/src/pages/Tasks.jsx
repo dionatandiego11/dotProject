@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react'
-import { getTasks, updateTask } from '../services/api'
+import { getTasks, updateTask, createTask, getProjects } from '../services/api'
+import Modal from '../components/ui/Modal'
+import Button from '../components/ui/Button'
+import Input from '../components/ui/Input'
 
 function Tasks() {
     const [tasks, setTasks] = useState([])
@@ -7,6 +10,18 @@ function Tasks() {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState(null)
     const [filter, setFilter] = useState('all') // all, overdue, completed
+    
+    // Modal state
+    const [isModalOpen, setIsModalOpen] = useState(false)
+    const [projects, setProjects] = useState([])
+    const [newTask, setNewTask] = useState({
+        name: '',
+        description: '',
+        project_id: '',
+        priority: '1',
+        end_date: ''
+    })
+    const [creating, setCreating] = useState(false)
 
     useEffect(() => {
         loadTasks()
@@ -61,6 +76,43 @@ function Tasks() {
         return new Date(endDate) < new Date()
     }
 
+    async function loadProjects() {
+        try {
+            const data = await getProjects({ per_page: 100 })
+            setProjects(data.data || [])
+        } catch (err) {
+            console.error('Failed to load projects:', err)
+        }
+    }
+
+    async function handleCreateTask(e) {
+        e.preventDefault()
+        if (!newTask.name.trim()) return
+        
+        try {
+            setCreating(true)
+            await createTask({
+                name: newTask.name,
+                description: newTask.description,
+                project_id: newTask.project_id || null,
+                priority: parseInt(newTask.priority),
+                end_date: newTask.end_date || null
+            })
+            setIsModalOpen(false)
+            setNewTask({ name: '', description: '', project_id: '', priority: '1', end_date: '' })
+            loadTasks()
+        } catch (err) {
+            alert('Erro ao criar tarefa: ' + err.message)
+        } finally {
+            setCreating(false)
+        }
+    }
+
+    function openModal() {
+        loadProjects()
+        setIsModalOpen(true)
+    }
+
     return (
         <>
             <div className="topbar">
@@ -80,7 +132,7 @@ function Tasks() {
                         <option value="all">Todas</option>
                         <option value="overdue">Atrasadas</option>
                     </select>
-                    <button className="btn btn-primary">+ Nova Tarefa</button>
+                    <button className="btn btn-primary" onClick={openModal}>+ Nova Tarefa</button>
                 </div>
             </div>
 
@@ -217,6 +269,122 @@ function Tasks() {
                     </div>
                 )}
             </div>
+
+            {/* Create Task Modal */}
+            <Modal
+                isOpen={isModalOpen}
+                onClose={() => setIsModalOpen(false)}
+                title="Nova Tarefa"
+                footer={
+                    <>
+                        <Button variant="secondary" onClick={() => setIsModalOpen(false)}>
+                            Cancelar
+                        </Button>
+                        <Button 
+                            variant="primary" 
+                            onClick={handleCreateTask}
+                            disabled={creating || !newTask.name.trim()}
+                        >
+                            {creating ? 'Criando...' : 'Criar Tarefa'}
+                        </Button>
+                    </>
+                }
+            >
+                <form onSubmit={handleCreateTask}>
+                    <div style={{ marginBottom: 'var(--spacing-4)' }}>
+                        <label style={{ display: 'block', marginBottom: 'var(--spacing-2)', fontWeight: 500 }}>
+                            Nome da Tarefa *
+                        </label>
+                        <Input
+                            value={newTask.name}
+                            onChange={(e) => setNewTask({ ...newTask, name: e.target.value })}
+                            placeholder="Digite o nome da tarefa"
+                            required
+                        />
+                    </div>
+                    
+                    <div style={{ marginBottom: 'var(--spacing-4)' }}>
+                        <label style={{ display: 'block', marginBottom: 'var(--spacing-2)', fontWeight: 500 }}>
+                            Descrição
+                        </label>
+                        <textarea
+                            value={newTask.description}
+                            onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
+                            placeholder="Descrição da tarefa"
+                            rows={3}
+                            style={{
+                                width: '100%',
+                                padding: 'var(--spacing-2) var(--spacing-3)',
+                                border: '1px solid var(--color-gray-300)',
+                                borderRadius: 'var(--radius-md)',
+                                fontSize: '0.875rem',
+                                fontFamily: 'inherit'
+                            }}
+                        />
+                    </div>
+                    
+                    <div style={{ marginBottom: 'var(--spacing-4)' }}>
+                        <label style={{ display: 'block', marginBottom: 'var(--spacing-2)', fontWeight: 500 }}>
+                            Projeto
+                        </label>
+                        <select
+                            value={newTask.project_id}
+                            onChange={(e) => setNewTask({ ...newTask, project_id: e.target.value })}
+                            style={{
+                                width: '100%',
+                                padding: 'var(--spacing-2) var(--spacing-3)',
+                                border: '1px solid var(--color-gray-300)',
+                                borderRadius: 'var(--radius-md)',
+                                fontSize: '0.875rem',
+                                background: 'white'
+                            }}
+                        >
+                            <option value="">Selecione um projeto (opcional)</option>
+                            {projects.map(project => (
+                                <option key={project.id} value={project.id}>
+                                    {project.name}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                    
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--spacing-4)' }}>
+                        <div>
+                            <label style={{ display: 'block', marginBottom: 'var(--spacing-2)', fontWeight: 500 }}>
+                                Prioridade
+                            </label>
+                            <select
+                                value={newTask.priority}
+                                onChange={(e) => setNewTask({ ...newTask, priority: e.target.value })}
+                                style={{
+                                    width: '100%',
+                                    padding: 'var(--spacing-2) var(--spacing-3)',
+                                    border: '1px solid var(--color-gray-300)',
+                                    borderRadius: 'var(--radius-md)',
+                                    fontSize: '0.875rem',
+                                    background: 'white'
+                                }}
+                            >
+                                <option value="0">Baixa</option>
+                                <option value="1">Normal</option>
+                                <option value="2">Alta</option>
+                                <option value="3">Urgente</option>
+                            </select>
+                        </div>
+                        
+                        <div>
+                            <label style={{ display: 'block', marginBottom: 'var(--spacing-2)', fontWeight: 500 }}>
+                                Prazo
+                            </label>
+                            <Input
+                                type="date"
+                                value={newTask.end_date}
+                                onChange={(e) => setNewTask({ ...newTask, end_date: e.target.value })}
+                            />
+                        </div>
+                    </div>
+                </form>
+            </Modal>
         </>
     )
 }

@@ -78,7 +78,7 @@ SELECT
     'task_assigned',
     1, 1, 0
 FROM dotp_users u
-WHERE u.user_status = 0
+WHERE u.user_type >= 0
 ON DUPLICATE KEY UPDATE preference_id = preference_id;
 
 INSERT INTO dotp_notification_preferences 
@@ -88,7 +88,7 @@ SELECT
     'task_completed',
     1, 1, 0
 FROM dotp_users u
-WHERE u.user_status = 0
+WHERE u.user_type >= 0
 ON DUPLICATE KEY UPDATE preference_id = preference_id;
 
 INSERT INTO dotp_notification_preferences 
@@ -98,7 +98,7 @@ SELECT
     'task_overdue',
     1, 1, 1
 FROM dotp_users u
-WHERE u.user_status = 0
+WHERE u.user_type >= 0
 ON DUPLICATE KEY UPDATE preference_id = preference_id;
 
 INSERT INTO dotp_notification_preferences 
@@ -108,5 +108,5 @@ SELECT
     'deadline_approaching',
     1, 1, 1
 FROM dotp_users u
-WHERE u.user_status = 0
+WHERE u.user_type >= 0
 ON DUPLICATE KEY UPDATE preference_id = preference_id;

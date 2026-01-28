@@ -14,138 +14,29 @@ namespace DotProject\Service;
 
 use DotProject\Core\Cache;
 use DotProject\Core\Database;
-use DotProject\Core\DomainEvents;
-use DotProject\Core\EventDispatcher;
 use DotProject\Core\Logger;
 use DotProject\Entity\KanbanBoard;
 use DotProject\Entity\KanbanColumn;
 use DotProject\Entity\KanbanTask;
-use DotProject\Entity\TaskEntity;
-use DotProject\Repository\KanbanBoardRepository;
-use DotProject\Repository\KanbanColumnRepository;
-use DotProject\Repository\KanbanTaskRepository;
-use DotProject\Repository\TaskRepository;
+use DateTime;
 
 /**
  * Servico Kanban
  */
 class KanbanService
 {
-    private KanbanBoardRepository $boardRepo;
-    private KanbanColumnRepository $columnRepo;
-    private KanbanTaskRepository $kanbanTaskRepo;
-    private TaskRepository $taskRepo;
+    private Database $db;
     private AuthorizationService $auth;
-    private EventDispatcher $dispatcher;
     private Cache $cache;
     
     public function __construct(
-        ?KanbanBoardRepository $boardRepo = null,
-        ?KanbanColumnRepository $columnRepo = null,
-        ?KanbanTaskRepository $kanbanTaskRepo = null,
-        ?TaskRepository $taskRepo = null,
+        ?Database $db = null,
         ?AuthorizationService $auth = null,
-        ?EventDispatcher $dispatcher = null,
         ?Cache $cache = null
     ) {
-        $this->boardRepo = $boardRepo ?? new KanbanBoardRepository();
-        $this->columnRepo = $columnRepo ?? new KanbanColumnRepository();
-        $this->kanbanTaskRepo = $kanbanTaskRepo ?? new KanbanTaskRepository();
-        $this->taskRepo = $taskRepo ?? new TaskRepository();
+        $this->db = $db ?? Database::getInstance();
         $this->auth = $auth ?? AuthorizationService::getInstance();
-        $this->dispatcher = $dispatcher ?? EventDispatcher::getInstance();
         $this->cache = $cache ?? new Cache(prefix: 'kanban:');
-    }
-    
-    // =====================================================
-    // BOARD OPERATIONS
-    // =====================================================
-    
-    /**
-     * Cria um novo board com colunas padrão
-     */
-    public function createBoard(array $data, int $userId): KanbanBoard
-    {
-        // Verifica permissao
-        $this->auth->enforce(AuthorizationService::RESOURCE_PROJECT, AuthorizationService::PERMISSION_CREATE, $userId);
-        
-        $board = new KanbanBoard();
-        $board->setName($data['name']);
-        $board->setDescription($data['description'] ?? null);
-        $board->setProjectId($data['project_id'] ?? null);
-        $board->setCompanyId($data['company_id']);
-        $board->setCreatedBy($userId);
-        $board->setStatus(0);
-        
-        if (!$this->boardRepo->save($board)) {
-            throw new \RuntimeException('Failed to create board');
-        }
-        
-        // Cria colunas padrão
-        $this->columnRepo->createDefaultColumns($board->getId() ?? 0);
-        
-        Logger::info('Kanban board created', [
-            'board_id' => $board->getId(),
-            'user_id' => $userId,
-        ]);
-        
-        return $board;
-    }
-    
-    /**
-     * Obtém board completo com colunas e tarefas
-     */
-    public function getBoard(int $boardId, ?int $userId = null): ?array
-    {
-        $userId = $userId ?? $this->auth->getCurrentUser()?->getId();
-        
-        $board = $this->boardRepo->find($boardId);
-        if (!$board) {
-            return null;
-        }
-        
-        // Verifica acesso
-        if ($board->getProjectId()) {
-            if (!$this->auth->canAccessProject($board->getProjectId(), AuthorizationService::PERMISSION_VIEW, $userId)) {
-                return null;
-            }
-        }
-        
-        $cacheKey = "board_full:{$boardId}";
-        $cached = $this->cache->get($cacheKey);
-        
-        if ($cached !== null) {
-            return $cached;
-        }
-        
-        // Carrega colunas
-        $columns = $this->columnRepo->findByBoard($boardId);
-        
-        // Carrega tarefas de cada coluna
-        foreach ($columns as $column) {
-            $kanbanTasks = $this->kanbanTaskRepo->findByColumn($column->getId() ?? 0);
-            
-            // Hidrata dados das tarefas
-            foreach ($kanbanTasks as $kanbanTask) {
-                $task = $this->taskRepo->find($kanbanTask->getTaskId());
-                if ($task) {
-                    $kanbanTask->setTask($task);
-                }
-            }
-            
-            $column->setTasks($kanbanTasks);
-        }
-        
-        $board->setColumns($columns);
-        
-        $result = [
-            'board' => $board->toArray(),
-            'stats' => $this->boardRepo->getBoardStats($boardId),
-        ];
-        
-        $this->cache->set($cacheKey, $result, 60); // Cache curto
-        
-        return $result;
     }
     
     /**
@@ -159,315 +50,205 @@ class KanbanService
             return [];
         }
         
-        $boards = $this->boardRepo->findByCompany($companyId, $projectId);
+        if ($projectId !== null) {
+            $sql = sprintf(
+                "SELECT * FROM `dotp_kanban_boards` 
+                 WHERE board_company = %d AND board_status = 0 
+                 AND (board_project = %d OR board_project IS NULL)
+                 ORDER BY board_project IS NULL, board_created_at DESC",
+                $companyId,
+                $projectId
+            );
+        } else {
+            $sql = sprintf(
+                "SELECT * FROM `dotp_kanban_boards` 
+                 WHERE board_company = %d AND board_status = 0
+                 ORDER BY board_created_at DESC",
+                $companyId
+            );
+        }
         
-        // Filtra por acesso ao projeto
-        return array_filter($boards, function (KanbanBoard $board) use ($userId) {
-            if ($board->getProjectId() === null) {
-                return true; // Board global
-            }
-            return $this->auth->canAccessProject($board->getProjectId(), AuthorizationService::PERMISSION_VIEW, $userId);
-        });
+        $results = $this->db->fetchAll($sql);
+        $boards = [];
+        
+        foreach ($results as $data) {
+            $boards[] = $this->hydrateBoard($data);
+        }
+        
+        return $boards;
     }
     
-    // =====================================================
-    // COLUMN OPERATIONS
-    // =====================================================
-    
     /**
-     * Adiciona coluna ao board
+     * Cria um novo board
      */
-    public function addColumn(int $boardId, array $data, int $userId): KanbanColumn
+    public function createBoard(array $data, int $userId): KanbanBoard
     {
-        $board = $this->boardRepo->find($boardId);
-        if (!$board) {
-            throw new \RuntimeException('Board not found');
+        $board = new KanbanBoard();
+        $board->setName($data['name']);
+        $board->setDescription($data['description'] ?? null);
+        $board->setProjectId($data['project_id'] ?? null);
+        $board->setCompanyId($data['company_id']);
+        $board->setCreatedBy($userId);
+        $board->setStatus(0);
+        
+        $insertData = [
+            'board_name' => $board->getName(),
+            'board_description' => $board->getDescription(),
+            'board_project' => $board->getProjectId(),
+            'board_company' => $board->getCompanyId(),
+            'board_created_by' => $board->getCreatedBy(),
+            'board_status' => $board->getStatus(),
+        ];
+        
+        $result = $this->db->insert('dotp_kanban_boards', $insertData);
+        
+        if (!$result) {
+            throw new \RuntimeException('Failed to create board');
         }
         
-        if ($board->getProjectId()) {
-            $this->auth->enforceProjectAccess($board->getProjectId(), AuthorizationService::PERMISSION_EDIT, $userId);
-        }
+        $board->setId((int) $this->db->lastInsertId());
         
-        $column = new KanbanColumn();
-        $column->setBoardId($boardId);
-        $column->setName($data['name']);
-        $column->setColor($data['color'] ?? null);
-        $column->setWipLimit($data['wip_limit'] ?? null);
-        $column->setIsDone($data['is_done'] ?? false);
-        $column->setIsBacklog($data['is_backlog'] ?? false);
-        $column->setOrder($data['order'] ?? 999);
-        $column->setStatus(0);
+        // Cria colunas padrão
+        $this->createDefaultColumns($board->getId());
         
-        if (!$this->columnRepo->save($column)) {
-            throw new \RuntimeException('Failed to create column');
-        }
+        Logger::info('Kanban board created', [
+            'board_id' => $board->getId(),
+            'user_id' => $userId,
+        ]);
         
-        $this->cache->invalidate("board_full:{$boardId}");
-        
-        return $column;
+        return $board;
     }
     
     /**
-     * Atualiza coluna
+     * Obtém board completo
      */
-    public function updateColumn(int $columnId, array $data, int $userId): KanbanColumn
+    public function getBoard(int $boardId, ?int $userId = null): ?array
     {
-        $column = $this->columnRepo->find($columnId);
-        if (!$column) {
-            throw new \RuntimeException('Column not found');
+        $sql = sprintf("SELECT * FROM `dotp_kanban_boards` WHERE board_id = %d", $boardId);
+        $data = $this->db->fetchOne($sql);
+        
+        if (!$data) {
+            return null;
         }
         
-        $board = $this->boardRepo->find($column->getBoardId());
-        if ($board && $board->getProjectId()) {
-            $this->auth->enforceProjectAccess($board->getProjectId(), AuthorizationService::PERMISSION_EDIT, $userId);
-        }
+        $board = $this->hydrateBoard($data);
         
-        if (isset($data['name'])) {
-            $column->setName($data['name']);
-        }
-        if (isset($data['color'])) {
-            $column->setColor($data['color']);
-        }
-        if (isset($data['wip_limit'])) {
-            $column->setWipLimit($data['wip_limit']);
-        }
-        if (isset($data['is_done'])) {
-            $column->setIsDone($data['is_done']);
-        }
-        
-        $this->columnRepo->save($column);
-        $this->cache->invalidate("board_full:{$column->getBoardId()}");
-        
-        return $column;
-    }
-    
-    /**
-     * Reordena colunas
-     */
-    public function reorderColumns(int $boardId, array $columnOrders, int $userId): bool
-    {
-        $board = $this->boardRepo->find($boardId);
-        if (!$board) {
-            throw new \RuntimeException('Board not found');
-        }
-        
-        if ($board->getProjectId()) {
-            $this->auth->enforceProjectAccess($board->getProjectId(), AuthorizationService::PERMISSION_EDIT, $userId);
-        }
-        
-        $result = $this->columnRepo->reorderColumns($columnOrders);
-        
-        if ($result) {
-            $this->cache->invalidate("board_full:{$boardId}");
-        }
-        
-        return $result;
-    }
-    
-    // =====================================================
-    // TASK OPERATIONS
-    // =====================================================
-    
-    /**
-     * Adiciona tarefa ao kanban
-     */
-    public function addTask(int $taskId, int $columnId, ?int $userId = null): ?KanbanTask
-    {
-        $userId = $userId ?? $this->auth->getCurrentUser()?->getId();
-        
-        $column = $this->columnRepo->find($columnId);
-        if (!$column) {
-            throw new \RuntimeException('Column not found');
-        }
-        
-        $task = $this->taskRepo->find($taskId);
-        if (!$task) {
-            throw new \RuntimeException('Task not found');
-        }
-        
-        // Verifica acesso a tarefa
-        if (!$this->auth->canAccessTask($taskId, AuthorizationService::PERMISSION_EDIT, $userId)) {
-            throw new \RuntimeException('Access denied');
-        }
-        
-        // Verifica WIP limit
-        if ($column->isAtWipLimit()) {
-            throw new \RuntimeException('Column is at WIP limit');
-        }
-        
-        $kanbanTask = $this->kanbanTaskRepo->addTaskToColumn($taskId, $columnId, $userId);
-        
-        if ($kanbanTask) {
-            $this->cache->invalidate("board_full:{$column->getBoardId()}");
-            
-            Logger::info('Task added to kanban', [
-                'task_id' => $taskId,
-                'column_id' => $columnId,
-                'user_id' => $userId,
-            ]);
-        }
-        
-        return $kanbanTask;
-    }
-    
-    /**
-     * Move tarefa entre colunas ou reordena na mesma coluna
-     */
-    public function moveTask(
-        int $kanbanTaskId, 
-        int $targetColumnId, 
-        int $newOrder, 
-        ?int $userId = null
-    ): bool {
-        $userId = $userId ?? $this->auth->getCurrentUser()?->getId();
-        
-        $kanbanTask = $this->kanbanTaskRepo->find($kanbanTaskId);
-        if (!$kanbanTask) {
-            throw new \RuntimeException('Kanban task not found');
-        }
-        
-        $sourceColumn = $this->columnRepo->find($kanbanTask->getColumnId());
-        $targetColumn = $this->columnRepo->find($targetColumnId);
-        
-        if (!$targetColumn) {
-            throw new \RuntimeException('Target column not found');
-        }
-        
-        $task = $this->taskRepo->find($kanbanTask->getTaskId());
-        if (!$task) {
-            throw new \RuntimeException('Task not found');
-        }
-        
-        // Verifica permissao
-        if (!$this->auth->canAccessTask($task->getId() ?? 0, AuthorizationService::PERMISSION_EDIT, $userId)) {
-            throw new \RuntimeException('Access denied');
-        }
-        
-        // Verifica WIP limit na coluna de destino (se for coluna diferente)
-        if ($sourceColumn->getId() !== $targetColumnId && $targetColumn->isAtWipLimit()) {
-            throw new \RuntimeException('Target column is at WIP limit');
-        }
-        
-        // Executa movimento
-        $result = $this->kanbanTaskRepo->moveToColumn($kanbanTaskId, $targetColumnId, $newOrder, $userId);
-        
-        if ($result) {
-            $this->cache->invalidate("board_full:{$targetColumn->getBoardId()}");
-            
-            // Se moveu para coluna "done", atualiza progresso da tarefa
-            if ($targetColumn->isDone() && !$task->isCompleted()) {
-                $task->setStatus(1); // Completada
-                $task->setPercentComplete(100);
-                $this->taskRepo->save($task);
-            }
-            
-            Logger::info('Task moved in kanban', [
-                'kanban_task_id' => $kanbanTaskId,
-                'from_column' => $sourceColumn->getId(),
-                'to_column' => $targetColumnId,
-                'user_id' => $userId,
-            ]);
-        }
-        
-        return $result;
-    }
-    
-    /**
-     * Move múltiplas tarefas (drag & drop em lote)
-     */
-    public function moveTasks(array $moves, int $boardId, ?int $userId = null): bool
-    {
-        $userId = $userId ?? $this->auth->getCurrentUser()?->getId();
-        
-        try {
-            foreach ($moves as $move) {
-                $this->moveTask(
-                    $move['kanban_task_id'],
-                    $move['column_id'],
-                    $move['order'],
-                    $userId
-                );
-            }
-            
-            $this->cache->invalidate("board_full:{$boardId}");
-            return true;
-        } catch (\Exception $e) {
-            Logger::error('Failed to move tasks', ['error' => $e->getMessage()]);
-            return false;
-        }
-    }
-    
-    /**
-     * Remove tarefa do kanban
-     */
-    public function removeTask(int $taskId, ?int $userId = null): bool
-    {
-        $userId = $userId ?? $this->auth->getCurrentUser()?->getId();
-        
-        $kanbanTask = $this->kanbanTaskRepo->findByTask($taskId);
-        if (!$kanbanTask) {
-            return true;
-        }
-        
-        $column = $this->columnRepo->find($kanbanTask->getColumnId());
-        
-        if (!$this->auth->canAccessTask($taskId, AuthorizationService::PERMISSION_DELETE, $userId)) {
-            throw new \RuntimeException('Access denied');
-        }
-        
-        $result = $this->kanbanTaskRepo->removeTask($taskId);
-        
-        if ($result && $column) {
-            $this->cache->invalidate("board_full:{$column->getBoardId()}");
-        }
-        
-        return $result;
-    }
-    
-    // =====================================================
-    // ANALYTICS
-    // =====================================================
-    
-    /**
-     * Obtém estatísticas do board
-     */
-    public function getBoardAnalytics(int $boardId): array
-    {
-        $board = $this->boardRepo->find($boardId);
-        if (!$board) {
-            throw new \RuntimeException('Board not found');
-        }
-        
-        $columns = $this->columnRepo->findByBoard($boardId);
-        $columnStats = [];
-        
-        foreach ($columns as $column) {
-            $count = $this->kanbanTaskRepo->countByColumn($column->getId() ?? 0);
-            $columnStats[] = [
-                'column_id' => $column->getId(),
-                'column_name' => $column->getName(),
-                'task_count' => $count,
-                'wip_limit' => $column->getWipLimit(),
-                'is_at_limit' => $column->isAtWipLimit(),
-            ];
-        }
-        
-        // Tarefas travadas
-        $staleTasks = $this->kanbanTaskRepo->findStaleTasks();
+        // Carrega colunas
+        $columns = $this->getColumns($boardId);
         
         return [
-            'board_id' => $boardId,
-            'columns' => $columnStats,
-            'stale_tasks_count' => count($staleTasks),
-            'stale_tasks' => array_map(fn($t) => $t->toArray(), $staleTasks),
+            'board' => $board->toArray(),
+            'columns' => array_map(fn($c) => $c->toArray(), $columns),
         ];
     }
     
     /**
-     * Obtém tempo médio em cada coluna (lead time analysis)
+     * Cria colunas padrão para um board
      */
-    public function getLeadTimeAnalysis(int $boardId): array
+    private function createDefaultColumns(int $boardId): void
     {
-        return $this->kanbanTaskRepo->getColumnTimeStats($boardId);
+        $defaults = [
+            ['name' => 'Backlog', 'order' => 1, 'is_backlog' => 1],
+            ['name' => 'To Do', 'order' => 2],
+            ['name' => 'In Progress', 'order' => 3],
+            ['name' => 'Done', 'order' => 4, 'is_done' => 1],
+        ];
+        
+        foreach ($defaults as $col) {
+            $this->db->insert('dotp_kanban_columns', [
+                'column_board_id' => $boardId,
+                'column_name' => $col['name'],
+                'column_order' => $col['order'],
+                'column_is_backlog' => $col['is_backlog'] ?? 0,
+                'column_is_done' => $col['is_done'] ?? 0,
+                'column_status' => 0,
+            ]);
+        }
+    }
+    
+    /**
+     * Obtém colunas de um board
+     */
+    public function getColumns(int $boardId): array
+    {
+        $sql = sprintf(
+            "SELECT * FROM `dotp_kanban_columns` 
+             WHERE column_board_id = %d AND column_status = 0
+             ORDER BY column_order ASC",
+            $boardId
+        );
+        
+        $results = $this->db->fetchAll($sql);
+        $columns = [];
+        
+        foreach ($results as $data) {
+            $columns[] = $this->hydrateColumn($data);
+        }
+        
+        return $columns;
+    }
+    
+    /**
+     * Move tarefa entre colunas
+     */
+    public function moveTask(int $kanbanTaskId, int $targetColumnId, int $newOrder, ?int $userId = null): bool
+    {
+        $sql = sprintf(
+            "UPDATE `dotp_kanban_tasks` 
+             SET kanban_task_column_id = %d, 
+                 kanban_task_order = %d,
+                 kanban_task_moved_by = %d,
+                 kanban_task_moved_at = NOW()
+             WHERE kanban_task_id = %d",
+            $targetColumnId,
+            $newOrder,
+            $userId ?? 0,
+            $kanbanTaskId
+        );
+        
+        return $this->db->query($sql);
+    }
+    
+    /**
+     * Hidrata dados do board
+     */
+    private function hydrateBoard(array $data): KanbanBoard
+    {
+        $entity = new KanbanBoard();
+        $entity->setId((int) $data['board_id']);
+        $entity->setName($data['board_name']);
+        $entity->setDescription($data['board_description'] ?? null);
+        $entity->setProjectId($data['board_project'] ? (int) $data['board_project'] : null);
+        $entity->setCompanyId((int) $data['board_company']);
+        $entity->setCreatedBy($data['board_created_by'] ? (int) $data['board_created_by'] : null);
+        $entity->setStatus((int) $data['board_status']);
+        
+        if (!empty($data['board_created_at'])) {
+            $entity->setCreatedAt(new DateTime($data['board_created_at']));
+        }
+        if (!empty($data['board_updated_at'])) {
+            $entity->setUpdatedAt(new DateTime($data['board_updated_at']));
+        }
+        
+        return $entity;
+    }
+    
+    /**
+     * Hidrata dados da coluna
+     */
+    private function hydrateColumn(array $data): KanbanColumn
+    {
+        $entity = new KanbanColumn();
+        $entity->setId((int) $data['column_id']);
+        $entity->setBoardId((int) $data['column_board_id']);
+        $entity->setName($data['column_name']);
+        $entity->setColor($data['column_color'] ?? null);
+        $entity->setOrder((int) $data['column_order']);
+        $entity->setWipLimit($data['column_wip_limit'] ? (int) $data['column_wip_limit'] : null);
+        $entity->setIsDone((bool) $data['column_is_done']);
+        $entity->setIsBacklog((bool) $data['column_is_backlog']);
+        $entity->setStatus((int) $data['column_status']);
+        
+        return $entity;
     }
 }

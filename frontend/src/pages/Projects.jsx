@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react'
-import { getProjects } from '../services/api'
+import { getProjects, createProject } from '../services/api'
+import Modal from '../components/ui/Modal'
+import Button from '../components/ui/Button'
+import Input from '../components/ui/Input'
 
 function Projects() {
     const [projects, setProjects] = useState([])
@@ -7,6 +10,17 @@ function Projects() {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState(null)
     const [search, setSearch] = useState('')
+    
+    // Modal state
+    const [isModalOpen, setIsModalOpen] = useState(false)
+    const [newProject, setNewProject] = useState({
+        name: '',
+        short_name: '',
+        description: '',
+        start_date: '',
+        end_date: ''
+    })
+    const [creating, setCreating] = useState(false)
 
     useEffect(() => {
         loadProjects()
@@ -56,6 +70,29 @@ function Projects() {
         return badges[status] || 'info'
     }
 
+    async function handleCreateProject(e) {
+        e.preventDefault()
+        if (!newProject.name.trim()) return
+        
+        try {
+            setCreating(true)
+            await createProject({
+                name: newProject.name,
+                short_name: newProject.short_name || null,
+                description: newProject.description || null,
+                start_date: newProject.start_date || null,
+                end_date: newProject.end_date || null
+            })
+            setIsModalOpen(false)
+            setNewProject({ name: '', short_name: '', description: '', start_date: '', end_date: '' })
+            loadProjects()
+        } catch (err) {
+            alert('Erro ao criar projeto: ' + err.message)
+        } finally {
+            setCreating(false)
+        }
+    }
+
     return (
         <>
             <div className="topbar">
@@ -76,7 +113,7 @@ function Projects() {
                         />
                         <button type="submit" className="btn btn-secondary">Buscar</button>
                     </form>
-                    <button className="btn btn-primary">+ Novo Projeto</button>
+                    <button className="btn btn-primary" onClick={() => setIsModalOpen(true)}>+ Novo Projeto</button>
                 </div>
             </div>
 
@@ -198,6 +235,96 @@ function Projects() {
                     </div>
                 )}
             </div>
+
+            {/* Create Project Modal */}
+            <Modal
+                isOpen={isModalOpen}
+                onClose={() => setIsModalOpen(false)}
+                title="Novo Projeto"
+                footer={
+                    <>
+                        <Button variant="secondary" onClick={() => setIsModalOpen(false)}>
+                            Cancelar
+                        </Button>
+                        <Button 
+                            variant="primary" 
+                            onClick={handleCreateProject}
+                            disabled={creating || !newProject.name.trim()}
+                        >
+                            {creating ? 'Criando...' : 'Criar Projeto'}
+                        </Button>
+                    </>
+                }
+            >
+                <form onSubmit={handleCreateProject}>
+                    <div style={{ marginBottom: 'var(--spacing-4)' }}>
+                        <label style={{ display: 'block', marginBottom: 'var(--spacing-2)', fontWeight: 500 }}>
+                            Nome do Projeto *
+                        </label>
+                        <Input
+                            value={newProject.name}
+                            onChange={(e) => setNewProject({ ...newProject, name: e.target.value })}
+                            placeholder="Digite o nome do projeto"
+                            required
+                        />
+                    </div>
+                    
+                    <div style={{ marginBottom: 'var(--spacing-4)' }}>
+                        <label style={{ display: 'block', marginBottom: 'var(--spacing-2)', fontWeight: 500 }}>
+                            Nome Curto
+                        </label>
+                        <Input
+                            value={newProject.short_name}
+                            onChange={(e) => setNewProject({ ...newProject, short_name: e.target.value })}
+                            placeholder="Ex: PROJ-2024"
+                        />
+                    </div>
+                    
+                    <div style={{ marginBottom: 'var(--spacing-4)' }}>
+                        <label style={{ display: 'block', marginBottom: 'var(--spacing-2)', fontWeight: 500 }}>
+                            Descrição
+                        </label>
+                        <textarea
+                            value={newProject.description}
+                            onChange={(e) => setNewProject({ ...newProject, description: e.target.value })}
+                            placeholder="Descrição do projeto"
+                            rows={3}
+                            style={{
+                                width: '100%',
+                                padding: 'var(--spacing-2) var(--spacing-3)',
+                                border: '1px solid var(--color-gray-300)',
+                                borderRadius: 'var(--radius-md)',
+                                fontSize: '0.875rem',
+                                fontFamily: 'inherit'
+                            }}
+                        />
+                    </div>
+                    
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--spacing-4)' }}>
+                        <div>
+                            <label style={{ display: 'block', marginBottom: 'var(--spacing-2)', fontWeight: 500 }}>
+                                Data de Início
+                            </label>
+                            <Input
+                                type="date"
+                                value={newProject.start_date}
+                                onChange={(e) => setNewProject({ ...newProject, start_date: e.target.value })}
+                            />
+                        </div>
+                        
+                        <div>
+                            <label style={{ display: 'block', marginBottom: 'var(--spacing-2)', fontWeight: 500 }}>
+                                Data de Término
+                            </label>
+                            <Input
+                                type="date"
+                                value={newProject.end_date}
+                                onChange={(e) => setNewProject({ ...newProject, end_date: e.target.value })}
+                            />
+                        </div>
+                    </div>
+                </form>
+            </Modal>
         </>
     )
 }

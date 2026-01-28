@@ -48,14 +48,14 @@ class NotificationController extends BaseController
                 'unread_count' => $this->service->getUnreadCount($userId),
             ]);
             
-            $this->json($response->toArray());
+            $this->response->json($response->toArray())->send();
         } catch (\Exception $e) {
-            $this->error($e->getMessage(), 500);
+            $this->response->error($e->getMessage(), 500)->send();
         }
     }
     
     /**
-     * GET /v1/notifications/count
+     * GET /v1/notifications/unread-count
      * Conta notificações não lidas
      */
     public function count(): void
@@ -64,16 +64,16 @@ class NotificationController extends BaseController
             $userId = $this->getCurrentUserId();
             $count = $this->service->getUnreadCount($userId);
             
-            $this->json(ApiResponse::success([
+            $this->response->json(ApiResponse::success([
                 'unread_count' => $count,
-            ])->toArray());
+            ])->toArray())->send();
         } catch (\Exception $e) {
-            $this->error($e->getMessage(), 500);
+            $this->response->error($e->getMessage(), 500)->send();
         }
     }
     
     /**
-     * PUT /v1/notifications/:id/read
+     * POST /v1/notifications/:id/read
      * Marca notificação como lida
      */
     public function markAsRead(int $id): void
@@ -84,18 +84,18 @@ class NotificationController extends BaseController
             $result = $this->service->markAsRead($id, $userId);
             
             if ($result) {
-                $this->json(ApiResponse::success(null, 'Notification marked as read')->toArray());
+                $this->response->json(ApiResponse::success(null, 'Notification marked as read')->toArray())->send();
             } else {
                 $response = ApiResponse::error('Notification not found');
-                $this->json($response->toArray(), 404);
+                $this->response->json($response->toArray(), 404)->send();
             }
         } catch (\Exception $e) {
-            $this->error($e->getMessage(), 500);
+            $this->response->error($e->getMessage(), 500)->send();
         }
     }
     
     /**
-     * PUT /v1/notifications/read-all
+     * POST /v1/notifications/mark-all-read
      * Marca todas como lidas
      */
     public function markAllAsRead(): void
@@ -105,72 +105,9 @@ class NotificationController extends BaseController
             
             $this->service->markAllAsRead($userId);
             
-            $this->json(ApiResponse::success(null, 'All notifications marked as read')->toArray());
+            $this->response->json(ApiResponse::success(null, 'All notifications marked as read')->toArray())->send();
         } catch (\Exception $e) {
-            $this->error($e->getMessage(), 500);
-        }
-    }
-    
-    /**
-     * GET /v1/notifications/stats
-     * Estatísticas de notificações
-     */
-    public function stats(): void
-    {
-        try {
-            $userId = $this->getCurrentUserId();
-            
-            $stats = $this->service->getStats($userId);
-            
-            $this->json(ApiResponse::success($stats)->toArray());
-        } catch (\Exception $e) {
-            $this->error($e->getMessage(), 500);
-        }
-    }
-    
-    /**
-     * POST /v1/notifications
-     * Cria notificação (admin/system)
-     */
-    public function create(): void
-    {
-        try {
-            $data = $this->request->getBody();
-            $userId = $this->getCurrentUserId();
-            
-            // Validação básica
-            if (empty($data['user_id']) || empty($data['type']) || empty($data['title'])) {
-                $response = ApiResponse::validationError([
-                    'user_id' => 'Required',
-                    'type' => 'Required',
-                    'title' => 'Required',
-                ]);
-                $this->json($response->toArray(), 422);
-                return;
-            }
-            
-            $notification = $this->service->create(
-                (int) $data['user_id'],
-                $data['type'],
-                $data['title'],
-                $data['message'] ?? '',
-                $data['entity_type'] ?? null,
-                $data['entity_id'] ?? null,
-                $data['data'] ?? null,
-                $data['channel'] ?? 'in_app'
-            );
-            
-            if ($notification) {
-                $this->json(ApiResponse::success(
-                    $notification->toArray(),
-                    'Notification created'
-                )->toArray(), 201);
-            } else {
-                $response = ApiResponse::error('Failed to create notification');
-                $this->json($response->toArray(), 400);
-            }
-        } catch (\Exception $e) {
-            $this->error($e->getMessage(), 500);
+            $this->response->error($e->getMessage(), 500)->send();
         }
     }
     
