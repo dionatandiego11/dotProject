@@ -26,17 +26,24 @@ function KanbanTask({ task, columnId, index, onDragStart, onClick }) {
 
   const getPriorityLabel = (priority) => {
     const labels = {
-      1: 'Low',
-      2: 'Medium',
-      3: 'High',
-      4: 'Urgent',
+      1: 'Baixa',
+      2: 'Normal',
+      3: 'Alta',
+      4: 'Urgente',
     }
-    return labels[priority] || 'Unknown'
+    return labels[priority] || 'Indefinida'
   }
 
   const formatTimeInColumn = (timeStr) => {
     if (!timeStr) return ''
     return `• ${timeStr}`
+  }
+
+  const formatDate = (value) => {
+    if (!value) return ''
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return value
+    return date.toLocaleDateString('pt-BR')
   }
 
   const isOverdue = taskData?.is_overdue
@@ -91,9 +98,12 @@ function KanbanTask({ task, columnId, index, onDragStart, onClick }) {
 
         {/* Assignee */}
         {taskData?.assigned_to && (
-          <div className="kanban-task-assignee">
+          <div className="kanban-task-assignee" title={taskData.assigned_to_name || ''}>
             <span className="kanban-avatar">
               {taskData.assigned_to_name?.charAt(0) || '?'}
+            </span>
+            <span className="kanban-assignee-name">
+              {taskData.assigned_to_name || 'Responsavel'}
             </span>
           </div>
         )}
@@ -101,29 +111,35 @@ function KanbanTask({ task, columnId, index, onDragStart, onClick }) {
         {/* Tags/indicadores */}
         <div className="kanban-task-indicators">
           {taskData?.estimated_hours && (
-            <span className="kanban-indicator" title="Estimated hours">
-              ⏱️ {taskData.estimated_hours}h
+            <span className="kanban-indicator" title="Horas estimadas">
+              {taskData.estimated_hours}h
             </span>
           )}
           
           {taskData?.comments_count > 0 && (
-            <span className="kanban-indicator" title="Comments">
-              💬 {taskData.comments_count}
+            <span className="kanban-indicator" title="Comentarios">
+              {taskData.comments_count} c
             </span>
           )}
 
           {taskData?.attachments_count > 0 && (
-            <span className="kanban-indicator" title="Attachments">
-              📎 {taskData.attachments_count}
+            <span className="kanban-indicator" title="Anexos">
+              {taskData.attachments_count} a
             </span>
           )}
         </div>
       </div>
 
+      {taskData?.end_date && (
+        <div className="kanban-task-due">
+          Prazo: {formatDate(taskData.end_date)}
+        </div>
+      )}
+
       {/* Overdue badge */}
       {isOverdue && (
         <div className="kanban-task-overdue-badge">
-          ⚠️ Overdue
+          Atrasada
         </div>
       )}
     </div>
@@ -146,6 +162,7 @@ KanbanTask.propTypes = {
       estimated_hours: PropTypes.number,
       comments_count: PropTypes.number,
       attachments_count: PropTypes.number,
+      end_date: PropTypes.string,
     }),
   }).isRequired,
   columnId: PropTypes.number.isRequired,

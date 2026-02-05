@@ -4,7 +4,7 @@
  * Handles all API calls to the backend.
  */
 
-const API_BASE = '/api/v1';
+const API_BASE = '/api.php/v1';
 
 // Store token in memory
 let authToken = localStorage.getItem('dp_token');
@@ -42,6 +42,7 @@ export function isAuthenticated() {
  */
 async function apiRequest(endpoint, options = {}) {
     const url = `${API_BASE}${endpoint}`;
+    console.log('API Request:', url, options.method || 'GET');
 
     const headers = {
         'Content-Type': 'application/json',
@@ -60,6 +61,7 @@ async function apiRequest(endpoint, options = {}) {
         });
 
         const rawText = await response.text();
+        console.log('API Response:', url, response.status, rawText.substring(0, 200));
         let data = null;
         if (rawText) {
             try {
@@ -329,6 +331,305 @@ export async function markAllNotificationsAsRead() {
     });
 }
 
+// ===========================================
+// FILE ATTACHMENTS ENDPOINTS
+// ===========================================
+
+export async function getTaskFiles(taskId) {
+    return apiRequest(`/tasks/${taskId}/files`);
+}
+
+export async function uploadTaskFile(taskId, file) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const url = `${API_BASE}/tasks/${taskId}/files`;
+    const token = getToken();
+
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Authorization': token ? `Bearer ${token}` : '',
+        },
+        body: formData,
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+        throw new Error(data.message || 'Upload failed');
+    }
+
+    return data;
+}
+
+export async function deleteTaskFile(fileId) {
+    return apiRequest(`/files/${fileId}`, {
+        method: 'DELETE',
+    });
+}
+
+export function getTaskFileDownloadUrl(fileId) {
+    return `${API_BASE}/files/${fileId}/download`;
+}
+
+// ===========================================
+// ANALYTICS ENDPOINTS
+// ===========================================
+
+export async function getDashboardAnalytics() {
+    return apiRequest('/analytics/dashboard');
+}
+
+export async function getProductivityTrend(days = 7) {
+    return apiRequest(`/analytics/productivity?days=${days}`);
+}
+
+// ===========================================
+// DASHBOARD POR PERFIL ENDPOINTS
+// ===========================================
+
+/**
+ * Dashboard auto-detectado pelo perfil do usuário
+ */
+export async function getDashboardByProfile() {
+    return apiRequest('/dashboard');
+}
+
+/**
+ * Dashboard do Prefeito - Visão Executiva
+ */
+export async function getDashboardPrefeito() {
+    return apiRequest('/dashboard/prefeito');
+}
+
+/**
+ * Dashboard do Secretário - Visão da Secretaria
+ */
+export async function getDashboardSecretario() {
+    return apiRequest('/dashboard/secretario');
+}
+
+/**
+ * Dashboard do Coordenador - Visão de Projetos
+ */
+export async function getDashboardCoordenador() {
+    return apiRequest('/dashboard/coordenador');
+}
+
+/**
+ * Dashboard do Técnico - Visão de Tarefas
+ */
+export async function getDashboardTecnico() {
+    return apiRequest('/dashboard/tecnico');
+}
+
+/**
+ * Dashboard do Controlador - Visão de Fiscalização
+ */
+export async function getDashboardControlador() {
+    return apiRequest('/dashboard/controlador');
+}
+
+/**
+ * Alertas do usuário logado
+ */
+export async function getDashboardAlertas() {
+    return apiRequest('/dashboard/alertas');
+}
+
+/**
+ * Marcar alerta como lido
+ */
+export async function marcarAlertaLido(alertaId) {
+    return apiRequest(`/dashboard/alertas/${alertaId}/lido`, {
+        method: 'PUT',
+    });
+}
+
+/**
+ * Marcar todos os alertas como lidos
+ */
+export async function marcarTodosAlertasLidos() {
+    return apiRequest('/dashboard/alertas/lidos', {
+        method: 'PUT',
+    });
+}
+
+// ===========================================
+// ADMINISTRAÇÃO - NÍVEIS HIERÁRQUICOS
+// ===========================================
+
+export async function getNiveis() {
+    return apiRequest('/admin/niveis');
+}
+
+export async function getNivel(id) {
+    return apiRequest(`/admin/niveis/${id}`);
+}
+
+export async function createNivel(data) {
+    return apiRequest('/admin/niveis', {
+        method: 'POST',
+        body: JSON.stringify(data),
+    });
+}
+
+export async function updateNivel(id, data) {
+    return apiRequest(`/admin/niveis/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+    });
+}
+
+export async function deleteNivel(id) {
+    return apiRequest(`/admin/niveis/${id}`, {
+        method: 'DELETE',
+    });
+}
+
+export async function reordenarNiveis(ordens) {
+    return apiRequest('/admin/niveis/reordenar', {
+        method: 'PUT',
+        body: JSON.stringify({ ordens }),
+    });
+}
+
+// ===========================================
+// ADMINISTRAÇÃO - UNIDADES ORGANIZACIONAIS
+// ===========================================
+
+export async function getUnidades(params = {}) {
+    const queryString = new URLSearchParams(params).toString();
+    const endpoint = queryString ? `/admin/unidades?${queryString}` : '/admin/unidades';
+    return apiRequest(endpoint);
+}
+
+export async function getArvoreUnidades(raizId = null) {
+    const params = raizId ? `?raiz_id=${raizId}` : '';
+    return apiRequest(`/admin/unidades/arvore${params}`);
+}
+
+export async function getUnidade(id) {
+    return apiRequest(`/admin/unidades/${id}`);
+}
+
+export async function createUnidade(data) {
+    return apiRequest('/admin/unidades', {
+        method: 'POST',
+        body: JSON.stringify(data),
+    });
+}
+
+export async function updateUnidade(id, data) {
+    return apiRequest(`/admin/unidades/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+    });
+}
+
+export async function deleteUnidade(id) {
+    return apiRequest(`/admin/unidades/${id}`, {
+        method: 'DELETE',
+    });
+}
+
+export async function moverUnidade(id, paiId) {
+    return apiRequest(`/admin/unidades/${id}/mover`, {
+        method: 'PUT',
+        body: JSON.stringify({ pai_id: paiId }),
+    });
+}
+
+export async function getSubordinadas(id) {
+    return apiRequest(`/admin/unidades/${id}/subordinadas`);
+}
+
+export async function getUsuarios(params = {}) {
+    const queryString = new URLSearchParams(params).toString();
+    const endpoint = queryString ? `/admin/usuarios?${queryString}` : '/admin/usuarios';
+    return apiRequest(endpoint);
+}
+
+export async function getUsuario(id) {
+    return apiRequest(`/admin/usuarios/${id}`);
+}
+
+export async function createUsuario(data) {
+    return apiRequest('/admin/usuarios', {
+        method: 'POST',
+        body: JSON.stringify(data),
+    });
+}
+
+export async function updateUsuario(id, data) {
+    return apiRequest(`/admin/usuarios/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+    });
+}
+
+export async function deleteUsuario(id) {
+    return apiRequest(`/admin/usuarios/${id}`, {
+        method: 'DELETE',
+    });
+}
+
+// ===========================================
+// ADMINISTRAÇÃO - VÍNCULOS
+// ===========================================
+
+export async function getVinculos(params = {}) {
+    const queryString = new URLSearchParams(params).toString();
+    const endpoint = queryString ? `/admin/vinculos?${queryString}` : '/admin/vinculos';
+    return apiRequest(endpoint);
+}
+
+export async function createVinculo(data) {
+    return apiRequest('/admin/vinculos', {
+        method: 'POST',
+        body: JSON.stringify(data),
+    });
+}
+
+export async function updateVinculo(id, data) {
+    return apiRequest(`/admin/vinculos/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+    });
+}
+
+export async function deleteVinculo(id) {
+    return apiRequest(`/admin/vinculos/${id}`, {
+        method: 'DELETE',
+    });
+}
+
+export async function definirVinculoPrincipal(id) {
+    return apiRequest(`/admin/vinculos/${id}/principal`, {
+        method: 'PUT',
+    });
+}
+
+// ===========================================
+// ADMINISTRAÇÃO - PERMISSÕES
+// ===========================================
+
+export async function getMatrizPermissoes() {
+    return apiRequest('/admin/permissoes/matriz');
+}
+
+export async function updateMatrizPermissoes(data) {
+    return apiRequest('/admin/permissoes/matriz', {
+        method: 'PUT',
+        body: JSON.stringify(data),
+    });
+}
+
+export async function getOrganograma() {
+    return apiRequest('/admin/organograma');
+}
+
 export default {
     // Auth
     login,
@@ -369,4 +670,49 @@ export default {
     getGoogleCalendars,
     syncTaskToCalendar,
     getGoogleDriveFiles,
+
+    // Files
+    getTaskFiles,
+    uploadTaskFile,
+    deleteTaskFile,
+    getTaskFileDownloadUrl,
+
+    // Analytics
+    getDashboardAnalytics,
+    getProductivityTrend,
+
+    // Admin - Níveis
+    getNiveis,
+    getNivel,
+    createNivel,
+    updateNivel,
+    deleteNivel,
+    reordenarNiveis,
+
+    // Admin - Unidades
+    getUnidades,
+    getArvoreUnidades,
+    getUnidade,
+    createUnidade,
+    updateUnidade,
+    deleteUnidade,
+    moverUnidade,
+    getSubordinadas,
+    getUsuarios,
+    getUsuario,
+    createUsuario,
+    updateUsuario,
+    deleteUsuario,
+
+    // Admin - Vínculos
+    getVinculos,
+    createVinculo,
+    updateVinculo,
+    deleteVinculo,
+    definirVinculoPrincipal,
+
+    // Admin - Permissões
+    getMatrizPermissoes,
+    updateMatrizPermissoes,
+    getOrganograma
 };

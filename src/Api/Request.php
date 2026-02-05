@@ -67,11 +67,20 @@ class Request
     private function parseBody(): array
     {
         $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
+        $input = file_get_contents('php://input');
+        $input = is_string($input) ? trim($input) : '';
 
         if (strpos($contentType, 'application/json') !== false) {
-            $input = file_get_contents('php://input');
             $data = json_decode($input, true);
             return is_array($data) ? $data : [];
+        }
+
+        // Fallback: try parse JSON even without content-type (common in some proxies)
+        if ($input !== '' && (str_starts_with($input, '{') || str_starts_with($input, '['))) {
+            $data = json_decode($input, true);
+            if (is_array($data)) {
+                return $data;
+            }
         }
 
         return $_POST;
@@ -94,6 +103,8 @@ class Request
         // Authorization header special case
         if (isset($_SERVER['Authorization'])) {
             $headers['AUTHORIZATION'] = $_SERVER['Authorization'];
+        } elseif (isset($_SERVER['HTTP_AUTHORIZATION'])) {
+            $headers['AUTHORIZATION'] = $_SERVER['HTTP_AUTHORIZATION'];
         } elseif (function_exists('apache_request_headers')) {
             $apacheHeaders = apache_request_headers();
             if (isset($apacheHeaders['Authorization'])) {
@@ -119,12 +130,28 @@ class Request
         return $this->queryParams[$key] ?? $default;
     }
 
+    /**
+     * Alias for getQueryParam to preserve controller expectations.
+     */
+    public function getQuery(string $key, mixed $default = null): mixed
+    {
+        return $this->getQueryParam($key, $default);
+    }
+
     public function getQueryParams(): array
     {
         return $this->queryParams;
     }
 
     public function getBody(): array
+    {
+        return $this->body;
+    }
+
+    /**
+     * Get JSON request body (alias for getBody)
+     */
+    public function getJsonBody(): array
     {
         return $this->body;
     }
@@ -170,5 +197,38 @@ class Request
     public function isMethod(string $method): bool
     {
         return $this->getMethod() === strtoupper($method);
+    }
+    
+    /**
+     * Get uploaded file
+     */
+    public function getUploadedFile(string $name): ?array
+    {
+        if (!isset($_FILES[$name]) || $_FILES[$name]['error'] === UPLOAD_ERR_NO_FILE) {
+            return null;
+        }
+        
+        if ($_FILES[$name]['error'] !== UPLOAD_ERR_OK) {
+            throw new \RuntimeException('Upload error: ' . $this->getUploadErrorMessage($_FILES[$name]['error']));
+        }
+        
+        return $_FILES[$name];
+    }
+    
+    /**
+     * Get upload error message
+     */
+    private function getUploadErrorMessage(int $code): string
+    {
+        return match ($code) {
+            UPLOAD_ERR_INI_SIZE => 'File too large (exceeds upload_max_filesize)',
+            UPLOAD_ERR_FORM_SIZE => 'File too large (exceeds MAX_FILE_SIZE)',
+            UPLOAD_ERR_PARTIAL => 'File partially uploaded',
+            UPLOAD_ERR_NO_FILE => 'No file uploaded',
+            UPLOAD_ERR_NO_TMP_DIR => 'Missing temporary folder',
+            UPLOAD_ERR_CANT_WRITE => 'Failed to write file',
+            UPLOAD_ERR_EXTENSION => 'Upload stopped by extension',
+            default => 'Unknown upload error'
+        };
     }
 }

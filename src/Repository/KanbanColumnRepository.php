@@ -67,7 +67,7 @@ class KanbanColumnRepository extends BaseRepository
     /**
      * {@inheritdoc}
      */
-    public function save(object $entity): bool
+    public function save(object $entity): int
     {
         if (!$entity instanceof KanbanColumn) {
             throw new \InvalidArgumentException('Entity must be KanbanColumn');
@@ -91,7 +91,7 @@ class KanbanColumnRepository extends BaseRepository
             $this->clearCache();
         }
         
-        return $result;
+        return $result ? ($entity->getId() ?? 0) : 0;
     }
     
     /**

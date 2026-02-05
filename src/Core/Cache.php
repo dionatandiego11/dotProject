@@ -40,6 +40,7 @@ class Cache
         string $prefix = 'dp:',
         ?int $defaultTtl = null
     ) {
+        error_log('[DEBUG] Cache::__construct() iniciado');
         $this->enabled = filter_var(
             getenv('CACHE_ENABLED') ?: 'true',
             FILTER_VALIDATE_BOOL

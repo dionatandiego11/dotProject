@@ -42,6 +42,14 @@ class Logger
     }
 
     /**
+     * Compatibilidade com chamadas antigas (Logger::getInstance()).
+     */
+    public static function getInstance(): self
+    {
+        return new self();
+    }
+
+    /**
      * Log an error.
      *
      * @param array<string, mixed> $context
@@ -49,6 +57,39 @@ class Logger
     public static function error(string $message, array $context = []): void
     {
         self::log('error', $message, $context);
+    }
+
+    /**
+     * Log debug message.
+     *
+     * @param array<string, mixed> $context
+     */
+    public static function debug(string $message, array $context = []): void
+    {
+        // Só loga em ambiente de desenvolvimento
+        if (getenv('APP_DEBUG') === 'true' || getenv('APP_ENV') === 'development') {
+            self::log('debug', $message, $context);
+        }
+    }
+
+    /**
+     * Log info message.
+     *
+     * @param array<string, mixed> $context
+     */
+    public static function info(string $message, array $context = []): void
+    {
+        self::log('info', $message, $context);
+    }
+
+    /**
+     * Log warning message.
+     *
+     * @param array<string, mixed> $context
+     */
+    public static function warning(string $message, array $context = []): void
+    {
+        self::log('warning', $message, $context);
     }
 
     /**

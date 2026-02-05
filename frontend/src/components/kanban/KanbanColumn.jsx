@@ -86,7 +86,7 @@ function KanbanColumn({
         {/* Drop zone vazia */}
         {column.tasks?.length === 0 && (
           <div className="kanban-empty-state">
-            Drop tasks here
+            Solte tarefas aqui
           </div>
         )}
       </div>

@@ -30,4 +30,13 @@ ini_set('display_errors', '1');
 $GLOBALS['dPconfig'] = [
     'daily_working_hours' => 8,
     'dbprefix' => '',
+    'debug' => false,
 ];
+
+// Mock dPgetConfig function for tests (legacy system compatibility)
+if (!function_exists('dPgetConfig')) {
+    function dPgetConfig($key, $default = null)
+    {
+        return $GLOBALS['dPconfig'][$key] ?? $default;
+    }
+}

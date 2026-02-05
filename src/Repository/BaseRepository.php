@@ -20,16 +20,29 @@ abstract class BaseRepository implements RepositoryInterface
 {
     protected Database $db;
     protected Cache $cache;
-    protected string $table;
-    protected string $primaryKey;
+    /** @var string */
+    protected $table;
+    /** @var string */
+    protected $primaryKey;
     protected int $cacheTtl;
 
     public function __construct(?Database $db = null, ?Cache $cache = null)
     {
-        $this->db = $db ?? Database::getInstance();
-        $this->cache = $cache ?? new Cache();
-        $this->primaryKey = 'id';
-        $this->cacheTtl = 300; // 5 minutos
+        error_log('[DEBUG] BaseRepository::__construct() iniciado');
+        try {
+            $this->db = $db ?? Database::getInstance();
+            error_log('[DEBUG] Database instance OK');
+            $this->cache = $cache ?? new Cache();
+            error_log('[DEBUG] Cache instance OK');
+            if (!isset($this->primaryKey) || $this->primaryKey === '') {
+                $this->primaryKey = 'id';
+            }
+            $this->cacheTtl = 300; // 5 minutos
+            error_log('[DEBUG] BaseRepository::__construct() concluido');
+        } catch (\Throwable $e) {
+            error_log('[DEBUG] ERRO em BaseRepository::__construct(): ' . $e->getMessage());
+            throw $e;
+        }
     }
 
     /**
@@ -137,7 +150,7 @@ abstract class BaseRepository implements RepositoryInterface
             $sql .= " OFFSET {$offset}";
         }
 
-        $results = $this->db->fetchAll($sql, $params);
+        $results = $this->db->fetchAllParams($sql, $params);
         $entities = array_map([$this, 'hydrate'], $results);
         
         $this->cache->set($cacheKey, $entities, $this->cacheTtl);
@@ -199,4 +212,56 @@ abstract class BaseRepository implements RepositoryInterface
      * @return array<string, mixed>
      */
     abstract protected function extract(object $entity): array;
+
+    /**
+     * Salva (insere ou atualiza) uma entidade
+     * 
+     * @param object $entity
+     * @return int ID da entidade
+     */
+    public function save(object $entity): int
+    {
+        $data = $this->extract($entity);
+        $id = $entity->getId();
+        
+        if ($id) {
+            // UPDATE
+            $fields = [];
+            $values = [];
+            foreach ($data as $key => $value) {
+                $fields[] = "{$key} = ?";
+                $values[] = $value;
+            }
+            $values[] = $id;
+            
+            $sql = "UPDATE {$this->table} SET " . implode(', ', $fields) . " WHERE {$this->primaryKey} = ?";
+            $this->db->execute($sql, $values);
+            $this->clearCache();
+            return $id;
+        } else {
+            // INSERT
+            $columns = array_keys($data);
+            $placeholders = array_fill(0, count($columns), '?');
+            
+            $sql = "INSERT INTO {$this->table} (" . implode(', ', $columns) . ") VALUES (" . implode(', ', $placeholders) . ")";
+            $this->db->execute($sql, array_values($data));
+            $newId = (int) $this->db->lastInsertId();
+            $this->clearCache();
+            return $newId;
+        }
+    }
+
+    /**
+     * Exclui uma entidade pelo ID
+     * 
+     * @param int $id
+     * @return bool
+     */
+    public function delete(int $id): bool
+    {
+        $sql = "DELETE FROM {$this->table} WHERE {$this->primaryKey} = ?";
+        $this->db->execute($sql, [$id]);
+        $this->clearCache();
+        return $this->db->rowCount() > 0;
+    }
 }

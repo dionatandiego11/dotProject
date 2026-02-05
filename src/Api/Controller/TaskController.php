@@ -15,6 +15,8 @@ namespace DotProject\Api\Controller;
 use DotProject\Api\Request;
 use DotProject\Api\Response;
 use DotProject\Entity\Task;
+use DotProject\Service\AuthorizationService;
+use DotProject\Service\PermissionService;
 
 /**
  * Controller de tarefas
@@ -32,6 +34,10 @@ class TaskController extends BaseController
             return $this->response->forbidden('Insufficient permissions');
         }
 
+        $userId = $this->getUserId();
+        $auth = AuthorizationService::getInstance();
+        $perm = new PermissionService();
+
         $pagination = $this->getPagination();
 
         // Filtros opcionais
@@ -44,6 +50,31 @@ class TaskController extends BaseController
         // Monta a query
         $where = '1=1';
         $params = [];
+
+        if ($userId !== null && !$auth->isAdmin($userId)) {
+            $escopo = $perm->getEscopoDados($userId);
+            if (!$escopo) {
+                return $this->response->paginated([], 0, $pagination['page'], $pagination['per_page']);
+            }
+            if ($escopo['role'] !== PermissionService::ROLE_PREFEITO) {
+                $unidades = $escopo['unidades_escopo'];
+                if (empty($unidades)) {
+                    return $this->response->paginated([], 0, $pagination['page'], $pagination['per_page']);
+                }
+                $placeholders = implode(',', array_fill(0, count($unidades), '?'));
+                $projectRows = $this->db->fetchAllParams(
+                    "SELECT project_id FROM {$this->db->table('projects')} WHERE project_company IN ({$placeholders})",
+                    $unidades
+                );
+                $accessibleProjects = array_map(fn($row) => (int) $row['project_id'], $projectRows);
+                if (empty($accessibleProjects)) {
+                    return $this->response->paginated([], 0, $pagination['page'], $pagination['per_page']);
+                }
+                $projectPlaceholders = implode(',', array_fill(0, count($accessibleProjects), '?'));
+                $where .= " AND t.task_project IN ({$projectPlaceholders})";
+                $params = array_merge($params, $accessibleProjects);
+            }
+        }
 
         if ($projectId !== null) {
             $where .= ' AND t.task_project = ?';
@@ -155,6 +186,18 @@ class TaskController extends BaseController
         }
 
         $body = $this->request->getBody();
+        if (empty($body['project_id'])) {
+            return $this->response->validationError([
+                'project_id' => 'O projeto é obrigatório.'
+            ]);
+        }
+        if (!empty($body['start_date']) && !empty($body['end_date'])) {
+            if (strtotime($body['start_date']) > strtotime($body['end_date'])) {
+                return $this->response->validationError([
+                    'end_date' => 'A data de término deve ser maior ou igual à data de início.'
+                ]);
+            }
+        }
         $validationData = [
             'task_name' => $body['name'] ?? '',
             'task_project' => $body['project_id'] ?? null,
@@ -243,6 +286,21 @@ class TaskController extends BaseController
         }
 
         $body = $this->request->getBody();
+        if (!empty($body['start_date']) && !empty($body['end_date'])) {
+            if (strtotime($body['start_date']) > strtotime($body['end_date'])) {
+                return $this->response->validationError([
+                    'end_date' => 'A data de término deve ser maior ou igual à data de início.'
+                ]);
+            }
+        }
+        if (array_key_exists('status', $body)) {
+            $status = (int) $body['status'];
+            if ($status < 0 || $status > 7) {
+                return $this->response->validationError([
+                    'status' => 'Status inválido.'
+                ]);
+            }
+        }
 
         // Atualiza apenas campos fornecidos
         $updateFields = [
@@ -385,8 +443,15 @@ class TaskController extends BaseController
             return $this->response->unauthorized();
         }
 
+        $auth = AuthorizationService::getInstance();
+        if ($auth->isAdmin($userId)) {
+            return null;
+        }
+
+        $perm = new PermissionService();
+
         $row = $this->db->fetchOne(sprintf(
-            "SELECT t.task_owner, t.task_creator, p.project_owner, p.project_creator
+            "SELECT t.task_owner, t.task_creator, p.project_owner, p.project_creator, p.project_company
              FROM %s t
              LEFT JOIN %s p ON t.task_project = p.project_id
              WHERE t.task_id = %d",
@@ -403,6 +468,17 @@ class TaskController extends BaseController
         $taskCreator = $row['task_creator'] ? (int) $row['task_creator'] : null;
         $projectOwner = $row['project_owner'] ? (int) $row['project_owner'] : null;
         $projectCreator = $row['project_creator'] ? (int) $row['project_creator'] : null;
+        $projectCompany = $row['project_company'] ? (int) $row['project_company'] : null;
+
+        $escopo = $perm->getEscopoDados($userId);
+        if ($escopo) {
+            if ($escopo['role'] === PermissionService::ROLE_PREFEITO) {
+                return null;
+            }
+            if ($projectCompany && in_array($projectCompany, $escopo['unidades_escopo'], true)) {
+                return null;
+            }
+        }
 
         if (
             ($taskOwner && $taskOwner === $userId) ||
@@ -426,8 +502,15 @@ class TaskController extends BaseController
             return $this->response->unauthorized();
         }
 
+        $auth = AuthorizationService::getInstance();
+        if ($auth->isAdmin($userId)) {
+            return null;
+        }
+
+        $perm = new PermissionService();
+
         $row = $this->db->fetchOne(sprintf(
-            "SELECT project_owner, project_creator FROM %s WHERE project_id = %d",
+            "SELECT project_owner, project_creator, project_company FROM %s WHERE project_id = %d",
             $this->db->table('projects'),
             $projectId
         ));
@@ -438,8 +521,19 @@ class TaskController extends BaseController
 
         $ownerId = $row['project_owner'] ? (int) $row['project_owner'] : null;
         $creatorId = $row['project_creator'] ? (int) $row['project_creator'] : null;
+        $companyId = $row['project_company'] ? (int) $row['project_company'] : null;
 
-        if (($ownerId && $ownerId === $userId) || ($creatorId && $creatorId === $userId)) {
+        $escopo = $perm->getEscopoDados($userId);
+        if ($escopo) {
+            if ($escopo['role'] === PermissionService::ROLE_PREFEITO) {
+                return null;
+            }
+            if ($companyId && in_array($companyId, $escopo['unidades_escopo'], true)) {
+                return null;
+            }
+        }
+
+        if (!$companyId && (($ownerId && $ownerId === $userId) || ($creatorId && $creatorId === $userId))) {
             return null;
         }
 

@@ -151,10 +151,8 @@ $router->delete('/v1/tasks/{id}', function (Request $req, Response $res) {
 });
 
 // ===========================================
-// ROTAS DE ANALYTICS
+// ROTAS DE ANALYTICS (adicionais)
 // ===========================================
-
-use DotProject\Api\Controller\AnalyticsController;
 
 $router->get('/v1/analytics/dashboard', function (Request $req, Response $res) {
     $controller = new AnalyticsController($req, $res);
@@ -371,6 +369,69 @@ $router->delete('/v1/cache/clear', function (Request $req, Response $res) {
         'message' => $result ? 'Cache cleared' : 'Failed to clear cache'
     ]);
 });
+
+// ===========================================
+// ROTAS DE ARQUIVOS
+// ===========================================
+
+use DotProject\Api\Controller\FileController;
+
+$router->get('/v1/tasks/{id}/files', function (Request $req, Response $res) {
+    $controller = new FileController($req, $res);
+    $controller->list((int) $req->getParam('id'));
+});
+
+$router->post('/v1/tasks/{id}/files', function (Request $req, Response $res) {
+    $controller = new FileController($req, $res);
+    $controller->upload((int) $req->getParam('id'));
+});
+
+$router->get('/v1/files/{id}/download', function (Request $req, Response $res) {
+    $controller = new FileController($req, $res);
+    $controller->download((int) $req->getParam('id'));
+});
+
+$router->delete('/v1/files/{id}', function (Request $req, Response $res) {
+    $controller = new FileController($req, $res);
+    $controller->delete((int) $req->getParam('id'));
+});
+
+// ===========================================
+// ROTAS DE ANALYTICS
+// ===========================================
+
+use DotProject\Api\Controller\AnalyticsController;
+
+$router->get('/v1/analytics/dashboard', function (Request $req, Response $res) {
+    $controller = new AnalyticsController($req, $res);
+    $controller->dashboard();
+});
+
+$router->get('/v1/analytics/productivity', function (Request $req, Response $res) {
+    $controller = new AnalyticsController($req, $res);
+    $controller->productivity();
+});
+
+// ===========================================
+// PREPARA VARIÁVEIS GLOBAIS PARA ROTAS
+// ===========================================
+$GLOBALS['request'] = $router->getRequest();
+$GLOBALS['response'] = $router->getResponse();
+
+// ===========================================
+// ROTAS DO SISTEMA PPA (Gestão Pública)
+// ===========================================
+require_once __DIR__ . '/api_routes_ppa.php';
+
+// ===========================================
+// ROTAS DE DASHBOARD POR PERFIL
+// ===========================================
+require_once __DIR__ . '/api_routes_dashboard.php';
+
+// ===========================================
+// ROTAS DE ADMINISTRAÇÃO (Estrutura Organizacional)
+// ===========================================
+require_once __DIR__ . '/api_routes_admin.php';
 
 // ===========================================
 // EXECUTA O ROTEADOR

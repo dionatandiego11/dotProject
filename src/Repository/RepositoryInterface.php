@@ -45,7 +45,7 @@ interface RepositoryInterface
     /**
      * Salva uma entidade
      */
-    public function save(object $entity): bool;
+    public function save(object $entity): int;
 
     /**
      * Remove uma entidade

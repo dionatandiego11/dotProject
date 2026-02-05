@@ -18,6 +18,8 @@ use DotProject\Core\Logger;
 use DotProject\Entity\KanbanBoard;
 use DotProject\Entity\KanbanColumn;
 use DotProject\Entity\KanbanTask;
+use DotProject\Repository\KanbanColumnRepository;
+use DotProject\Repository\KanbanTaskRepository;
 use DateTime;
 
 /**
@@ -28,6 +30,10 @@ class KanbanService
     private Database $db;
     private AuthorizationService $auth;
     private Cache $cache;
+    private KanbanColumnRepository $columnRepo;
+    private KanbanTaskRepository $taskRepo;
+    private bool $schemaChecked = false;
+    private bool $schemaReady = false;
     
     public function __construct(
         ?Database $db = null,
@@ -36,7 +42,9 @@ class KanbanService
     ) {
         $this->db = $db ?? Database::getInstance();
         $this->auth = $auth ?? AuthorizationService::getInstance();
-        $this->cache = $cache ?? new Cache(prefix: 'kanban:');
+        $this->cache = $cache ?? new Cache(null, 'kanban:');
+        $this->columnRepo = new KanbanColumnRepository($this->db, $this->cache);
+        $this->taskRepo = new KanbanTaskRepository($this->db, $this->cache);
     }
     
     /**
@@ -44,6 +52,9 @@ class KanbanService
      */
     public function getAccessibleBoards(int $companyId, ?int $projectId = null, ?int $userId = null): array
     {
+        if (!$this->ensureSchema()) {
+            return [];
+        }
         $userId = $userId ?? $this->auth->getCurrentUser()?->getId();
         
         if ($userId === null) {
@@ -83,6 +94,9 @@ class KanbanService
      */
     public function createBoard(array $data, int $userId): KanbanBoard
     {
+        if (!$this->ensureSchema()) {
+            throw new \RuntimeException('Kanban schema not available');
+        }
         $board = new KanbanBoard();
         $board->setName($data['name']);
         $board->setDescription($data['description'] ?? null);
@@ -124,6 +138,9 @@ class KanbanService
      */
     public function getBoard(int $boardId, ?int $userId = null): ?array
     {
+        if (!$this->ensureSchema()) {
+            return null;
+        }
         $sql = sprintf("SELECT * FROM `dotp_kanban_boards` WHERE board_id = %d", $boardId);
         $data = $this->db->fetchOne($sql);
         
@@ -132,13 +149,56 @@ class KanbanService
         }
         
         $board = $this->hydrateBoard($data);
+        $boardArray = $board->toArray();
         
-        // Carrega colunas
+        if ($board->getProjectId() !== null) {
+            $this->ensureProjectTasksInBoard($boardId, $board->getProjectId(), $userId);
+        }
+        
         $columns = $this->getColumns($boardId);
+        $tasksByColumn = $this->getTasksByColumn($boardId);
+        $columnsArray = [];
+        $totalTasks = 0;
+        
+        foreach ($columns as $column) {
+            $tasks = $tasksByColumn[$column->getId() ?? 0] ?? [];
+            $taskCount = count($tasks);
+            $totalTasks += $taskCount;
+            
+            $avgProgress = 0;
+            if ($taskCount > 0) {
+                $sum = 0;
+                foreach ($tasks as $task) {
+                    $sum += (int) ($task['task']['percent_complete'] ?? 0);
+                }
+                $avgProgress = round($sum / $taskCount, 1);
+            }
+            
+            $columnsArray[] = [
+                'id' => $column->getId(),
+                'board_id' => $column->getBoardId(),
+                'name' => $column->getName(),
+                'color' => $column->getColor(),
+                'order' => $column->getOrder(),
+                'wip_limit' => $column->getWipLimit(),
+                'is_at_wip_limit' => $column->getWipLimit() ? $taskCount >= $column->getWipLimit() : false,
+                'remaining_wip_slots' => $column->getWipLimit() ? max(0, $column->getWipLimit() - $taskCount) : null,
+                'status' => $column->getStatus(),
+                'is_done' => $column->isDone(),
+                'is_backlog' => $column->isBacklog(),
+                'task_count' => $taskCount,
+                'average_progress' => $avgProgress,
+                'overdue_count' => $this->countOverdueTasks($tasks),
+                'tasks' => $tasks,
+            ];
+        }
+        
+        $boardArray['total_tasks'] = $totalTasks;
+        $boardArray['columns'] = $columnsArray;
         
         return [
-            'board' => $board->toArray(),
-            'columns' => array_map(fn($c) => $c->toArray(), $columns),
+            'board' => $boardArray,
+            'columns' => $columnsArray,
         ];
     }
     
@@ -171,21 +231,10 @@ class KanbanService
      */
     public function getColumns(int $boardId): array
     {
-        $sql = sprintf(
-            "SELECT * FROM `dotp_kanban_columns` 
-             WHERE column_board_id = %d AND column_status = 0
-             ORDER BY column_order ASC",
-            $boardId
-        );
-        
-        $results = $this->db->fetchAll($sql);
-        $columns = [];
-        
-        foreach ($results as $data) {
-            $columns[] = $this->hydrateColumn($data);
+        if (!$this->ensureSchema()) {
+            return [];
         }
-        
-        return $columns;
+        return $this->columnRepo->findByBoard($boardId);
     }
     
     /**
@@ -193,20 +242,283 @@ class KanbanService
      */
     public function moveTask(int $kanbanTaskId, int $targetColumnId, int $newOrder, ?int $userId = null): bool
     {
+        if (!$this->ensureSchema()) {
+            return false;
+        }
+        return $this->taskRepo->moveToColumn($kanbanTaskId, $targetColumnId, $newOrder, $userId);
+    }
+
+    /**
+     * Cria coluna no board
+     */
+    public function addColumn(int $boardId, array $data): KanbanColumn
+    {
+        if (!$this->ensureSchema()) {
+            throw new \RuntimeException('Kanban schema not available');
+        }
+        $column = new KanbanColumn();
+        $column->setBoardId($boardId);
+        $column->setName($data['name'] ?? 'Nova coluna');
+        $column->setColor($data['color'] ?? null);
+        $column->setOrder((int) ($data['order'] ?? 0));
+        $column->setWipLimit(isset($data['wip_limit']) ? (int) $data['wip_limit'] : null);
+        $column->setIsBacklog((bool) ($data['is_backlog'] ?? false));
+        $column->setIsDone((bool) ($data['is_done'] ?? false));
+        $column->setStatus(0);
+        
+        if ($this->columnRepo->save($column) <= 0) {
+            throw new \RuntimeException('Failed to create column');
+        }
+        
+        return $column;
+    }
+
+    /**
+     * Atualiza coluna existente
+     */
+    public function updateColumn(int $columnId, array $data): ?KanbanColumn
+    {
+        if (!$this->ensureSchema()) {
+            return null;
+        }
+        $column = $this->columnRepo->find($columnId);
+        if (!$column) {
+            return null;
+        }
+        
+        if (isset($data['name'])) {
+            $column->setName($data['name']);
+        }
+        if (array_key_exists('color', $data)) {
+            $column->setColor($data['color']);
+        }
+        if (array_key_exists('order', $data)) {
+            $column->setOrder((int) $data['order']);
+        }
+        if (array_key_exists('wip_limit', $data)) {
+            $column->setWipLimit($data['wip_limit'] !== null ? (int) $data['wip_limit'] : null);
+        }
+        if (array_key_exists('is_backlog', $data)) {
+            $column->setIsBacklog((bool) $data['is_backlog']);
+        }
+        if (array_key_exists('is_done', $data)) {
+            $column->setIsDone((bool) $data['is_done']);
+        }
+        
+        if ($this->columnRepo->save($column) <= 0) {
+            throw new \RuntimeException('Failed to update column');
+        }
+        
+        return $column;
+    }
+
+    /**
+     * Estatisticas do board
+     */
+    public function getAnalytics(int $boardId): array
+    {
+        if (!$this->ensureSchema()) {
+            return [];
+        }
+        return [
+            'time_stats' => $this->taskRepo->getColumnTimeStats($boardId),
+        ];
+    }
+
+    private function ensureSchema(): bool
+    {
+        $this->schemaReady = true;
+        return true;
+    }
+
+    /**
+     * Garante que tarefas do projeto estejam no kanban
+     */
+    private function ensureProjectTasksInBoard(int $boardId, int $projectId, ?int $userId): void
+    {
+        $backlogColumnId = $this->getBacklogColumnId($boardId);
+        if ($backlogColumnId === null) {
+            return;
+        }
+        
+        $taskRows = $this->db->fetchAll(sprintf(
+            "SELECT task_id FROM `%s` WHERE task_project = %d",
+            $this->db->table('tasks'),
+            $projectId
+        ));
+        if (empty($taskRows)) {
+            return;
+        }
+        
+        $taskIds = array_map(fn($r) => (int) $r['task_id'], $taskRows);
+        $existingRows = $this->db->fetchAll(sprintf(
+            "SELECT kt.kanban_task_task_id
+             FROM `dotp_kanban_tasks` kt
+             JOIN `dotp_kanban_columns` c ON c.column_id = kt.kanban_task_column_id
+             WHERE c.column_board_id = %d",
+            $boardId
+        ));
+        $existingIds = array_map(fn($r) => (int) $r['kanban_task_task_id'], $existingRows);
+        
+        foreach ($taskIds as $taskId) {
+            if (!in_array($taskId, $existingIds, true)) {
+                $this->taskRepo->addTaskToColumn($taskId, $backlogColumnId, $userId);
+            }
+        }
+    }
+
+    /**
+     * Retorna a coluna backlog de um board
+     */
+    private function getBacklogColumnId(int $boardId): ?int
+    {
+        $row = $this->db->fetchOne(sprintf(
+            "SELECT column_id FROM `dotp_kanban_columns`
+             WHERE column_board_id = %d AND column_is_backlog = 1 AND column_status = 0
+             ORDER BY column_order ASC LIMIT 1",
+            $boardId
+        ));
+        if ($row && isset($row['column_id'])) {
+            return (int) $row['column_id'];
+        }
+        
+        $fallback = $this->db->fetchOne(sprintf(
+            "SELECT column_id FROM `dotp_kanban_columns`
+             WHERE column_board_id = %d AND column_status = 0
+             ORDER BY column_order ASC LIMIT 1",
+            $boardId
+        ));
+        
+        return $fallback ? (int) $fallback['column_id'] : null;
+    }
+
+    /**
+     * Retorna tarefas agrupadas por coluna
+     */
+    private function getTasksByColumn(int $boardId): array
+    {
         $sql = sprintf(
-            "UPDATE `dotp_kanban_tasks` 
-             SET kanban_task_column_id = %d, 
-                 kanban_task_order = %d,
-                 kanban_task_moved_by = %d,
-                 kanban_task_moved_at = NOW()
-             WHERE kanban_task_id = %d",
-            $targetColumnId,
-            $newOrder,
-            $userId ?? 0,
-            $kanbanTaskId
+            "SELECT
+                kt.kanban_task_id,
+                kt.kanban_task_column_id,
+                kt.kanban_task_task_id,
+                kt.kanban_task_order,
+                kt.kanban_task_moved_at,
+                kt.kanban_task_moved_by,
+                t.task_name,
+                t.task_description,
+                t.task_priority,
+                t.task_percent_complete,
+                t.task_end_date,
+                t.task_owner,
+                t.task_assigned_to,
+                t.task_duration,
+                u.user_first_name,
+                u.user_last_name,
+                u.user_username
+            FROM `dotp_kanban_tasks` kt
+            JOIN `dotp_kanban_columns` c ON c.column_id = kt.kanban_task_column_id
+            JOIN `%s` t ON t.task_id = kt.kanban_task_task_id
+            LEFT JOIN `%s` u ON u.user_id = COALESCE(t.task_assigned_to, t.task_owner)
+            WHERE c.column_board_id = %d AND c.column_status = 0
+            ORDER BY c.column_order ASC, kt.kanban_task_order ASC",
+            $this->db->table('tasks'),
+            $this->db->table('users'),
+            $boardId
         );
         
-        return $this->db->query($sql);
+        $rows = $this->db->fetchAll($sql);
+        $byColumn = [];
+        
+        foreach ($rows as $row) {
+            $columnId = (int) $row['kanban_task_column_id'];
+            $byColumn[$columnId][] = [
+                'id' => (int) $row['kanban_task_id'],
+                'column_id' => $columnId,
+                'task_id' => (int) $row['kanban_task_task_id'],
+                'order' => (int) $row['kanban_task_order'],
+                'moved_at' => $row['kanban_task_moved_at'],
+                'moved_by' => $row['kanban_task_moved_by'] ? (int) $row['kanban_task_moved_by'] : null,
+                'time_in_column' => $this->formatTimeInColumn($row['kanban_task_moved_at'] ?? null),
+                'is_stale' => false,
+                'task' => [
+                    'name' => $row['task_name'],
+                    'description' => $row['task_description'] ?? '',
+                    'priority' => $this->mapPriority($row['task_priority'] ?? 0),
+                    'percent_complete' => (int) ($row['task_percent_complete'] ?? 0),
+                    'is_overdue' => $this->isOverdue($row['task_end_date'] ?? null, $row['task_percent_complete'] ?? 0),
+                    'assigned_to' => $row['task_assigned_to'] ?? $row['task_owner'] ?? null,
+                    'assigned_to_name' => $this->formatUserName($row),
+                    'estimated_hours' => $row['task_duration'] ?? null,
+                    'comments_count' => 0,
+                    'attachments_count' => 0,
+                ],
+            ];
+        }
+        
+        return $byColumn;
+    }
+
+    private function isOverdue(?string $endDate, int $percentComplete): bool
+    {
+        if (!$endDate || $percentComplete >= 100) {
+            return false;
+        }
+        return strtotime($endDate) < strtotime(date('Y-m-d'));
+    }
+
+    private function mapPriority(int $priority): int
+    {
+        return max(1, min(4, $priority + 1));
+    }
+
+    private function formatUserName(array $row): ?string
+    {
+        $first = $row['user_first_name'] ?? null;
+        $last = $row['user_last_name'] ?? null;
+        $username = $row['user_username'] ?? null;
+        
+        if ($first || $last) {
+            return trim(($first ?? '') . ' ' . ($last ?? ''));
+        }
+        
+        return $username ?: null;
+    }
+
+    private function formatTimeInColumn(?string $movedAt): ?string
+    {
+        if (!$movedAt) {
+            return null;
+        }
+        $start = strtotime($movedAt);
+        if ($start === false) {
+            return null;
+        }
+        $diff = time() - $start;
+        if ($diff < 60) {
+            return '0m';
+        }
+        $minutes = (int) floor($diff / 60);
+        if ($minutes < 60) {
+            return $minutes . 'm';
+        }
+        $hours = (int) floor($minutes / 60);
+        if ($hours < 24) {
+            return $hours . 'h';
+        }
+        $days = (int) floor($hours / 24);
+        return $days . 'd';
+    }
+
+    private function countOverdueTasks(array $tasks): int
+    {
+        $count = 0;
+        foreach ($tasks as $task) {
+            if (!empty($task['task']['is_overdue'])) {
+                $count++;
+            }
+        }
+        return $count;
     }
     
     /**

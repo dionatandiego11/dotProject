@@ -34,6 +34,7 @@ class UserService
     private Database $db;
     private Cache $cache;
     private ValidationService $validator;
+    private ?int $passwordMaxLength = null;
     
     public function __construct(
         ?UserRepository $repository = null,
@@ -130,8 +131,11 @@ class UserService
                 'contact_last_name' => $data['contact_last_name'] ?? '',
                 'contact_email' => $data['contact_email'] ?? '',
                 'contact_phone' => $data['contact_phone'] ?? '',
-                'contact_company' => $data['user_company'] ?? null,
+                'contact_company' => $data['user_company'] ?? '',
             ]);
+        }
+        if ($contactId === null) {
+            $contactId = 0;
         }
         
         // Create user entity
@@ -151,7 +155,7 @@ class UserService
         }
         
         // Save user
-        if (!$this->repository->save($user)) {
+        if ($this->repository->save($user) <= 0) {
             return null;
         }
         
@@ -203,21 +207,26 @@ class UserService
         }
         
         // Update contact info
-        if (!empty($data['contact_first_name'])) {
-            $user->setFirstName($data['contact_first_name']);
+        if (array_key_exists('contact_first_name', $data)) {
+            $user->setFirstName($data['contact_first_name'] ?: null);
         }
-        if (!empty($data['contact_last_name'])) {
-            $user->setLastName($data['contact_last_name']);
+        if (array_key_exists('contact_last_name', $data)) {
+            $user->setLastName($data['contact_last_name'] ?: null);
         }
-        if (!empty($data['contact_email'])) {
-            $user->setEmail($data['contact_email']);
+        if (array_key_exists('contact_email', $data)) {
+            $user->setEmail($data['contact_email'] ?: null);
         }
-        if (!empty($data['contact_phone'])) {
-            $user->setPhone($data['contact_phone']);
+        if (array_key_exists('contact_phone', $data)) {
+            $user->setPhone($data['contact_phone'] ?: null);
         }
         
+        // Ensure ID is set for BaseRepository save paths
+        if (isset($data['id']) && $user->getId() === null) {
+            $user->setId((int) $data['id']);
+        }
+
         // Save user
-        if (!$this->repository->save($user)) {
+        if ($this->repository->save($user) <= 0) {
             return null;
         }
         
@@ -268,7 +277,7 @@ class UserService
         // Update password
         $user->setPassword($this->hashPassword($newPassword));
         
-        return $this->repository->save($user);
+        return $this->repository->save($user) > 0;
     }
     
     /**
@@ -288,7 +297,7 @@ class UserService
         $newPassword = $this->generateRandomPassword();
         $user->setPassword($this->hashPassword($newPassword));
         
-        if (!$this->repository->save($user)) {
+        if ($this->repository->save($user) <= 0) {
             throw new \RuntimeException('Failed to reset password');
         }
         
@@ -485,7 +494,34 @@ class UserService
      */
     private function hashPassword(string $password): string
     {
+        $maxLength = $this->getPasswordMaxLength();
+        if ($maxLength === null || $maxLength <= 32) {
+            return md5($password);
+        }
         return password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);
+    }
+
+    private function getPasswordMaxLength(): ?int
+    {
+        if ($this->passwordMaxLength !== null) {
+            return $this->passwordMaxLength;
+        }
+        try {
+            $sql = "SELECT CHARACTER_MAXIMUM_LENGTH 
+                    FROM INFORMATION_SCHEMA.COLUMNS 
+                    WHERE TABLE_SCHEMA = DATABASE() 
+                      AND TABLE_NAME = ? 
+                      AND COLUMN_NAME = ?";
+            $table = trim((string) $this->db->table('users'), '`');
+            $length = $this->db->fetchValue($sql, [$table, 'user_password']);
+            if ($length !== null) {
+                $this->passwordMaxLength = (int) $length;
+                return $this->passwordMaxLength;
+            }
+        } catch (\Throwable $e) {
+            // If metadata query fails, fallback to bcrypt
+        }
+        return null;
     }
     
     /**

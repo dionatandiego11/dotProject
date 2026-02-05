@@ -3,16 +3,23 @@ import { getTasks, updateTask, createTask, getProjects } from '../services/api'
 import Modal from '../components/ui/Modal'
 import Button from '../components/ui/Button'
 import Input from '../components/ui/Input'
+import TaskEditModal from '../components/TaskEditModal'
+import { useToast } from '../contexts/ToastContext'
+import { useValidation } from '../hooks/useValidation'
 
 function Tasks() {
+    const toast = useToast()
+    const validation = useValidation()
     const [tasks, setTasks] = useState([])
     const [meta, setMeta] = useState({})
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState(null)
     const [filter, setFilter] = useState('all') // all, overdue, completed
     
-    // Modal state
+    // Modal states
     const [isModalOpen, setIsModalOpen] = useState(false)
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+    const [editingTask, setEditingTask] = useState(null)
     const [projects, setProjects] = useState([])
     const [newTask, setNewTask] = useState({
         name: '',
@@ -49,10 +56,11 @@ function Tasks() {
     async function handleProgressChange(taskId, percent) {
         try {
             await updateTask(taskId, { percent_complete: percent })
+            toast.success('Progresso atualizado!')
             // Reload tasks
             loadTasks()
         } catch (err) {
-            console.error('Failed to update task:', err)
+            toast.error('Erro ao atualizar progresso: ' + err.message)
         }
     }
 
@@ -87,22 +95,34 @@ function Tasks() {
 
     async function handleCreateTask(e) {
         e.preventDefault()
-        if (!newTask.name.trim()) return
+        validation.clearErrors()
+        
+        // Validações
+        const isValid = validation.validateFields({
+            name: () => validation.validateRequired(newTask.name, 'Nome da tarefa'),
+            description: () => validation.validateMaxLength(newTask.description, 500, 'Descrição'),
+            end_date: () => validation.validateFutureDate(newTask.end_date, 'Prazo'),
+            project_id: () => validation.validateRequired(newTask.project_id, 'Projeto')
+        })
+        
+        if (!isValid) return
         
         try {
             setCreating(true)
             await createTask({
                 name: newTask.name,
                 description: newTask.description,
-                project_id: newTask.project_id || null,
+                project_id: newTask.project_id ? parseInt(newTask.project_id, 10) : null,
                 priority: parseInt(newTask.priority),
                 end_date: newTask.end_date || null
             })
+            toast.success('Tarefa criada com sucesso!')
             setIsModalOpen(false)
             setNewTask({ name: '', description: '', project_id: '', priority: '1', end_date: '' })
+            validation.clearErrors()
             loadTasks()
         } catch (err) {
-            alert('Erro ao criar tarefa: ' + err.message)
+            toast.error('Erro ao criar tarefa: ' + err.message)
         } finally {
             setCreating(false)
         }
@@ -111,6 +131,19 @@ function Tasks() {
     function openModal() {
         loadProjects()
         setIsModalOpen(true)
+    }
+
+    function openEditModal(task) {
+        setEditingTask(task)
+        setIsEditModalOpen(true)
+    }
+
+    async function handleUpdateTask(updatedData) {
+        if (!editingTask) return
+        await updateTask(editingTask.id, updatedData)
+        setIsEditModalOpen(false)
+        setEditingTask(null)
+        loadTasks()
     }
 
     return (
@@ -235,7 +268,11 @@ function Tasks() {
                                                     </div>
                                                 </td>
                                                 <td>
-                                                    <button className="btn btn-secondary" style={{ padding: 'var(--spacing-1) var(--spacing-2)' }}>
+                                                    <button 
+                                                        className="btn btn-secondary" 
+                                                        style={{ padding: 'var(--spacing-1) var(--spacing-2)' }}
+                                                        onClick={() => openEditModal(task)}
+                                                    >
                                                         Editar
                                                     </button>
                                                 </td>
@@ -270,6 +307,18 @@ function Tasks() {
                 )}
             </div>
 
+            {/* Edit Task Modal */}
+            <TaskEditModal
+                task={editingTask}
+                isOpen={isEditModalOpen}
+                onClose={() => {
+                    setIsEditModalOpen(false)
+                    setEditingTask(null)
+                }}
+                onSave={handleUpdateTask}
+                projects={projects}
+            />
+
             {/* Create Task Modal */}
             <Modal
                 isOpen={isModalOpen}
@@ -283,7 +332,7 @@ function Tasks() {
                         <Button 
                             variant="primary" 
                             onClick={handleCreateTask}
-                            disabled={creating || !newTask.name.trim()}
+                            disabled={creating || !newTask.name.trim() || !newTask.project_id}
                         >
                             {creating ? 'Criando...' : 'Criar Tarefa'}
                         </Button>
@@ -297,55 +346,89 @@ function Tasks() {
                         </label>
                         <Input
                             value={newTask.name}
-                            onChange={(e) => setNewTask({ ...newTask, name: e.target.value })}
+                            onChange={(e) => {
+                                setNewTask({ ...newTask, name: e.target.value })
+                                validation.clearFieldError('name')
+                            }}
                             placeholder="Digite o nome da tarefa"
-                            required
+                            style={validation.errors.name ? { borderColor: 'var(--color-danger-500)' } : {}}
                         />
+                        {validation.errors.name && (
+                            <span style={{ color: 'var(--color-danger-500)', fontSize: '0.75rem', marginTop: 'var(--spacing-1)', display: 'block' }}>
+                                {validation.errors.name}
+                            </span>
+                        )}
                     </div>
                     
                     <div style={{ marginBottom: 'var(--spacing-4)' }}>
                         <label style={{ display: 'block', marginBottom: 'var(--spacing-2)', fontWeight: 500 }}>
                             Descrição
+                            {newTask.description && (
+                                <span style={{ 
+                                    fontSize: '0.75rem', 
+                                    color: newTask.description.length > 450 ? 'var(--color-warning-500)' : 'var(--color-gray-400)',
+                                    marginLeft: 'var(--spacing-2)',
+                                    fontWeight: 'normal'
+                                }}>
+                                    ({newTask.description.length}/500)
+                                </span>
+                            )}
                         </label>
                         <textarea
                             value={newTask.description}
-                            onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
+                            onChange={(e) => {
+                                setNewTask({ ...newTask, description: e.target.value })
+                                validation.clearFieldError('description')
+                            }}
                             placeholder="Descrição da tarefa"
                             rows={3}
                             style={{
                                 width: '100%',
                                 padding: 'var(--spacing-2) var(--spacing-3)',
-                                border: '1px solid var(--color-gray-300)',
+                                border: validation.errors.description ? '1px solid var(--color-danger-500)' : '1px solid var(--color-gray-300)',
                                 borderRadius: 'var(--radius-md)',
                                 fontSize: '0.875rem',
                                 fontFamily: 'inherit'
                             }}
                         />
+                        {validation.errors.description && (
+                            <span style={{ color: 'var(--color-danger-500)', fontSize: '0.75rem', marginTop: 'var(--spacing-1)', display: 'block' }}>
+                                {validation.errors.description}
+                            </span>
+                        )}
                     </div>
                     
                     <div style={{ marginBottom: 'var(--spacing-4)' }}>
                         <label style={{ display: 'block', marginBottom: 'var(--spacing-2)', fontWeight: 500 }}>
-                            Projeto
+                            Projeto *
                         </label>
                         <select
                             value={newTask.project_id}
-                            onChange={(e) => setNewTask({ ...newTask, project_id: e.target.value })}
+                            onChange={(e) => {
+                                setNewTask({ ...newTask, project_id: e.target.value })
+                                validation.clearFieldError('project_id')
+                            }}
                             style={{
                                 width: '100%',
                                 padding: 'var(--spacing-2) var(--spacing-3)',
-                                border: '1px solid var(--color-gray-300)',
+                                border: validation.errors.project_id ? '1px solid var(--color-danger-500)' : '1px solid var(--color-gray-300)',
                                 borderRadius: 'var(--radius-md)',
                                 fontSize: '0.875rem',
                                 background: 'white'
                             }}
                         >
-                            <option value="">Selecione um projeto (opcional)</option>
+                            <option value="">Selecione um projeto</option>
                             {projects.map(project => (
                                 <option key={project.id} value={project.id}>
                                     {project.name}
                                 </option>
                             ))}
                         </select>
+                        {validation.errors.project_id && (
+                            <span style={{ color: 'var(--color-danger-500)', fontSize: '0.75rem', marginTop: 'var(--spacing-1)', display: 'block' }}>
+                                {validation.errors.project_id}
+                            </span>
+                        )}
                     </div>
                     
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--spacing-4)' }}>
@@ -379,8 +462,17 @@ function Tasks() {
                             <Input
                                 type="date"
                                 value={newTask.end_date}
-                                onChange={(e) => setNewTask({ ...newTask, end_date: e.target.value })}
+                                onChange={(e) => {
+                                    setNewTask({ ...newTask, end_date: e.target.value })
+                                    validation.clearFieldError('end_date')
+                                }}
+                                style={validation.errors.end_date ? { borderColor: 'var(--color-danger-500)' } : {}}
                             />
+                            {validation.errors.end_date && (
+                                <span style={{ color: 'var(--color-danger-500)', fontSize: '0.75rem', marginTop: 'var(--spacing-1)', display: 'block' }}>
+                                    {validation.errors.end_date}
+                                </span>
+                            )}
                         </div>
                     </div>
                 </form>
@@ -390,3 +482,4 @@ function Tasks() {
 }
 
 export default Tasks
+

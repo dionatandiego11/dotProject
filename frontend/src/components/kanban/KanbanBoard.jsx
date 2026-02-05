@@ -14,7 +14,7 @@ import {
 } from '../../services/api'
 import './KanbanBoard.css'
 
-function KanbanBoard({ boardId, onTaskClick, onTaskMove }) {
+function KanbanBoard({ boardId, onTaskClick, onTaskMove, refreshKey = 0 }) {
   const [board, setBoard] = useState(null)
   const [columns, setColumns] = useState([])
   const [loading, setLoading] = useState(true)
@@ -25,7 +25,7 @@ function KanbanBoard({ boardId, onTaskClick, onTaskMove }) {
   // Carrega dados do board
   useEffect(() => {
     loadBoard()
-  }, [boardId])
+  }, [boardId, refreshKey])
 
   const loadBoard = async () => {
     try {
@@ -33,8 +33,10 @@ function KanbanBoard({ boardId, onTaskClick, onTaskMove }) {
       const result = await getKanbanBoard(boardId)
 
       if (result.success) {
-        setBoard(result.data.board)
-        setColumns(result.data.board.columns || [])
+        const boardData = result.data?.board || result.data || null
+        const columnsData = result.data?.columns || boardData?.columns || []
+        setBoard(boardData)
+        setColumns(columnsData || [])
       } else {
         setError(result.message || 'Failed to load board')
       }
@@ -183,6 +185,7 @@ KanbanBoard.propTypes = {
   boardId: PropTypes.number.isRequired,
   onTaskClick: PropTypes.func,
   onTaskMove: PropTypes.func,
+  refreshKey: PropTypes.number,
 }
 
 export default KanbanBoard

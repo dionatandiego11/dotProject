@@ -140,6 +140,14 @@ abstract class BaseController
     }
 
     /**
+     * Resposta de erro de validação
+     */
+    protected function validationError(array $errors): Response
+    {
+        return $this->response->validationError($errors);
+    }
+
+    /**
      * Return the validation service instance.
      */
     protected function validation(): ValidationService
@@ -149,12 +157,13 @@ abstract class BaseController
 
     /**
      * Gera chave de cache para o controller
+     * @param mixed ...$parts Partes adicionais para compor a chave
      */
-    protected function cacheKey(string $suffix = ''): string
+    protected function cacheKey(mixed ...$parts): string
     {
         $key = static::class . ':' . $this->request->getUri();
-        if ($suffix) {
-            $key .= ':' . $suffix;
+        foreach ($parts as $part) {
+            $key .= ':' . (string) $part;
         }
         return $key;
     }

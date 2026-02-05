@@ -1,9 +1,9 @@
 <?php
 /**
- * Entity Task - Modern
+ * Entidade Tarefa (extensão da dotp_tasks)
+ * Nível 4 - Execução Micro
  * 
  * @package DotProject\Entity
- * @license GPL-2.0-or-later
  */
 
 declare(strict_types=1);
@@ -14,135 +14,232 @@ use DateTime;
 
 class TaskEntity
 {
+    // Campos existentes da dotp_tasks
     private ?int $id = null;
     private string $name;
     private ?string $description = null;
     private int $projectId;
-    private ?int $parentTaskId = null;
-    private ?int $assignedTo = null;
+    private ?ProjetoEntity $project = null;
     private int $ownerId;
-    private int $status = 0; // 0=ativo, 1=completado, -1=inativo
-    private int $priority = 3; // 1=baixa, 2=média, 3=alta, 4=urgente
-    private int $percentComplete = 0;
-    private ?float $estimatedHours = null;
-    private ?float $actualHours = null;
+    private ?int $assignedTo = null;
     private ?DateTime $startDate = null;
     private ?DateTime $endDate = null;
-    private ?DateTime $actualEndDate = null;
+    private int $priority = 1; // 0=baixa, 1=normal, 2=alta, 3=urgente
+    private int $percentComplete = 0;
+    
+    // Novos campos do PPA
+    private ?int $etapaId = null; // FK opcional para etapa
+    private string $estado = 'A_Fazer'; // Backlog, A_Fazer, Em_Andamento, Pausada, Bloqueada, Em_Revisao, Concluida, Cancelada
+    private ?string $evidenciaAnexo = null; // URL do arquivo
     private ?DateTime $createdAt = null;
     private ?DateTime $updatedAt = null;
-
-    // Getters e Setters
-    public function getId(): ?int { return $this->id; }
-    public function setId(int $id): self { $this->id = $id; return $this; }
-
-    public function getName(): string { return $this->name; }
-    public function setName(string $name): self { $this->name = $name; return $this; }
-
-    public function getDescription(): ?string { return $this->description; }
-    public function setDescription(?string $description): self { $this->description = $description; return $this; }
-
-    public function getProjectId(): int { return $this->projectId; }
-    public function setProjectId(int $projectId): self { $this->projectId = $projectId; return $this; }
-
-    public function getParentTaskId(): ?int { return $this->parentTaskId; }
-    public function setParentTaskId(?int $parentTaskId): self { $this->parentTaskId = $parentTaskId; return $this; }
-
-    public function getAssignedTo(): ?int { return $this->assignedTo; }
-    public function setAssignedTo(?int $assignedTo): self { $this->assignedTo = $assignedTo; return $this; }
-
-    public function getOwnerId(): int { return $this->ownerId; }
-    public function setOwnerId(int $ownerId): self { $this->ownerId = $ownerId; return $this; }
-
-    public function getStatus(): int { return $this->status; }
-    public function setStatus(int $status): self { $this->status = $status; return $this; }
-
-    public function isActive(): bool { return $this->status === 0; }
-    public function isCompleted(): bool { return $this->status === 1; }
-    public function isInactive(): bool { return $this->status === -1; }
-
-    public function getPriority(): int { return $this->priority; }
-    public function setPriority(int $priority): self { $this->priority = $priority; return $this; }
-
-    public function getPercentComplete(): int { return $this->percentComplete; }
-    public function setPercentComplete(int $percentComplete): self { 
-        $this->percentComplete = max(0, min(100, $percentComplete)); 
-        return $this; 
-    }
-
-    public function getEstimatedHours(): ?float { return $this->estimatedHours; }
-    public function setEstimatedHours(?float $estimatedHours): self { $this->estimatedHours = $estimatedHours; return $this; }
-
-    public function getActualHours(): ?float { return $this->actualHours; }
-    public function setActualHours(?float $actualHours): self { $this->actualHours = $actualHours; return $this; }
-
-    public function getStartDate(): ?DateTime { return $this->startDate; }
-    public function setStartDate(?DateTime $startDate): self { $this->startDate = $startDate; return $this; }
-
-    public function getEndDate(): ?DateTime { return $this->endDate; }
-    public function setEndDate(?DateTime $endDate): self { $this->endDate = $endDate; return $this; }
-
-    public function getActualEndDate(): ?DateTime { return $this->actualEndDate; }
-    public function setActualEndDate(?DateTime $actualEndDate): self { $this->actualEndDate = $actualEndDate; return $this; }
-
-    public function getCreatedAt(): ?DateTime { return $this->createdAt; }
-    public function setCreatedAt(?DateTime $createdAt): self { $this->createdAt = $createdAt; return $this; }
-
-    public function getUpdatedAt(): ?DateTime { return $this->updatedAt; }
-    public function setUpdatedAt(?DateTime $updatedAt): self { $this->updatedAt = $updatedAt; return $this; }
-
-    /**
-     * Verifica se a tarefa está atrasada
-     */
-    public function isOverdue(): bool
+    
+    public function __construct()
     {
-        if ($this->endDate === null || $this->isCompleted()) {
+        $this->createdAt = new DateTime();
+    }
+    
+    public function getId(): ?int
+    {
+        return $this->id;
+    }
+    
+    public function setId(int $id): self
+    {
+        $this->id = $id;
+        return $this;
+    }
+    
+    public function getName(): string
+    {
+        return $this->name;
+    }
+    
+    public function setName(string $name): self
+    {
+        $this->name = $name;
+        return $this;
+    }
+    
+    public function getProjectId(): int
+    {
+        return $this->projectId;
+    }
+    
+    public function setProjectId(int $id): self
+    {
+        $this->projectId = $id;
+        return $this;
+    }
+    
+    public function getProject(): ?ProjetoEntity
+    {
+        return $this->project;
+    }
+    
+    public function setProject(?ProjetoEntity $project): self
+    {
+        $this->project = $project;
+        if ($project) {
+            $this->projectId = $project->getId() ?? 0;
+        }
+        return $this;
+    }
+    
+    public function getAssignedTo(): ?int
+    {
+        return $this->assignedTo;
+    }
+    
+    public function setAssignedTo(?int $userId): self
+    {
+        $this->assignedTo = $userId;
+        return $this;
+    }
+    
+    public function getEtapaId(): ?int
+    {
+        return $this->etapaId;
+    }
+    
+    public function setEtapaId(?int $id): self
+    {
+        $this->etapaId = $id;
+        return $this;
+    }
+    
+    public function getEstado(): string
+    {
+        return $this->estado;
+    }
+    
+    public function setEstado(string $estado): self
+    {
+        $this->estado = $estado;
+        $this->updatedAt = new DateTime();
+        
+        // Atualiza percentual baseado no estado
+        $this->percentComplete = match($estado) {
+            'Concluida' => 100,
+            'Em_Andamento' => max(50, $this->percentComplete),
+            'A_Fazer', 'Backlog' => 0,
+            default => $this->percentComplete,
+        };
+        
+        return $this;
+    }
+    
+    public function getPriority(): int
+    {
+        return $this->priority;
+    }
+    
+    public function setPriority(int $priority): self
+    {
+        $this->priority = max(0, min(3, $priority));
+        return $this;
+    }
+    
+    public function getPriorityLabel(): string
+    {
+        return match($this->priority) {
+            0 => 'Baixa',
+            2 => 'Alta',
+            3 => 'Urgente',
+            default => 'Normal',
+        };
+    }
+    
+    public function getEndDate(): ?DateTime
+    {
+        return $this->endDate;
+    }
+    
+    public function setEndDate(?DateTime $date): self
+    {
+        $this->endDate = $date;
+        return $this;
+    }
+    
+    public function getEvidenciaAnexo(): ?string
+    {
+        return $this->evidenciaAnexo;
+    }
+    
+    public function setEvidenciaAnexo(?string $url): self
+    {
+        $this->evidenciaAnexo = $url;
+        return $this;
+    }
+    
+    public function isConcluida(): bool
+    {
+        return $this->estado === 'Concluida';
+    }
+    
+    public function isAtrasada(): bool
+    {
+        if ($this->isConcluida() || !$this->endDate) {
             return false;
         }
         return new DateTime() > $this->endDate;
     }
-
+    
     /**
-     * Retorna dias restantes ou dias de atraso
+     * Inicia execução da tarefa
      */
-    public function getDaysRemaining(): int
+    public function iniciar(): void
     {
-        if ($this->endDate === null) {
-            return 0;
+        $this->estado = 'Em_Andamento';
+        if ($this->percentComplete < 50) {
+            $this->percentComplete = 50;
         }
-        $now = new DateTime();
-        $interval = $now->diff($this->endDate);
-        return $this->isOverdue() ? -$interval->days : $interval->days;
+        $this->updatedAt = new DateTime();
     }
-
+    
     /**
-     * Converte para array
-     * @return array<string, mixed>
+     * Conclui a tarefa
      */
+    public function concluir(?string $evidencia = null): void
+    {
+        $this->estado = 'Concluida';
+        $this->percentComplete = 100;
+        $this->evidenciaAnexo = $evidencia ?? $this->evidenciaAnexo;
+        $this->updatedAt = new DateTime();
+        
+        // Atualiza last_update do projeto
+        if ($this->project) {
+            $this->project->touch();
+        }
+    }
+    
+    /**
+     * Bloqueia a tarefa
+     */
+    public function bloquear(string $motivo): void
+    {
+        $this->estado = 'Bloqueada';
+        $this->updatedAt = new DateTime();
+        // TODO: Registrar motivo do bloqueio em tabela separada
+    }
+    
     public function toArray(): array
     {
         return [
             'id' => $this->id,
-            'name' => $this->name,
-            'description' => $this->description,
-            'project_id' => $this->projectId,
-            'parent_task_id' => $this->parentTaskId,
-            'assigned_to' => $this->assignedTo,
-            'owner_id' => $this->ownerId,
-            'status' => $this->status,
-            'priority' => $this->priority,
-            'percent_complete' => $this->percentComplete,
-            'estimated_hours' => $this->estimatedHours,
-            'actual_hours' => $this->actualHours,
-            'start_date' => $this->startDate?->format('Y-m-d'),
-            'end_date' => $this->endDate?->format('Y-m-d'),
-            'actual_end_date' => $this->actualEndDate?->format('Y-m-d'),
-            'is_active' => $this->isActive(),
-            'is_completed' => $this->isCompleted(),
-            'is_overdue' => $this->isOverdue(),
-            'days_remaining' => $this->getDaysRemaining(),
+            'nome' => $this->name,
+            'descricao' => $this->description,
+            'projeto_id' => $this->projectId,
+            'etapa_id' => $this->etapaId,
+            'responsavel_id' => $this->assignedTo,
+            'estado' => $this->estado,
+            'prioridade' => $this->priority,
+            'prioridade_label' => $this->getPriorityLabel(),
+            'percent_concluido' => $this->percentComplete,
+            'data_fim' => $this->endDate?->format('Y-m-d'),
+            'atrasada' => $this->isAtrasada(),
+            'evidencia_url' => $this->evidenciaAnexo,
             'created_at' => $this->createdAt?->format('Y-m-d H:i:s'),
-            'updated_at' => $this->updatedAt?->format('Y-m-d H:i:s'),
         ];
     }
 }

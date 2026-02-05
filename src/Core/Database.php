@@ -34,7 +34,12 @@ class Database
     {
         global $db;
         $this->connection = $db;
-        $this->prefix = dPgetConfig('dbprefix', '');
+        // Use dPgetConfig if available (legacy), otherwise get from environment
+        if (function_exists('dPgetConfig')) {
+            $this->prefix = dPgetConfig('dbprefix', '');
+        } else {
+            $this->prefix = getenv('DB_PREFIX') ?: 'dotp_';
+        }
     }
 
     /**
@@ -98,14 +103,30 @@ class Database
     }
 
     /**
+     * Execute a statement (INSERT/UPDATE/DELETE) with optional parameters.
+     *
+     * @param string $sql SQL query with optional placeholders
+     * @param array<int, mixed> $params Parameters to bind
+     * @return mixed Query result
+     */
+    public function execute(string $sql, array $params = []): mixed
+    {
+        return empty($params)
+            ? $this->connection->Execute($sql)
+            : $this->connection->Execute($sql, $params);
+    }
+
+    /**
      * Execute a SELECT query and return all rows as an array
      * 
      * @param string $sql SQL query
      * @return array<int, array<string, mixed>>
      */
-    public function fetchAll(string $sql): array
+    public function fetchAll(string $sql, array $params = []): array
     {
-        $result = $this->connection->Execute($sql);
+        $result = empty($params)
+            ? $this->connection->Execute($sql)
+            : $this->connection->Execute($sql, $params);
         if (!$result) {
             return [];
         }
@@ -148,9 +169,11 @@ class Database
      * @param string $sql SQL query
      * @return array<string, mixed>|null
      */
-    public function fetchOne(string $sql): ?array
+    public function fetchOne(string $sql, array $params = []): ?array
     {
-        $result = $this->connection->Execute($sql);
+        $result = empty($params)
+            ? $this->connection->Execute($sql)
+            : $this->connection->Execute($sql, $params);
         if (!$result) {
             return null;
         }
@@ -187,13 +210,25 @@ class Database
      * @param string $sql SQL query
      * @return mixed
      */
-    public function fetchValue(string $sql): mixed
+    public function fetchValue(string $sql, array $params = []): mixed
     {
-        $row = $this->fetchOne($sql);
+        $row = $this->fetchOne($sql, $params);
         if ($row === null) {
             return null;
         }
         return reset($row);
+    }
+
+    /**
+     * Execute a SELECT query and return a single column value
+     *
+     * @param string $sql SQL query with optional placeholders
+     * @param array<int, mixed> $params Parameters to bind
+     * @return mixed
+     */
+    public function fetchColumn(string $sql, array $params = []): mixed
+    {
+        return $this->fetchValue($sql, $params);
     }
 
     /**
@@ -341,6 +376,26 @@ class Database
     public function lastInsertId(): int
     {
         return (int) $this->connection->Insert_ID();
+    }
+
+    /**
+     * Get affected rows from last query
+     */
+    public function affectedRows(): int
+    {
+        if (method_exists($this->connection, 'Affected_Rows')) {
+            return (int) $this->connection->Affected_Rows();
+        }
+
+        return 0;
+    }
+
+    /**
+     * Backwards-compatible alias for affectedRows().
+     */
+    public function rowCount(): int
+    {
+        return $this->affectedRows();
     }
 
     /**

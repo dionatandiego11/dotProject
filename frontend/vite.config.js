@@ -17,33 +17,34 @@ export default defineConfig(({ mode }) => ({
     server: {
         port: 5173,
         host: '0.0.0.0',
+        strictPort: true,
+        watch: {
+            usePolling: true,
+        },
+        // Proxy para API - usa nginx:80 (dentro do Docker)
+        // O frontend roda como container, então usa o nome do serviço nginx
         proxy: {
-            '/api': {
-                target: 'https://nginx:443',
+            '/api.php': {
+                target: process.env.VITE_API_URL || 'http://nginx:80',
                 changeOrigin: true,
                 secure: false,
                 ws: true,
-                configure: (proxy, _options) => {
-                    proxy.on('error', (err, _req, _res) => {
-                        console.log('proxy error', err);
-                    });
-                    proxy.on('proxyReq', (proxyReq, req, _res) => {
-                        console.log('Sending Request to the Target:', req.method, req.url);
-                    });
-                    proxy.on('proxyRes', (proxyRes, req, _res) => {
-                        console.log('Received Response from the Target:', proxyRes.statusCode, req.url);
-                    });
-                }
+            },
+            '/api': {
+                target: process.env.VITE_API_URL || 'http://nginx:80',
+                changeOrigin: true,
+                secure: false,
+                ws: true,
             }
         }
     },
     build: {
         outDir: 'dist',
         sourcemap: true,
-        
+
         // Otimizações de build (usando esbuild padrão)
         minify: 'esbuild',
-        
+
         // Code splitting
         rollupOptions: {
             output: {
@@ -67,23 +68,23 @@ export default defineConfig(({ mode }) => ({
                 },
             },
         },
-        
+
         // Tamanho de aviso para chunks
         chunkSizeWarningLimit: 500,
-        
+
         // CSS otimizado
         cssCodeSplit: true,
-        
+
         // Pré-carregamento de assets
         assetsInlineLimit: 4096, // 4kb
     },
-    
+
     // Otimização de dependências
     optimizeDeps: {
         include: ['react', 'react-dom', 'react-router-dom'],
         exclude: [],
     },
-    
+
     // Preview config
     preview: {
         port: 4173,

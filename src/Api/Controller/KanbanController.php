@@ -23,13 +23,7 @@ use DotProject\Service\KanbanService;
  */
 class KanbanController extends BaseController
 {
-    private KanbanService $kanbanService;
-    
-    public function __construct(Request $request, Response $response)
-    {
-        parent::__construct($request, $response);
-        $this->kanbanService = new KanbanService();
-    }
+    private ?KanbanService $kanbanService = null;
     
     /**
      * GET /v1/kanban/boards
@@ -38,6 +32,7 @@ class KanbanController extends BaseController
     public function listBoards(): void
     {
         try {
+            $this->kanbanService = $this->kanbanService ?? new KanbanService();
             $userId = $this->getCurrentUserId();
             $companyId = $this->getCurrentCompanyId();
             $projectId = $this->request->getParam('project_id');
@@ -53,7 +48,7 @@ class KanbanController extends BaseController
             ]);
             
             $this->response->json($response->toArray())->send();
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $this->response->error($e->getMessage(), 500)->send();
         }
     }
@@ -65,6 +60,7 @@ class KanbanController extends BaseController
     public function getBoard(int $id): void
     {
         try {
+            $this->kanbanService = $this->kanbanService ?? new KanbanService();
             $userId = $this->getCurrentUserId();
             
             $board = $this->kanbanService->getBoard($id, $userId);
@@ -76,7 +72,7 @@ class KanbanController extends BaseController
             }
             
             $this->response->json(ApiResponse::success($board)->toArray())->send();
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $this->response->error($e->getMessage(), 500)->send();
         }
     }
@@ -88,6 +84,7 @@ class KanbanController extends BaseController
     public function createBoard(): void
     {
         try {
+            $this->kanbanService = $this->kanbanService ?? new KanbanService();
             $data = $this->request->getBody();
             $userId = $this->getCurrentUserId();
             
@@ -111,7 +108,116 @@ class KanbanController extends BaseController
         } catch (\RuntimeException $e) {
             $response = ApiResponse::error($e->getMessage());
             $this->response->json($response->toArray(), 400)->send();
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            $this->response->error($e->getMessage(), 500)->send();
+        }
+    }
+
+    /**
+     * POST /v1/kanban/boards/{id}/columns
+     * Cria coluna no board
+     */
+    public function addColumn(int $boardId): void
+    {
+        try {
+            $this->kanbanService = $this->kanbanService ?? new KanbanService();
+            $data = $this->request->getBody();
+            if (empty($data['name'])) {
+                $response = ApiResponse::validationError(['name' => 'Column name is required']);
+                $this->response->json($response->toArray(), 422)->send();
+                return;
+            }
+            
+            $column = $this->kanbanService->addColumn($boardId, $data);
+            
+            $this->response->json(ApiResponse::success(
+                $column->toArray(),
+                'Column created successfully'
+            )->toArray(), 201)->send();
+        } catch (\RuntimeException $e) {
+            $response = ApiResponse::error($e->getMessage());
+            $this->response->json($response->toArray(), 400)->send();
+        } catch (\Throwable $e) {
+            $this->response->error($e->getMessage(), 500)->send();
+        }
+    }
+
+    /**
+     * PUT /v1/kanban/columns/{id}
+     * Atualiza coluna
+     */
+    public function updateColumn(int $columnId): void
+    {
+        try {
+            $this->kanbanService = $this->kanbanService ?? new KanbanService();
+            $data = $this->request->getBody();
+            $column = $this->kanbanService->updateColumn($columnId, $data);
+            
+            if (!$column) {
+                $response = ApiResponse::notFound('Column');
+                $this->response->json($response->toArray(), 404)->send();
+                return;
+            }
+            
+            $this->response->json(ApiResponse::success(
+                $column->toArray(),
+                'Column updated successfully'
+            )->toArray())->send();
+        } catch (\RuntimeException $e) {
+            $response = ApiResponse::error($e->getMessage());
+            $this->response->json($response->toArray(), 400)->send();
+        } catch (\Throwable $e) {
+            $this->response->error($e->getMessage(), 500)->send();
+        }
+    }
+
+    /**
+     * PUT /v1/kanban/tasks/{id}/move
+     * Move tarefa entre colunas
+     */
+    public function moveTask(int $kanbanTaskId): void
+    {
+        try {
+            $this->kanbanService = $this->kanbanService ?? new KanbanService();
+            $data = $this->request->getBody();
+            $targetColumnId = (int) ($data['column_id'] ?? 0);
+            $order = (int) ($data['order'] ?? 0);
+            $userId = $this->getCurrentUserId();
+            
+            if ($targetColumnId <= 0) {
+                $response = ApiResponse::validationError(['column_id' => 'Target column is required']);
+                $this->response->json($response->toArray(), 422)->send();
+                return;
+            }
+            
+            $ok = $this->kanbanService->moveTask($kanbanTaskId, $targetColumnId, $order, $userId);
+            
+            if (!$ok) {
+                $response = ApiResponse::error('Failed to move task');
+                $this->response->json($response->toArray(), 400)->send();
+                return;
+            }
+            
+            $this->response->json(ApiResponse::success(
+                ['id' => $kanbanTaskId],
+                'Task moved successfully'
+            )->toArray())->send();
+        } catch (\Throwable $e) {
+            $this->response->error($e->getMessage(), 500)->send();
+        }
+    }
+
+    /**
+     * GET /v1/kanban/boards/{id}/analytics
+     * Retorna estatisticas do board
+     */
+    public function getAnalytics(int $boardId): void
+    {
+        try {
+            $this->kanbanService = $this->kanbanService ?? new KanbanService();
+            $stats = $this->kanbanService->getAnalytics($boardId);
+            $this->response->json(ApiResponse::success($stats)->toArray())->send();
+        } catch (\Throwable $e) {
             $this->response->error($e->getMessage(), 500)->send();
         }
     }

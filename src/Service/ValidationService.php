@@ -311,7 +311,6 @@ class ValidationService
             ->required('project_name', 'O nome do projeto é obrigatório.')
             ->minLength('project_name', 3, 'O nome do projeto deve ter pelo menos 3 caracteres.')
             ->maxLength('project_name', 255, 'O nome do projeto deve ter no máximo 255 caracteres.')
-            ->required('project_short_name', 'O nome curto do projeto é obrigatório.')
             ->maxLength('project_short_name', 10, 'O nome curto deve ter no máximo 10 caracteres.')
             ->numeric('project_company', 'A empresa deve ser um valor numérico.')
             ->between('project_status', 0, 7, 'Status inválido.')
@@ -348,6 +347,6 @@ class ValidationService
             ->required('user_username', 'O nome de usuário é obrigatório.')
             ->minLength('user_username', 3, 'O nome de usuário deve ter pelo menos 3 caracteres.')
             ->maxLength('user_username', 50, 'O nome de usuário deve ter no máximo 50 caracteres.')
-            ->regex('user_username', '/^[a-zA-Z0-9_]+$/', 'O nome de usuário só pode conter letras, números e underscores.');
+            ->regex('user_username', '/^[a-zA-Z0-9_.-]+$/', 'O nome de usuário só pode conter letras, números, pontos, hífens e underscores.');
     }
 }

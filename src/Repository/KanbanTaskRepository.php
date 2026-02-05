@@ -66,7 +66,7 @@ class KanbanTaskRepository extends BaseRepository
     /**
      * {@inheritdoc}
      */
-    public function save(object $entity): bool
+    public function save(object $entity): int
     {
         if (!$entity instanceof KanbanTask) {
             throw new \InvalidArgumentException('Entity must be KanbanTask');
@@ -91,7 +91,7 @@ class KanbanTaskRepository extends BaseRepository
             $this->cache->invalidate("kanban:column:*");
         }
         
-        return $result;
+        return $result ? ($entity->getId() ?? 0) : 0;
     }
     
     /**
@@ -206,7 +206,7 @@ class KanbanTaskRepository extends BaseRepository
         $kanbanTask->setOrder(999); // Vai para o final
         $kanbanTask->setMovedBy($movedBy);
         
-        if ($this->save($kanbanTask)) {
+        if ($this->save($kanbanTask) > 0) {
             return $kanbanTask;
         }
         

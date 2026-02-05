@@ -15,6 +15,8 @@ namespace DotProject\Api\Controller;
 use DotProject\Api\Request;
 use DotProject\Api\Response;
 use DotProject\Entity\Project;
+use DotProject\Service\AuthorizationService;
+use DotProject\Service\PermissionService;
 
 /**
  * Controller de projetos
@@ -32,6 +34,10 @@ class ProjectController extends BaseController
             return $this->response->forbidden('Insufficient permissions');
         }
 
+        $userId = $this->getUserId();
+        $auth = AuthorizationService::getInstance();
+        $perm = new PermissionService();
+
         $pagination = $this->getPagination();
 
         // Filtros opcionais
@@ -42,6 +48,22 @@ class ProjectController extends BaseController
         // Monta a query
         $where = '1=1';
         $params = [];
+
+        if ($userId !== null && !$auth->isAdmin($userId)) {
+            $escopo = $perm->getEscopoDados($userId);
+            if (!$escopo) {
+                return $this->response->paginated([], 0, $pagination['page'], $pagination['per_page']);
+            }
+            if ($escopo['role'] !== PermissionService::ROLE_PREFEITO) {
+                $unidades = $escopo['unidades_escopo'];
+                if (empty($unidades)) {
+                    return $this->response->paginated([], 0, $pagination['page'], $pagination['per_page']);
+                }
+                $placeholders = implode(',', array_fill(0, count($unidades), '?'));
+                $where .= " AND project_company IN ({$placeholders})";
+                $params = array_merge($params, $unidades);
+            }
+        }
 
         if ($companyId !== null) {
             $where .= ' AND project_company = ?';
@@ -70,9 +92,10 @@ class ProjectController extends BaseController
 
         // Busca projetos
         $sql = sprintf(
-            "SELECT p.*, c.company_name 
+            "SELECT p.*, c.company_name, u.unidade_nome 
              FROM %s p 
              LEFT JOIN %s c ON p.project_company = c.company_id
+             LEFT JOIN dotp_unidades_organizacionais u ON p.project_company = u.unidade_id
              WHERE %s
              ORDER BY p.project_name ASC
              LIMIT ? OFFSET ?",
@@ -113,9 +136,10 @@ class ProjectController extends BaseController
         }
 
         $sql = sprintf(
-            "SELECT p.*, c.company_name 
+            "SELECT p.*, c.company_name, u.unidade_nome 
              FROM %s p 
              LEFT JOIN %s c ON p.project_company = c.company_id
+             LEFT JOIN dotp_unidades_organizacionais u ON p.project_company = u.unidade_id
              WHERE p.project_id = %d",
             $this->db->table('projects'),
             $this->db->table('companies'),
@@ -143,9 +167,25 @@ class ProjectController extends BaseController
         }
 
         $body = $this->request->getBody();
+        if (empty($body['company_id'])) {
+            return $this->response->validationError([
+                'company_id' => 'A unidade responsavel e obrigatoria.'
+            ]);
+        }
+        if (!empty($body['start_date']) && !empty($body['end_date'])) {
+            if (strtotime($body['start_date']) > strtotime($body['end_date'])) {
+                return $this->response->validationError([
+                    'end_date' => 'A data de término deve ser maior ou igual à data de início.'
+                ]);
+            }
+        }
+        $shortName = '';
+        if (array_key_exists('short_name', $body)) {
+            $shortName = trim((string) $body['short_name']);
+        }
         $validationData = [
             'project_name' => $body['name'] ?? '',
-            'project_short_name' => $body['short_name'] ?? '',
+            'project_short_name' => $shortName,
             'project_company' => $body['company_id'] ?? null,
             'project_status' => $body['status'] ?? 0,
             'project_priority' => $body['priority'] ?? 0,
@@ -156,11 +196,21 @@ class ProjectController extends BaseController
             return $this->response->validationError($validation->errors());
         }
 
+        $unidadeExists = $this->db->fetchValue(sprintf(
+            "SELECT unidade_id FROM dotp_unidades_organizacionais WHERE unidade_id = %d",
+            (int) $body['company_id']
+        ));
+        if ($unidadeExists === null) {
+            return $this->response->validationError([
+                'company_id' => 'Unidade responsavel nao encontrada.'
+            ]);
+        }
+
         $project = new Project();
         $project->fill([
             'project_name' => $body['name'],
-            'project_short_name' => $body['short_name'] ?? substr($body['name'], 0, 25),
-            'project_company' => (int) $body['company_id'],
+            'project_short_name' => $shortName !== '' ? $shortName : null,
+            'project_company' => !empty($body['company_id']) ? (int) $body['company_id'] : null,
             'project_parent' => $body['parent_id'] ?? 0,
             'project_owner' => $this->getUserId(),
             'project_creator' => $this->getUserId(),
@@ -210,6 +260,16 @@ class ProjectController extends BaseController
         }
 
         $body = $this->request->getBody();
+        if (array_key_exists('short_name', $body) && trim((string) $body['short_name']) === '') {
+            $body['short_name'] = null;
+        }
+        if (!empty($body['start_date']) && !empty($body['end_date'])) {
+            if (strtotime($body['start_date']) > strtotime($body['end_date'])) {
+                return $this->response->validationError([
+                    'end_date' => 'A data de término deve ser maior ou igual à data de início.'
+                ]);
+            }
+        }
 
         // Atualiza apenas campos fornecidos
         $updateFields = [
@@ -232,7 +292,7 @@ class ProjectController extends BaseController
         if (isset($body['name'])) {
             $validationData['project_name'] = $body['name'];
         }
-        if (isset($body['short_name'])) {
+        if (array_key_exists('short_name', $body)) {
             $validationData['project_short_name'] = $body['short_name'];
         }
         if (array_key_exists('company_id', $body)) {
@@ -252,8 +312,25 @@ class ProjectController extends BaseController
             }
         }
 
+        if (array_key_exists('company_id', $body)) {
+            if (empty($body['company_id'])) {
+                return $this->response->validationError([
+                    'company_id' => 'A unidade responsavel e obrigatoria.'
+                ]);
+            }
+            $unidadeExists = $this->db->fetchValue(sprintf(
+                "SELECT unidade_id FROM dotp_unidades_organizacionais WHERE unidade_id = %d",
+                (int) $body['company_id']
+            ));
+            if ($unidadeExists === null) {
+                return $this->response->validationError([
+                    'company_id' => 'Unidade responsavel nao encontrada.'
+                ]);
+            }
+        }
+
         foreach ($updateFields as $apiField => $dbField) {
-            if (isset($body[$apiField])) {
+            if (array_key_exists($apiField, $body)) {
                 $project->setAttribute($dbField, $body[$apiField]);
             }
         }
@@ -379,7 +456,7 @@ class ProjectController extends BaseController
             'short_name' => $row['project_short_name'] ?? '',
             'company' => [
                 'id' => (int) ($row['project_company'] ?? 0),
-                'name' => $row['company_name'] ?? null,
+                'name' => $row['company_name'] ?? ($row['unidade_nome'] ?? null),
             ],
             'status' => (int) ($row['project_status'] ?? 0),
             'percent_complete' => (int) ($row['project_percent_complete'] ?? 0),
@@ -434,8 +511,15 @@ class ProjectController extends BaseController
             return $this->response->unauthorized();
         }
 
+        $auth = AuthorizationService::getInstance();
+        if ($auth->isAdmin($userId)) {
+            return null;
+        }
+
+        $perm = new PermissionService();
+
         $row = $this->db->fetchOne(sprintf(
-            "SELECT project_owner, project_creator FROM %s WHERE project_id = %d",
+            "SELECT project_owner, project_creator, project_company FROM %s WHERE project_id = %d",
             $this->db->table('projects'),
             $projectId
         ));
@@ -446,8 +530,19 @@ class ProjectController extends BaseController
 
         $ownerId = $row['project_owner'] ? (int) $row['project_owner'] : null;
         $creatorId = $row['project_creator'] ? (int) $row['project_creator'] : null;
+        $companyId = $row['project_company'] ? (int) $row['project_company'] : null;
 
-        if (($ownerId && $ownerId === $userId) || ($creatorId && $creatorId === $userId)) {
+        $escopo = $perm->getEscopoDados($userId);
+        if ($escopo) {
+            if ($escopo['role'] === PermissionService::ROLE_PREFEITO) {
+                return null;
+            }
+            if ($companyId && in_array($companyId, $escopo['unidades_escopo'], true)) {
+                return null;
+            }
+        }
+
+        if (!$companyId && (($ownerId && $ownerId === $userId) || ($creatorId && $creatorId === $userId))) {
             return null;
         }
 

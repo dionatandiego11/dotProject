@@ -16,6 +16,7 @@ function Modal({
   footer,
   size = 'md',
   closeOnOverlay = true,
+  closeOnEscape = true,
 }) {
   const sizes = {
     sm: { maxWidth: '400px' },
@@ -37,13 +38,13 @@ function Modal({
 
   useEffect(() => {
     const handleEscape = (e) => {
-      if (e.key === 'Escape' && isOpen) {
+      if (e.key === 'Escape' && isOpen && closeOnEscape) {
         onClose()
       }
     }
     document.addEventListener('keydown', handleEscape)
     return () => document.removeEventListener('keydown', handleEscape)
-  }, [isOpen, onClose])
+  }, [isOpen, onClose, closeOnEscape])
 
   if (!isOpen) return null
 
@@ -163,6 +164,7 @@ Modal.propTypes = {
   footer: PropTypes.node,
   size: PropTypes.oneOf(['sm', 'md', 'lg', 'xl']),
   closeOnOverlay: PropTypes.bool,
+  closeOnEscape: PropTypes.bool,
 }
 
 export default Modal
