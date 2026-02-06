@@ -398,16 +398,17 @@ class DashboardController extends BaseController
         $porSecretaria = $db->fetchAll(
             "SELECT 
                 c.company_id as unidade_id,
-                c.company_name as unidade_nome,
-                SUBSTRING(c.company_name, 1, 5) as unidade_sigla,
+                COALESCE(NULLIF(TRIM(u.unidade_nome), ''), c.company_name) as unidade_nome,
+                SUBSTRING(COALESCE(NULLIF(TRIM(u.unidade_nome), ''), c.company_name), 1, 5) as unidade_sigla,
                 COUNT(p.project_id) as total_projetos,
                 COUNT(CASE WHEN p.project_status = 4 THEN 1 END) as atrasados,
                 COUNT(CASE WHEN p.project_status = 5 THEN 1 END) as concluidos,
                 AVG(p.project_percent_complete) as percentual_execucao
             FROM dotp_companies c
             LEFT JOIN dotp_projects p ON p.project_company = c.company_id
+            LEFT JOIN dotp_unidades_organizacionais u ON u.unidade_id = c.company_id
             GROUP BY c.company_id
-            ORDER BY c.company_name"
+            ORDER BY unidade_nome"
         );
 
         // Projetos recentes (substituindo obras atrasadas)
@@ -1097,14 +1098,15 @@ class DashboardController extends BaseController
         $panorama = $db->fetchAll(
             "SELECT 
                 c.company_id as unidade_id,
-                c.company_name as unidade_nome,
+                COALESCE(NULLIF(TRIM(u.unidade_nome), ''), c.company_name) as unidade_nome,
                 COUNT(p.project_id) as total_projetos,
                 COUNT(CASE WHEN p.project_status = 4 THEN 1 END) as alertas,
                 AVG(p.project_percent_complete) as execucao_media
             FROM dotp_companies c
             LEFT JOIN dotp_projects p ON p.project_company = c.company_id
+            LEFT JOIN dotp_unidades_organizacionais u ON u.unidade_id = c.company_id
             GROUP BY c.company_id
-            ORDER BY c.company_name"
+            ORDER BY unidade_nome"
         );
 
         $data = [
