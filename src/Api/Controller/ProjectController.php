@@ -41,7 +41,7 @@ class ProjectController extends BaseController
         $pagination = $this->getPagination();
 
         // Filtros opcionais
-        $companyId = $this->request->getQueryParam('company_id');
+        $unidadeId = $this->resolveUnidadeQueryParam();
         $status = $this->request->getQueryParam('status');
         $search = $this->request->getQueryParam('search');
 
@@ -65,9 +65,9 @@ class ProjectController extends BaseController
             }
         }
 
-        if ($companyId !== null) {
+        if ($unidadeId !== null) {
             $where .= ' AND project_company = ?';
-            $params[] = (int) $companyId;
+            $params[] = $unidadeId;
         }
 
         if ($status !== null) {
@@ -167,10 +167,12 @@ class ProjectController extends BaseController
         }
 
         $body = $this->request->getBody();
-        if (empty($body['company_id'])) {
-            return $this->response->validationError([
-                'company_id' => 'A unidade responsavel e obrigatoria.'
-            ]);
+        $unidadeId = $this->resolveUnidadeFromBody($body);
+
+        if ($unidadeId === null) {
+            return $this->response->validationError(
+                $this->unidadeValidationError('A unidade responsavel e obrigatoria.')
+            );
         }
         if (!empty($body['start_date']) && !empty($body['end_date'])) {
             if (strtotime($body['start_date']) > strtotime($body['end_date'])) {
@@ -186,7 +188,7 @@ class ProjectController extends BaseController
         $validationData = [
             'project_name' => $body['name'] ?? '',
             'project_short_name' => $shortName,
-            'project_company' => $body['company_id'] ?? null,
+            'project_company' => $unidadeId,
             'project_status' => $body['status'] ?? 0,
             'project_priority' => $body['priority'] ?? 0,
         ];
@@ -198,19 +200,19 @@ class ProjectController extends BaseController
 
         $unidadeExists = $this->db->fetchValue(sprintf(
             "SELECT unidade_id FROM dotp_unidades_organizacionais WHERE unidade_id = %d",
-            (int) $body['company_id']
+            $unidadeId
         ));
         if ($unidadeExists === null) {
-            return $this->response->validationError([
-                'company_id' => 'Unidade responsavel nao encontrada.'
-            ]);
+            return $this->response->validationError(
+                $this->unidadeValidationError('Unidade responsavel nao encontrada.')
+            );
         }
 
         $project = new Project();
         $project->fill([
             'project_name' => $body['name'],
             'project_short_name' => $shortName !== '' ? $shortName : null,
-            'project_company' => !empty($body['company_id']) ? (int) $body['company_id'] : null,
+            'project_company' => $unidadeId,
             'project_parent' => $body['parent_id'] ?? 0,
             'project_owner' => $this->getUserId(),
             'project_creator' => $this->getUserId(),
@@ -233,6 +235,7 @@ class ProjectController extends BaseController
 
         return $this->created([
             'id' => $project->getId(),
+            'unidade_id' => $unidadeId,
             'message' => 'Project created successfully',
         ]);
     }
@@ -271,11 +274,13 @@ class ProjectController extends BaseController
             }
         }
 
+        $hasUnidadeField = $this->hasUnidadeField($body);
+        $unidadeId = $hasUnidadeField ? $this->resolveUnidadeFromBody($body) : null;
+
         // Atualiza apenas campos fornecidos
         $updateFields = [
             'name' => 'project_name',
             'short_name' => 'project_short_name',
-            'company_id' => 'project_company',
             'url' => 'project_url',
             'demo_url' => 'project_demo_url',
             'start_date' => 'project_start_date',
@@ -295,8 +300,8 @@ class ProjectController extends BaseController
         if (array_key_exists('short_name', $body)) {
             $validationData['project_short_name'] = $body['short_name'];
         }
-        if (array_key_exists('company_id', $body)) {
-            $validationData['project_company'] = $body['company_id'];
+        if ($hasUnidadeField) {
+            $validationData['project_company'] = $unidadeId;
         }
         if (array_key_exists('status', $body)) {
             $validationData['project_status'] = $body['status'];
@@ -312,20 +317,20 @@ class ProjectController extends BaseController
             }
         }
 
-        if (array_key_exists('company_id', $body)) {
-            if (empty($body['company_id'])) {
-                return $this->response->validationError([
-                    'company_id' => 'A unidade responsavel e obrigatoria.'
-                ]);
+        if ($hasUnidadeField) {
+            if ($unidadeId === null) {
+                return $this->response->validationError(
+                    $this->unidadeValidationError('A unidade responsavel e obrigatoria.')
+                );
             }
             $unidadeExists = $this->db->fetchValue(sprintf(
                 "SELECT unidade_id FROM dotp_unidades_organizacionais WHERE unidade_id = %d",
-                (int) $body['company_id']
+                $unidadeId
             ));
             if ($unidadeExists === null) {
-                return $this->response->validationError([
-                    'company_id' => 'Unidade responsavel nao encontrada.'
-                ]);
+                return $this->response->validationError(
+                    $this->unidadeValidationError('Unidade responsavel nao encontrada.')
+                );
             }
         }
 
@@ -333,6 +338,10 @@ class ProjectController extends BaseController
             if (array_key_exists($apiField, $body)) {
                 $project->setAttribute($dbField, $body[$apiField]);
             }
+        }
+
+        if ($hasUnidadeField && $unidadeId !== null) {
+            $project->setAttribute('project_company', $unidadeId);
         }
 
         if (!$project->save()) {
@@ -450,17 +459,27 @@ class ProjectController extends BaseController
      */
     private function formatProject(array $row, bool $detailed = false): array
     {
+        $unidadeId = isset($row['project_company']) && (int) $row['project_company'] > 0
+            ? (int) $row['project_company']
+            : null;
+        $companyCompatId = $unidadeId ?? 0;
         $unidadeNome = isset($row['unidade_nome']) ? trim((string) $row['unidade_nome']) : '';
         $companyName = isset($row['company_name']) ? trim((string) $row['company_name']) : '';
-        $displayCompanyName = $unidadeNome !== '' ? $unidadeNome : ($companyName !== '' ? $companyName : null);
+        $displayUnidadeNome = $unidadeNome !== '' ? $unidadeNome : ($companyName !== '' ? $companyName : null);
 
         $data = [
             'id' => (int) $row['project_id'],
             'name' => $row['project_name'],
             'short_name' => $row['project_short_name'] ?? '',
+            'unidade_id' => $unidadeId,
+            'unidade' => [
+                'id' => $unidadeId,
+                'nome' => $displayUnidadeNome,
+            ],
+            'company_id' => $companyCompatId,
             'company' => [
-                'id' => (int) ($row['project_company'] ?? 0),
-                'name' => $displayCompanyName,
+                'id' => $companyCompatId,
+                'name' => $displayUnidadeNome,
             ],
             'status' => (int) ($row['project_status'] ?? 0),
             'percent_complete' => (int) ($row['project_percent_complete'] ?? 0),
@@ -501,6 +520,55 @@ class ProjectController extends BaseController
             'end_date' => $row['task_end_date'] ?? null,
             'duration' => (int) ($row['task_duration'] ?? 0),
             'owner_id' => $row['task_owner'] ? (int) $row['task_owner'] : null,
+        ];
+    }
+
+    private function resolveUnidadeQueryParam(): ?int
+    {
+        $value = $this->request->getQueryParam('unidade_id');
+        if ($value === null || $value === '') {
+            $value = $this->request->getQueryParam('company_id');
+        }
+
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return (int) $value;
+    }
+
+    /**
+     * @param array<string, mixed> $body
+     */
+    private function hasUnidadeField(array $body): bool
+    {
+        return array_key_exists('unidade_id', $body) || array_key_exists('company_id', $body);
+    }
+
+    /**
+     * @param array<string, mixed> $body
+     */
+    private function resolveUnidadeFromBody(array $body): ?int
+    {
+        if (array_key_exists('unidade_id', $body) && $body['unidade_id'] !== '' && $body['unidade_id'] !== null) {
+            return (int) $body['unidade_id'];
+        }
+
+        if (array_key_exists('company_id', $body) && $body['company_id'] !== '' && $body['company_id'] !== null) {
+            return (int) $body['company_id'];
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function unidadeValidationError(string $message): array
+    {
+        return [
+            'unidade_id' => $message,
+            'company_id' => $message,
         ];
     }
 

@@ -120,7 +120,7 @@ function ProjectDetails() {
                                 )}
                             </div>
                             <p style={{ color: 'var(--color-gray-500)', margin: 0 }}>
-                                Unidade Responsável: {project.company?.name || 'Não definida'}
+                                Unidade Responsável: {project.unidade?.nome || project.company?.name || 'Não definida'}
                             </p>
                         </div>
                         <div style={{ textAlign: 'right' }}>

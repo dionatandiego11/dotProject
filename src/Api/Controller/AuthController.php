@@ -123,9 +123,11 @@ class AuthController extends BaseController
         // Busca dados atualizados do usuário
         $user = $this->db->fetchOneParams(sprintf(
             "SELECT u.user_id, u.user_username, u.user_company,
-                    c.contact_first_name, c.contact_last_name, c.contact_email
+                    c.contact_first_name, c.contact_last_name, c.contact_email,
+                    un.unidade_nome
              FROM %s u
              LEFT JOIN %s c ON c.contact_id = u.user_contact
+             LEFT JOIN dotp_unidades_organizacionais un ON un.unidade_id = u.user_company
              WHERE u.user_id = ?",
             $this->db->table('users'),
             $this->db->table('contacts')
@@ -165,9 +167,11 @@ class AuthController extends BaseController
 
         $user = $this->db->fetchOneParams(sprintf(
             "SELECT u.user_id, u.user_username, u.user_company,
-                    c.contact_first_name, c.contact_last_name, c.contact_email
+                    c.contact_first_name, c.contact_last_name, c.contact_email,
+                    un.unidade_nome
              FROM %s u
              LEFT JOIN %s c ON c.contact_id = u.user_contact
+             LEFT JOIN dotp_unidades_organizacionais un ON un.unidade_id = u.user_company
              WHERE u.user_id = ?",
             $this->db->table('users'),
             $this->db->table('contacts')
@@ -177,13 +181,20 @@ class AuthController extends BaseController
             return $this->notFound('User not found');
         }
 
+        $unidadeId = $user['user_company'] ? (int) $user['user_company'] : null;
+
         return $this->json([
             'id' => (int) $user['user_id'],
             'username' => $user['user_username'],
             'first_name' => $user['contact_first_name'] ?? null,
             'last_name' => $user['contact_last_name'] ?? null,
             'email' => $user['contact_email'] ?? null,
-            'company_id' => $user['user_company'] ? (int) $user['user_company'] : null,
+            'unidade_id' => $unidadeId,
+            'unidade' => [
+                'id' => $unidadeId,
+                'nome' => $user['unidade_nome'] ?? null,
+            ],
+            'company_id' => $unidadeId,
         ]);
     }
 }

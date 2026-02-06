@@ -98,7 +98,7 @@ function Kanban() {
             return
         }
         const project = projects.find((p) => String(p.id) === String(selectedProjectId))
-        const unitId = project?.company?.id || project?.company_id
+        const unitId = project?.unidade?.id || project?.unidade_id || project?.company?.id || project?.company_id
         if (!unitId) {
             setUnitUsers([])
             setUnitUserIds(new Set())

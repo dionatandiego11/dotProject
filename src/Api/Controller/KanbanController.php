@@ -95,6 +95,10 @@ class KanbanController extends BaseController
                 return;
             }
             
+            if (!empty($data['unidade_id'])) {
+                $data['company_id'] = (int) $data['unidade_id'];
+            }
+
             if (empty($data['company_id'])) {
                 $data['company_id'] = $this->getCurrentCompanyId();
             }

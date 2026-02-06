@@ -104,6 +104,19 @@ function Projects() {
         return badges[status] || 'info'
     }
 
+    function getProjectUnitName(project) {
+        return project?.unidade?.nome || project?.company?.name || '-'
+    }
+
+    function getProjectUnitId(project) {
+        const value = project?.unidade_id
+            ?? project?.unidade?.id
+            ?? project?.company_id
+            ?? project?.company?.id
+            ?? null
+        return value !== null && value !== undefined ? String(value) : ''
+    }
+
     async function handleCreateProject(e) {
         e.preventDefault()
         validation.clearErrors()
@@ -122,13 +135,15 @@ function Projects() {
         try {
             setCreating(true)
             const shortName = newProject.short_name.trim()
+            const unidadeId = newProject.company_id ? parseInt(newProject.company_id, 10) : null
             await createProject({
                 name: newProject.name,
                 short_name: shortName,
                 description: newProject.description || null,
                 start_date: newProject.start_date || null,
                 end_date: newProject.end_date || null,
-                company_id: newProject.company_id ? parseInt(newProject.company_id, 10) : null,
+                unidade_id: unidadeId,
+                company_id: unidadeId,
                 status: newProject.status ? parseInt(newProject.status, 10) : 0
             })
             toast.success('Projeto criado com sucesso!')
@@ -161,13 +176,15 @@ function Projects() {
         try {
             setCreating(true)
             const shortName = newProject.short_name.trim()
+            const unidadeId = newProject.company_id ? parseInt(newProject.company_id, 10) : null
             await updateProject(editingProject.id, {
                 name: newProject.name,
                 short_name: shortName,
                 description: newProject.description || null,
                 start_date: newProject.start_date || null,
                 end_date: newProject.end_date || null,
-                company_id: newProject.company_id ? parseInt(newProject.company_id, 10) : null,
+                unidade_id: unidadeId,
+                company_id: unidadeId,
                 status: newProject.status ? parseInt(newProject.status, 10) : 0
             })
             toast.success('Projeto atualizado com sucesso!')
@@ -279,7 +296,7 @@ function Projects() {
                                                     </div>
                                                 </div>
                                             </td>
-                                            <td>{project.company?.name || '-'}</td>
+                                            <td>{getProjectUnitName(project)}</td>
                                             <td>
                                                 <span className={`badge badge-${getStatusBadge(project.status)}`}>
                                                     {getStatusLabel(project.status)}
@@ -323,7 +340,7 @@ function Projects() {
                                                             description: project.description || '',
                                                             start_date: normalizeDateValue(project.start_date),
                                                             end_date: normalizeDateValue(project.end_date),
-                                                            company_id: project.company?.id ? String(project.company.id) : '',
+                                                            company_id: getProjectUnitId(project),
                                                             status: project.status != null ? String(project.status) : '1'
                                                         })
                                                         validation.clearErrors()
