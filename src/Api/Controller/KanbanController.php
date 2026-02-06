@@ -36,6 +36,14 @@ class KanbanController extends BaseController
             $userId = $this->getCurrentUserId();
             $companyId = $this->getCurrentCompanyId();
             $projectId = $this->request->getQueryParam('project_id');
+
+            if ($companyId <= 0) {
+                $response = ApiResponse::success([
+                    'boards' => [],
+                ]);
+                $this->response->json($response->toArray())->send();
+                return;
+            }
             
             $boards = $this->kanbanService->getAccessibleBoards(
                 $companyId,
@@ -102,6 +110,25 @@ class KanbanController extends BaseController
             if (empty($data['company_id'])) {
                 $data['company_id'] = $this->getCurrentCompanyId();
             }
+
+            $companyId = isset($data['company_id']) ? (int) $data['company_id'] : 0;
+            if ($companyId <= 0) {
+                $response = ApiResponse::validationError([
+                    'company_id' => 'Nao foi possivel identificar a unidade do usuario',
+                ]);
+                $this->response->json($response->toArray(), 422)->send();
+                return;
+            }
+
+            if (!$this->unidadeExists($companyId)) {
+                $response = ApiResponse::validationError([
+                    'company_id' => 'Unidade informada e invalida',
+                ]);
+                $this->response->json($response->toArray(), 422)->send();
+                return;
+            }
+
+            $data['company_id'] = $companyId;
             
             $board = $this->kanbanService->createBoard($data, $userId);
             
@@ -239,14 +266,86 @@ class KanbanController extends BaseController
     {
         $userId = $this->getCurrentUserId();
         if ($userId === null) {
-            return 1;
+            return 0;
         }
 
         $db = \DotProject\Core\Database::getInstance();
-        $companyId = $db->fetchValue(
-            sprintf("SELECT user_company FROM `%s` WHERE user_id = %d", $db->table('users'), $userId)
+        $usersTable = $db->table('users');
+        $vinculosTable = $db->table('usuario_unidades');
+        $unidadesTable = $db->table('unidades_organizacionais');
+
+        $companyId = (int) ($db->fetchValue(
+            sprintf(
+                "SELECT u.user_company
+                 FROM `%s` u
+                 JOIN `%s` un ON un.unidade_id = u.user_company
+                 WHERE u.user_id = ? AND u.user_company IS NOT NULL AND u.user_company <> 0
+                 LIMIT 1",
+                $usersTable,
+                $unidadesTable
+            ),
+            [$userId]
+        ) ?? 0);
+
+        if ($companyId > 0) {
+            return $companyId;
+        }
+
+        $companyId = (int) ($db->fetchValue(
+            sprintf(
+                "SELECT v.vinculo_unidade_id
+                 FROM `%s` v
+                 JOIN `%s` un ON un.unidade_id = v.vinculo_unidade_id
+                 WHERE v.vinculo_user_id = ?
+                   AND v.vinculo_status = 'ativo'
+                 ORDER BY v.vinculo_is_principal DESC, v.vinculo_id ASC
+                 LIMIT 1",
+                $vinculosTable,
+                $unidadesTable
+            ),
+            [$userId]
+        ) ?? 0);
+
+        if ($companyId > 0) {
+            return $companyId;
+        }
+
+        $companyId = (int) ($db->fetchValue(
+            sprintf(
+                "SELECT un.unidade_id
+                 FROM `%s` un
+                 WHERE un.unidade_responsavel_id = ?
+                   AND un.unidade_status = 'ativo'
+                 ORDER BY un.unidade_nivel_id ASC, un.unidade_id ASC
+                 LIMIT 1",
+                $unidadesTable
+            ),
+            [$userId]
+        ) ?? 0);
+
+        if ($companyId > 0) {
+            return $companyId;
+        }
+
+        return 0;
+    }
+
+    private function unidadeExists(int $unidadeId): bool
+    {
+        if ($unidadeId <= 0) {
+            return false;
+        }
+
+        $db = \DotProject\Core\Database::getInstance();
+        $unidadesTable = $db->table('unidades_organizacionais');
+        $exists = $db->fetchValue(
+            sprintf(
+                "SELECT unidade_id FROM `%s` WHERE unidade_id = ? LIMIT 1",
+                $unidadesTable
+            ),
+            [$unidadeId]
         );
 
-        return $companyId ? (int) $companyId : 1;
+        return $exists !== null;
     }
 }

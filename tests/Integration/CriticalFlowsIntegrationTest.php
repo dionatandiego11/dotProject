@@ -150,6 +150,82 @@ class CriticalFlowsIntegrationTest extends TestCase
         $this->assertSame($unidadeId, (int) ($row['board_company'] ?? 0));
     }
 
+    public function testKanbanCreateBoardResolvesCompanyFromPrincipalVinculoWhenUserCompanyIsMissing(): void
+    {
+        $userId = 1;
+        $vinculo = $this->db->fetchOne(
+            "SELECT v.vinculo_unidade_id
+             FROM dotp_usuario_unidades v
+             JOIN dotp_unidades_organizacionais un ON un.unidade_id = v.vinculo_unidade_id
+             WHERE v.vinculo_user_id = 1
+               AND v.vinculo_status = 'ativo'
+             ORDER BY v.vinculo_is_principal DESC, v.vinculo_id ASC
+             LIMIT 1"
+        );
+
+        if (!$vinculo || empty($vinculo['vinculo_unidade_id'])) {
+            $this->markTestSkipped('Usuario sem vinculo ativo para validar fallback de unidade no Kanban.');
+        }
+
+        $expectedUnidade = (int) $vinculo['vinculo_unidade_id'];
+        $originalCompany = (int) ($this->db->fetchValue(
+            sprintf('SELECT user_company FROM `%s` WHERE user_id = %d', $this->db->table('users'), $userId)
+        ) ?? 0);
+
+        $updated = $this->db->update('users', ['user_company' => 0], sprintf('user_id = %d', $userId));
+        $this->assertTrue($updated, 'Falha ao preparar usuario para teste de fallback de unidade');
+
+        try {
+            $request = $this->createMock(Request::class);
+            $request->method('getBody')->willReturn([
+                'name' => 'IT Kanban fallback ' . bin2hex(random_bytes(4)),
+            ]);
+            $request->method('getParam')
+                ->willReturnCallback(fn(string $key, mixed $default = null) => $key === '_user_id' ? $userId : $default);
+
+            $capturedPayload = null;
+            $capturedStatus = null;
+            $response = $this->getMockBuilder(Response::class)
+                ->onlyMethods(['json', 'error', 'send'])
+                ->getMock();
+
+            $response->method('json')
+                ->willReturnCallback(function (mixed $data, int $status = 200) use (&$capturedPayload, &$capturedStatus, $response) {
+                    $capturedPayload = $data;
+                    $capturedStatus = $status;
+                    return $response;
+                });
+            $response->method('error')
+                ->willReturnCallback(function (string $message, int $status = 400) use (&$capturedPayload, &$capturedStatus, $response) {
+                    $capturedPayload = ['error' => true, 'message' => $message];
+                    $capturedStatus = $status;
+                    return $response;
+                });
+            $response->method('send')->willReturnCallback(static function (): void {
+            });
+
+            $controller = new KanbanController($request, $response);
+            $controller->createBoard();
+
+            $this->assertSame(201, $capturedStatus);
+            $this->assertIsArray($capturedPayload);
+            $this->assertTrue((bool) ($capturedPayload['success'] ?? false));
+            $this->assertSame($expectedUnidade, (int) ($capturedPayload['data']['company_id'] ?? 0));
+
+            $boardId = (int) ($capturedPayload['data']['id'] ?? 0);
+            $this->assertGreaterThan(0, $boardId);
+            $this->boardIds[] = $boardId;
+
+            $row = $this->db->fetchOne(
+                sprintf('SELECT board_company FROM `%s` WHERE board_id = %d', $this->db->table('kanban_boards'), $boardId)
+            );
+            $this->assertNotNull($row);
+            $this->assertSame($expectedUnidade, (int) ($row['board_company'] ?? 0));
+        } finally {
+            $this->db->update('users', ['user_company' => $originalCompany], sprintf('user_id = %d', $userId));
+        }
+    }
+
     public function testAdminGetArvoreReturnsNodeWhenRaizIdIsNotGlobalRoot(): void
     {
         $target = $this->db->fetchOne(
