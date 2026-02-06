@@ -57,6 +57,8 @@ class AuthorizationService
     private Cache $cache;
     private ?UserEntity $currentUser = null;
     private ?array $userPermissions = null;
+    private ?string $vinculoStatusColumn = null;
+    private ?bool $hasUserTasksTable = null;
     
     private static ?AuthorizationService $instance = null;
     
@@ -182,7 +184,8 @@ class AuthorizationService
             $userId
         );
         
-        $role = (int) ($this->db->fetchValue($sql) ?? self::ROLE_USER);
+        $rawRole = (int) ($this->db->fetchValue($sql) ?? self::ROLE_USER);
+        $role = $this->normalizeRoleId($rawRole);
         
         // Cache for 5 minutes
         $this->cache->set($cacheKey, $role, 300);
@@ -320,32 +323,41 @@ class AuthorizationService
         }
         
         // Check if user is assigned to any task in the project
-        $sql = sprintf(
-            "SELECT COUNT(*) FROM `%s` t 
-             JOIN `%s` ut ON t.task_id = ut.task_id 
-             WHERE t.task_project = %d AND ut.user_id = %d",
-            $this->db->table('tasks'),
-            $this->db->table('user_tasks'),
-            $projectId,
-            $userId
-        );
-        
-        if ((int) $this->db->fetchValue($sql) > 0) {
-            return true;
+        if ($this->hasUserTasksTable()) {
+            $sql = sprintf(
+                "SELECT COUNT(*) FROM `%s` t 
+                 JOIN `%s` ut ON t.task_id = ut.task_id 
+                 WHERE t.task_project = %d AND ut.user_id = %d",
+                $this->db->table('tasks'),
+                $this->db->table('user_tasks'),
+                $projectId,
+                $userId
+            );
+
+            if ((int) $this->db->fetchValue($sql) > 0) {
+                return true;
+            }
         }
         
-        // Check company access (user's company == project company)
+        // Check company/unidade scope access.
+        $scopeCompanyIds = $this->getUserScopeCompanyIds($userId);
+        if (empty($scopeCompanyIds)) {
+            return false;
+        }
+
+        $placeholders = implode(',', array_fill(0, count($scopeCompanyIds), '?'));
         $sql = sprintf(
-            "SELECT COUNT(*) FROM `%s` p 
-             JOIN `%s` u ON u.user_company = p.project_company 
-             WHERE p.project_id = %d AND u.user_id = %d",
+            "SELECT COUNT(*) FROM `%s` 
+             WHERE project_id = ? 
+               AND project_company IN (%s)",
             $this->db->table('projects'),
-            $this->db->table('users'),
-            $projectId,
-            $userId
+            $placeholders
         );
-        
-        return (int) $this->db->fetchValue($sql) > 0;
+
+        return (int) $this->db->fetchValue(
+            $sql,
+            array_merge([$projectId], $scopeCompanyIds)
+        ) > 0;
     }
     
     /**
@@ -407,15 +419,17 @@ class AuthorizationService
         }
         
         // Check if user is assigned to task
-        $sql = sprintf(
-            "SELECT COUNT(*) FROM `%s` WHERE task_id = %d AND user_id = %d",
-            $this->db->table('user_tasks'),
-            $taskId,
-            $userId
-        );
-        
-        if ((int) $this->db->fetchValue($sql) > 0) {
-            return true;
+        if ($this->hasUserTasksTable()) {
+            $sql = sprintf(
+                "SELECT COUNT(*) FROM `%s` WHERE task_id = %d AND user_id = %d",
+                $this->db->table('user_tasks'),
+                $taskId,
+                $userId
+            );
+            
+            if ((int) $this->db->fetchValue($sql) > 0) {
+                return true;
+            }
         }
         
         // Check project access (if user can access project, can view tasks)
@@ -499,7 +513,7 @@ class AuthorizationService
             return $this->userPermissions;
         }
         
-        $role = $this->getUserRole($userId);
+        $role = $this->normalizeRoleId($this->getUserRole($userId));
         
         return $this->permissionMatrix[$role] ?? $this->permissionMatrix[self::ROLE_GUEST];
     }
@@ -533,27 +547,31 @@ class AuthorizationService
         $ownerProjects = $this->db->fetchAll($sql);
         
         // Get projects where user has tasks
-        $sql = sprintf(
-            "SELECT DISTINCT t.task_project as project_id 
-             FROM `%s` t 
-             JOIN `%s` ut ON t.task_id = ut.task_id 
-             WHERE ut.user_id = %d",
-            $this->db->table('tasks'),
-            $this->db->table('user_tasks'),
-            $userId
-        );
-        $taskProjects = $this->db->fetchAll($sql);
-        
-        // Get projects from user's company
-        $sql = sprintf(
-            "SELECT p.project_id FROM `%s` p 
-             JOIN `%s` u ON u.user_company = p.project_company 
-             WHERE u.user_id = %d",
-            $this->db->table('projects'),
-            $this->db->table('users'),
-            $userId
-        );
-        $companyProjects = $this->db->fetchAll($sql);
+        $taskProjects = [];
+        if ($this->hasUserTasksTable()) {
+            $sql = sprintf(
+                "SELECT DISTINCT t.task_project as project_id 
+                 FROM `%s` t 
+                 JOIN `%s` ut ON t.task_id = ut.task_id 
+                 WHERE ut.user_id = %d",
+                $this->db->table('tasks'),
+                $this->db->table('user_tasks'),
+                $userId
+            );
+            $taskProjects = $this->db->fetchAll($sql);
+        }
+
+        $companyProjects = [];
+        $scopeCompanyIds = $this->getUserScopeCompanyIds($userId);
+        if (!empty($scopeCompanyIds)) {
+            $placeholders = implode(',', array_fill(0, count($scopeCompanyIds), '?'));
+            $sql = sprintf(
+                "SELECT project_id FROM `%s` WHERE project_company IN (%s)",
+                $this->db->table('projects'),
+                $placeholders
+            );
+            $companyProjects = $this->db->fetchAll($sql, $scopeCompanyIds);
+        }
         
         // Merge and deduplicate
         $allProjects = array_merge($ownerProjects, $taskProjects, $companyProjects);
@@ -568,8 +586,113 @@ class AuthorizationService
     public function clearUserCache(int $userId): void
     {
         $this->cache->delete("user_role:{$userId}");
+        $this->cache->delete("user_scope_companies:{$userId}");
         $this->cache->invalidate("project_access:{$userId}:*");
         $this->cache->invalidate("task_access:{$userId}:*");
+    }
+
+    private function normalizeRoleId(int $roleId): int
+    {
+        return array_key_exists($roleId, $this->permissionMatrix)
+            ? $roleId
+            : self::ROLE_USER;
+    }
+
+    /**
+     * @return int[]
+     */
+    private function getUserScopeCompanyIds(int $userId): array
+    {
+        $cacheKey = "user_scope_companies:{$userId}";
+        $cached = $this->cache->get($cacheKey);
+        if (is_array($cached)) {
+            return array_map('intval', $cached);
+        }
+
+        $ids = [];
+
+        $userCompany = (int) ($this->db->fetchValue(
+            sprintf(
+                "SELECT user_company FROM `%s` WHERE user_id = ? AND user_company IS NOT NULL AND user_company <> 0",
+                $this->db->table('users')
+            ),
+            [$userId]
+        ) ?? 0);
+        if ($userCompany > 0) {
+            $ids[] = $userCompany;
+        }
+
+        $vinculoStatusColumn = $this->resolveVinculoStatusColumn();
+        $activeValue = $this->vinculoStatusValueForSql(true, $vinculoStatusColumn);
+        $vinculoRows = $this->db->fetchAll(
+            sprintf(
+                "SELECT vinculo_unidade_id
+                 FROM `%s`
+                 WHERE vinculo_user_id = ?
+                   AND %s = ?",
+                $this->db->table('usuario_unidades'),
+                $vinculoStatusColumn
+            ),
+            [$userId, $activeValue]
+        );
+
+        foreach ($vinculoRows as $row) {
+            $vinculoId = (int) ($row['vinculo_unidade_id'] ?? 0);
+            if ($vinculoId > 0) {
+                $ids[] = $vinculoId;
+            }
+        }
+
+        $ids = array_values(array_unique(array_map('intval', $ids)));
+        $this->cache->set($cacheKey, $ids, 300);
+
+        return $ids;
+    }
+
+    private function resolveVinculoStatusColumn(): string
+    {
+        if ($this->vinculoStatusColumn !== null) {
+            return $this->vinculoStatusColumn;
+        }
+
+        $table = trim($this->db->table('usuario_unidades'), '`');
+        $exists = (int) ($this->db->fetchValue(
+            "SELECT COUNT(*) FROM information_schema.columns
+             WHERE table_schema = DATABASE()
+               AND table_name = ?
+               AND column_name = 'vinculo_status'",
+            [$table]
+        ) ?? 0);
+
+        $this->vinculoStatusColumn = $exists > 0 ? 'vinculo_status' : 'vinculo_ativo';
+        return $this->vinculoStatusColumn;
+    }
+
+    private function vinculoStatusValueForSql(bool $active, string $column): int|string
+    {
+        if ($column === 'vinculo_status') {
+            return $active ? 'ativo' : 'inativo';
+        }
+
+        return $active ? 1 : 0;
+    }
+
+    private function hasUserTasksTable(): bool
+    {
+        if ($this->hasUserTasksTable !== null) {
+            return $this->hasUserTasksTable;
+        }
+
+        $table = trim($this->db->table('user_tasks'), '`');
+        $exists = (int) ($this->db->fetchValue(
+            "SELECT COUNT(*) FROM information_schema.tables
+             WHERE table_schema = DATABASE()
+               AND table_name = ?",
+            [$table]
+        ) ?? 0);
+
+        $this->hasUserTasksTable = $exists > 0;
+        return $this->hasUserTasksTable;
     }
     
     /**
