@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Kanban Column Component
  * 
  * Componente de coluna do Kanban.
@@ -24,12 +24,21 @@ function KanbanColumn({
 
   const handleDrop = (e) => {
     e.preventDefault()
-    // Calcula ordem baseada na posição do mouse
-    const rect = e.currentTarget.getBoundingClientRect()
-    const y = e.clientY - rect.top
-    const taskHeight = 80 // Aproximado
-    const order = Math.floor(y / taskHeight)
-    
+    const tasksContainer = e.currentTarget.querySelector('.kanban-column-tasks')
+    const taskElements = tasksContainer
+      ? Array.from(tasksContainer.querySelectorAll('.kanban-task'))
+      : []
+
+    let order = taskElements.length
+    for (let i = 0; i < taskElements.length; i += 1) {
+      const rect = taskElements[i].getBoundingClientRect()
+      const midpoint = rect.top + rect.height / 2
+      if (e.clientY < midpoint) {
+        order = i
+        break
+      }
+    }
+
     onDrop(column.id, Math.max(0, Math.min(order, column.tasks.length)))
   }
 
@@ -63,7 +72,7 @@ function KanbanColumn({
       <div className="kanban-column-header">
         <div className="kanban-column-title">
           <span>{column.name}</span>
-          {column.is_done && <span className="kanban-badge-done">✓</span>}
+          {column.is_done && <span className="kanban-badge-done">{'\u2713'}</span>}
         </div>
         <div className="kanban-column-meta">
           {getWipIndicator()}
@@ -129,3 +138,4 @@ KanbanColumn.propTypes = {
 }
 
 export default KanbanColumn
+

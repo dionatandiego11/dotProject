@@ -12,6 +12,7 @@ namespace DotProject\Repository;
 
 use DotProject\Core\Database;
 use DotProject\Core\Cache;
+use DotProject\Core\Logger;
 
 /**
  * Repository base com cache integrado
@@ -20,27 +21,36 @@ abstract class BaseRepository implements RepositoryInterface
 {
     protected Database $db;
     protected Cache $cache;
-    /** @var string */
-    protected $table;
-    /** @var string */
-    protected $primaryKey;
+    protected string $table = '';
+    protected string $primaryKey = 'id';
     protected int $cacheTtl;
 
     public function __construct(?Database $db = null, ?Cache $cache = null)
     {
-        error_log('[DEBUG] BaseRepository::__construct() iniciado');
+        Logger::debug('BaseRepository::__construct() iniciado', [
+            'repository' => static::class,
+        ]);
         try {
             $this->db = $db ?? Database::getInstance();
-            error_log('[DEBUG] Database instance OK');
+            Logger::debug('Database instance OK', [
+                'repository' => static::class,
+            ]);
             $this->cache = $cache ?? new Cache();
-            error_log('[DEBUG] Cache instance OK');
+            Logger::debug('Cache instance OK', [
+                'repository' => static::class,
+            ]);
             if (!isset($this->primaryKey) || $this->primaryKey === '') {
                 $this->primaryKey = 'id';
             }
             $this->cacheTtl = 300; // 5 minutos
-            error_log('[DEBUG] BaseRepository::__construct() concluido');
+            Logger::debug('BaseRepository::__construct() concluido', [
+                'repository' => static::class,
+            ]);
         } catch (\Throwable $e) {
-            error_log('[DEBUG] ERRO em BaseRepository::__construct(): ' . $e->getMessage());
+            Logger::error('Erro em BaseRepository::__construct()', [
+                'repository' => static::class,
+                'error' => $e->getMessage(),
+            ]);
             throw $e;
         }
     }

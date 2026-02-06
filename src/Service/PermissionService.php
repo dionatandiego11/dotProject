@@ -257,7 +257,7 @@ class PermissionService
         
         return match($recurso) {
             'projeto' => (bool) $db->fetchColumn(
-                "SELECT 1 FROM dotp_projetos_prefeitura WHERE id = ? AND coordenador_id = ?",
+                "SELECT 1 FROM dotp_projects WHERE project_id = ? AND project_coordenador_id = ?",
                 [$recursoId, $userId]
             ),
             'programa' => (bool) $db->fetchColumn(
@@ -284,7 +284,7 @@ class PermissionService
         
         return match($recurso) {
             'projeto' => (bool) $db->fetchColumn(
-                "SELECT 1 FROM dotp_projetos_prefeitura WHERE id = ? AND unidade_id = ?",
+                "SELECT 1 FROM dotp_projects WHERE project_id = ? AND project_company = ?",
                 [$recursoId, $unidadeId]
             ),
             'programa' => (bool) $db->fetchColumn(
@@ -309,7 +309,7 @@ class PermissionService
         
         return match($recurso) {
             'projeto' => (bool) $db->fetchColumn(
-                "SELECT 1 FROM dotp_projetos_prefeitura WHERE id = ? AND unidade_id IN ({$placeholders})",
+                "SELECT 1 FROM dotp_projects WHERE project_id = ? AND project_company IN ({$placeholders})",
                 array_merge([$recursoId], $unidades)
             ),
             'programa' => (bool) $db->fetchColumn(

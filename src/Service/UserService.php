@@ -175,6 +175,13 @@ class UserService
      */
     public function updateUser(int $userId, array $data): ?UserEntity
     {
+        if (isset($data['user_username'])) {
+            $username = trim((string) $data['user_username']);
+            if ($username !== '' && strlen($username) < 3) {
+                throw new \RuntimeException('Username must be at least 3 characters');
+            }
+        }
+
         $user = $this->repository->find($userId);
         
         if ($user === null) {

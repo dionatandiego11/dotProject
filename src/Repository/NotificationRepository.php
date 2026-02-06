@@ -91,13 +91,14 @@ class NotificationRepository extends BaseRepository
     /**
      * {@inheritdoc}
      */
-    public function save(object $entity): bool
+    public function save(object $entity): int
     {
         if (!$entity instanceof Notification) {
             throw new \InvalidArgumentException('Entity must be Notification');
         }
         
         $data = $this->extract($entity);
+        $result = false;
         
         if ($entity->getId() === null) {
             unset($data['notification_id']);
@@ -115,7 +116,7 @@ class NotificationRepository extends BaseRepository
             $this->cache->invalidate("notifications:*");
         }
         
-        return $result;
+        return $result ? (int) $entity->getId() : 0;
     }
     
     /**

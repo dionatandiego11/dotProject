@@ -932,6 +932,7 @@ if (!defined("_ADODB_MYSQLI_LAYER")) {
 
 		var $databaseType = "mysqli";
 		var $canSeek = true;
+		var $adodbFetchMode;
 
 		function __construct($queryID, $mode = false)
 		{

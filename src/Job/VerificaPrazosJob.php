@@ -73,7 +73,7 @@ class VerificaPrazosJob
         
         $limite = date('Y-m-d', strtotime('+7 days'));
         
-        $sql = "SELECT * FROM etapas 
+        $sql = "SELECT * FROM dotp_etapas 
                 WHERE estado IN ('Dentro_Prazo', 'Em_Andamento')
                 AND data_prevista_fim <= ?
                 AND data_prevista_fim >= CURDATE()";
@@ -107,7 +107,7 @@ class VerificaPrazosJob
         
         $hoje = date('Y-m-d');
         
-        $sql = "SELECT * FROM etapas 
+        $sql = "SELECT * FROM dotp_etapas 
                 WHERE estado NOT IN ('Concluida', 'Concluida_Com_Atraso', 'Atrasada', 'Critica')
                 AND data_prevista_fim < ?";
         
@@ -151,8 +151,8 @@ class VerificaPrazosJob
         $this->logger->debug('Atualizando status dos projetos...');
         
         // Busca projetos ativos
-        $sql = "SELECT * FROM projetos 
-                WHERE estado NOT IN ('Concluido', 'Cancelado')";
+        $sql = "SELECT * FROM dotp_projects 
+                WHERE project_estado NOT IN ('Concluido', 'Cancelado')";
         
         $projetos = $this->db->fetchAll($sql);
         $atualizados = 0;
@@ -183,19 +183,19 @@ class VerificaPrazosJob
     {
         $this->logger->debug('Atualizando status dos programas...');
         
-        $sql = "SELECT * FROM programas WHERE estado != 'Concluido'";
+        $sql = "SELECT * FROM dotp_programas WHERE estado != 'Concluido'";
         $programas = $this->db->fetchAll($sql);
         
         foreach ($programas as $dados) {
             try {
                 // Recalcula percentual
-                $sql = "SELECT AVG(percent_execucao) as media FROM projetos WHERE programa_id = ?";
+                $sql = "SELECT AVG(project_percent_execucao) as media FROM dotp_projects WHERE project_programa_id = ?";
                 $result = $this->db->fetchOne($sql, [$dados['id']]);
                 $percent = round((float) ($result['media'] ?? 0), 2);
                 
                 // Atualiza programa
                 $this->db->execute(
-                    "UPDATE programas SET percent_execucao = ? WHERE id = ?",
+                    "UPDATE dotp_programas SET percent_execucao = ? WHERE id = ?",
                     [$percent, $dados['id']]
                 );
                 

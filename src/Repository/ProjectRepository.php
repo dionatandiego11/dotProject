@@ -93,13 +93,14 @@ class ProjectRepository extends BaseRepository
     /**
      * {@inheritdoc}
      */
-    public function save(object $entity): bool
+    public function save(object $entity): int
     {
         if (!$entity instanceof ProjectEntity) {
             throw new \InvalidArgumentException('Entity must be ProjectEntity');
         }
 
         $data = $this->extract($entity);
+        $result = false;
         
         if ($entity->getId() === null) {
             // Insert
@@ -123,7 +124,7 @@ class ProjectRepository extends BaseRepository
             $this->clearCache();
         }
 
-        return $result;
+        return $result ? (int) $entity->getId() : 0;
     }
 
     /**

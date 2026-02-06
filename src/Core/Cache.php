@@ -40,7 +40,7 @@ class Cache
         string $prefix = 'dp:',
         ?int $defaultTtl = null
     ) {
-        error_log('[DEBUG] Cache::__construct() iniciado');
+        Logger::debug('Cache::__construct() iniciado');
         $this->enabled = filter_var(
             getenv('CACHE_ENABLED') ?: 'true',
             FILTER_VALIDATE_BOOL
@@ -342,7 +342,7 @@ class Cache
      */
     private function serialize(mixed $data): string
     {
-        return json_encode($data, JSON_UNESCAPED_UNICODE);
+        return serialize($data);
     }
 
     /**
@@ -350,7 +350,18 @@ class Cache
      */
     private function unserialize(string $data): mixed
     {
-        return json_decode($data, true);
+        $value = @unserialize($data, ['allowed_classes' => true]);
+        if ($value !== false || $data === 'b:0;') {
+            return $value;
+        }
+
+        // Compatibilidade com entradas antigas em JSON
+        $json = json_decode($data, true);
+        if (json_last_error() === JSON_ERROR_NONE) {
+            return $json;
+        }
+
+        return null;
     }
 
     /**
@@ -358,34 +369,37 @@ class Cache
      */
     public function invalidate(string $pattern): int
     {
-        if (!$this->isAvailable()) {
-            return 0;
+        $memoryCount = 0;
+        foreach ($this->memoryCache as $key => $value) {
+            if (fnmatch($pattern, $key)) {
+                unset($this->memoryCache[$key], $this->memoryTimestamps[$key]);
+                $memoryCount++;
+            }
         }
-        
+
+        if (!$this->isAvailable()) {
+            return $memoryCount;
+        }
+
         try {
             $keys = $this->redis->keys($this->key($pattern));
-            
-            // Também limpar da memória
-            foreach ($this->memoryCache as $key => $value) {
-                if (fnmatch($pattern, $key)) {
-                    unset($this->memoryCache[$key], $this->memoryTimestamps[$key]);
-                }
-            }
-            
+
             if (empty($keys)) {
-                return 0;
+                return $memoryCount;
             }
-            
+
             $count = $this->redis->del(...$keys);
-            Logger::info('Cache INVALIDATE', ['pattern' => $pattern, 'count' => $count]);
-            return $count;
-            
+            Logger::info('Cache INVALIDATE', [
+                'pattern' => $pattern,
+                'count' => $count,
+            ]);
+            return $count + $memoryCount;
         } catch (\Exception $e) {
             Logger::error('Cache: Erro ao invalidar', [
                 'pattern' => $pattern,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
-            return 0;
+            return $memoryCount;
         }
     }
 

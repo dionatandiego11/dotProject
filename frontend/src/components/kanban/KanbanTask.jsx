@@ -36,7 +36,7 @@ function KanbanTask({ task, columnId, index, onDragStart, onClick }) {
 
   const formatTimeInColumn = (timeStr) => {
     if (!timeStr) return ''
-    return `• ${timeStr}`
+    return `\u2022 ${timeStr}`
   }
 
   const formatDate = (value) => {

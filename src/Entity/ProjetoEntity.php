@@ -113,6 +113,21 @@ class ProjetoEntity
     {
         return $this->estado;
     }
+
+    public function setEstado(string $estado): self
+    {
+        $this->estado = $estado;
+        return $this;
+    }
+
+    public function setEtapaAtualNumero(int $numero): self
+    {
+        if ($numero < 1) {
+            $numero = 1;
+        }
+        $this->etapaAtualNumero = $numero;
+        return $this;
+    }
     
     public function getEstadoAnterior(): ?string
     {
@@ -133,10 +148,116 @@ class ProjetoEntity
     {
         return $this->percentExecucao;
     }
+
+    public function getDescricao(): ?string
+    {
+        return $this->descricao;
+    }
+
+    public function getFonteRecurso(): ?string
+    {
+        return $this->fonteRecurso;
+    }
+
+    public function getValorPrevisto(): ?float
+    {
+        return $this->valorPrevisto;
+    }
+
+    public function getSituacaoOrcamentaria(): ?string
+    {
+        return $this->situacaoOrcamentaria;
+    }
+
+    public function getDataPrevistaInicio(): ?DateTime
+    {
+        return $this->dataPrevistaInicio;
+    }
+
+    public function getDataPrevistaFim(): ?DateTime
+    {
+        return $this->dataPrevistaFim;
+    }
+
+    public function getJustificativaAtraso(): ?string
+    {
+        return $this->justificativaAtraso;
+    }
+
+    public function getImpedimentoDescricao(): ?string
+    {
+        return $this->impedimentoDescricao;
+    }
     
     public function setPercentExecucao(float $percent): self
     {
         $this->percentExecucao = $percent;
+        return $this;
+    }
+
+    public function setProgramaId(?int $id): self
+    {
+        $this->programaId = $id;
+        return $this;
+    }
+
+    public function setDescricao(?string $descricao): self
+    {
+        $this->descricao = $descricao;
+        return $this;
+    }
+
+    public function setFonteRecurso(?string $fonte): self
+    {
+        $this->fonteRecurso = $fonte;
+        return $this;
+    }
+
+    public function setValorPrevisto(?float $valor): self
+    {
+        $this->valorPrevisto = $valor;
+        return $this;
+    }
+
+    public function setSituacaoOrcamentaria(?string $situacao): self
+    {
+        $this->situacaoOrcamentaria = $situacao;
+        return $this;
+    }
+
+    public function setDataPrevistaInicio(?DateTime $data): self
+    {
+        $this->dataPrevistaInicio = $data;
+        return $this;
+    }
+
+    public function setDataPrevistaFim(?DateTime $data): self
+    {
+        $this->dataPrevistaFim = $data;
+        return $this;
+    }
+
+    public function setDataCriacao(?DateTime $data): self
+    {
+        $this->dataCriacao = $data;
+        return $this;
+    }
+
+    public function setDataAtualizacao(?DateTime $data): self
+    {
+        $this->dataAtualizacao = $data;
+        return $this;
+    }
+
+    public function setJustificativaAtraso(?string $justificativa): self
+    {
+        $this->justificativaAtraso = $justificativa;
+        return $this;
+    }
+
+    public function setImpedimentoDescricao(?string $descricao): self
+    {
+        $this->impedimentoDescricao = $descricao;
         return $this;
     }
     
@@ -165,6 +286,11 @@ class ProjetoEntity
     public function getPrograma(): ?ProgramaEntity
     {
         return $this->programa;
+    }
+
+    public function getProgramaId(): ?int
+    {
+        return $this->programaId;
     }
     
     public function setPrograma(?ProgramaEntity $programa): self

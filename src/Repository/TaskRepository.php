@@ -26,13 +26,13 @@ class TaskRepository extends BaseRepository
         $entity->setDescription($data['task_description'] ?? null);
         $entity->setProjectId((int) $data['task_project']);
         $entity->setParentTaskId($data['task_parent'] ? (int) $data['task_parent'] : null);
-        $entity->setAssignedTo($data['task_assigned_to'] ? (int) $data['task_assigned_to'] : null);
+        $entity->setAssignedTo(!empty($data['task_assigned_to']) ? (int) $data['task_assigned_to'] : null);
         $entity->setOwnerId((int) ($data['task_owner'] ?? 0));
         $entity->setStatus((int) ($data['task_status'] ?? 0));
         $entity->setPriority((int) ($data['task_priority'] ?? 3));
         $entity->setPercentComplete((int) ($data['task_percent_complete'] ?? 0));
-        $entity->setEstimatedHours($data['task_hours'] ? (float) $data['task_hours'] : null);
-        $entity->setActualHours($data['task_actual_hours'] ? (float) $data['task_actual_hours'] : null);
+        $entity->setEstimatedHours(isset($data['task_hours']) && $data['task_hours'] !== null ? (float) $data['task_hours'] : null);
+        $entity->setActualHours(isset($data['task_actual_hours']) && $data['task_actual_hours'] !== null ? (float) $data['task_actual_hours'] : null);
         
         if (!empty($data['task_start_date'])) {
             $entity->setStartDate(new DateTime($data['task_start_date']));
@@ -78,13 +78,14 @@ class TaskRepository extends BaseRepository
         ];
     }
 
-    public function save(object $entity): bool
+    public function save(object $entity): int
     {
         if (!$entity instanceof TaskEntity) {
             throw new \InvalidArgumentException('Entity must be TaskEntity');
         }
 
         $data = $this->extract($entity);
+        $result = false;
         
         if ($entity->getId() === null) {
             unset($data['task_id']);
@@ -101,7 +102,7 @@ class TaskRepository extends BaseRepository
         if ($result) {
             $this->clearCache();
         }
-        return $result;
+        return $result ? (int) $entity->getId() : 0;
     }
 
     public function delete(int $id): bool

@@ -15,6 +15,7 @@ php_errors.log
 /nbproject
 /dotProject/
 !/modules/files/
+.phpunit.cache/
 
 # Stupid macOS temporary files
 

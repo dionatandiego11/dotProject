@@ -33,13 +33,136 @@ class Database
     private function __construct()
     {
         global $db;
-        $this->connection = $db;
+        $this->connection = $this->resolveConnection($db);
         // Use dPgetConfig if available (legacy), otherwise get from environment
-        if (function_exists('dPgetConfig')) {
-            $this->prefix = dPgetConfig('dbprefix', '');
-        } else {
-            $this->prefix = getenv('DB_PREFIX') ?: 'dotp_';
+        $prefix = $this->configValue('dbprefix', getenv('DB_PREFIX') ?: 'dotp_');
+        $this->prefix = is_string($prefix) && $prefix !== '' ? $prefix : 'dotp_';
+    }
+
+    /**
+     * Resolve a usable ADODB connection.
+     */
+    private function resolveConnection(mixed &$legacyConnection): mixed
+    {
+        if ($this->isValidConnection($legacyConnection)) {
+            return $legacyConnection;
         }
+
+        $fallback = $this->createFallbackConnection();
+        if ($this->isValidConnection($fallback)) {
+            $legacyConnection = $fallback;
+            return $fallback;
+        }
+
+        throw new \RuntimeException('Database connection is not initialized');
+    }
+
+    /**
+     * Check whether a connection object looks like ADODB.
+     */
+    private function isValidConnection(mixed $connection): bool
+    {
+        return is_object($connection) && method_exists($connection, 'Execute');
+    }
+
+    /**
+     * Try to bootstrap a connection when legacy $db was not initialized.
+     */
+    private function createFallbackConnection(): mixed
+    {
+        $baseDir = defined('DP_BASE_DIR') ? DP_BASE_DIR : dirname(__DIR__, 2);
+        $adodbPath = $baseDir . '/lib/adodb/adodb.inc.php';
+        if (!file_exists($adodbPath)) {
+            return null;
+        }
+
+        require_once $adodbPath;
+        if (!function_exists('NewADOConnection')) {
+            return null;
+        }
+
+        $dbType = (string) $this->configValue('dbtype', getenv('DB_TYPE') ?: 'mysqli');
+        $dbUser = (string) $this->configValue('dbuser', getenv('DB_USER') ?: 'dotproject');
+        $dbPass = (string) $this->configValue('dbpass', getenv('DB_PASS') ?: 'dotproject123');
+        $dbPort = (string) (getenv('DB_PORT') ?: '');
+
+        $hostCandidates = $this->buildHostCandidates($dbPort);
+        $databaseCandidates = $this->buildDatabaseCandidates();
+
+        foreach ($hostCandidates as $host) {
+            foreach ($databaseCandidates as $database) {
+                $connection = \NewADOConnection($dbType);
+                if (@$connection->Connect($host, $dbUser, $dbPass, $database)) {
+                    return $connection;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Build host candidates for fallback DB connection.
+     *
+     * @return array<int, string>
+     */
+    private function buildHostCandidates(string $dbPort): array
+    {
+        $hosts = [];
+
+        foreach ([
+            getenv('DB_HOST') ?: null,
+            $this->configValue('dbhost', null),
+            'mariadb',
+            '127.0.0.1',
+            'localhost',
+        ] as $host) {
+            if (!is_string($host) || $host === '') {
+                continue;
+            }
+
+            $hosts[] = $host;
+            if ($dbPort !== '' && !str_contains($host, ':')) {
+                $hosts[] = $host . ':' . $dbPort;
+            }
+        }
+
+        return array_values(array_unique($hosts));
+    }
+
+    /**
+     * Build database name candidates for fallback DB connection.
+     *
+     * @return array<int, string>
+     */
+    private function buildDatabaseCandidates(): array
+    {
+        $databases = [];
+
+        foreach ([getenv('DB_NAME') ?: null, $this->configValue('dbname', null), 'dotproject'] as $name) {
+            if (!is_string($name) || $name === '') {
+                continue;
+            }
+
+            $databases[] = $name;
+            if (str_ends_with($name, '_test')) {
+                $databases[] = substr($name, 0, -5);
+            }
+        }
+
+        return array_values(array_unique($databases));
+    }
+
+    /**
+     * Read config from legacy dPgetConfig()/globals with environment fallback.
+     */
+    private function configValue(string $key, mixed $default = null): mixed
+    {
+        if (function_exists('dPgetConfig')) {
+            return dPgetConfig($key, $default);
+        }
+
+        return $GLOBALS['dPconfig'][$key] ?? $default;
     }
 
     /**
@@ -76,6 +199,10 @@ class Database
      */
     public function table(string $name): string
     {
+        if ($this->prefix !== '' && str_starts_with($name, $this->prefix)) {
+            return $name;
+        }
+
         return $this->prefix . $name;
     }
 

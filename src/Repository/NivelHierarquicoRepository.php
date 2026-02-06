@@ -15,10 +15,8 @@ use DotProject\Entity\PermissaoNivelEntity;
 
 class NivelHierarquicoRepository extends BaseRepository
 {
-    /** @var string */
-    protected $table = 'dotp_niveis_hierarquicos';
-    /** @var string */
-    protected $primaryKey = 'nivel_id';
+    protected string $table = 'dotp_niveis_hierarquicos';
+    protected string $primaryKey = 'nivel_id';
     
     /**
      * Hidrata a entidade com dados do banco
@@ -134,8 +132,7 @@ class NivelHierarquicoRepository extends BaseRepository
             ]);
         }
         
-        $this->clearCache($this->cacheKey('nivel', $nivelId));
-        $this->clearCache($this->cacheKey('permissoes', $nivelId));
+        $this->clearCache();
     }
     
     /**

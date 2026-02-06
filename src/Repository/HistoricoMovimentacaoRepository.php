@@ -13,11 +13,8 @@ use DotProject\Entity\HistoricoMovimentacaoEntity;
 
 class HistoricoMovimentacaoRepository extends BaseRepository
 {
-        /** @var string */
-    protected $table = 'dotp_historico_movimentacoes';
-    
-        /** @var string */
-    protected $primaryKey = 'historico_id';
+    protected string $table = 'dotp_historico_movimentacoes';
+    protected string $primaryKey = 'historico_id';
     
     /**
      * Hidrata a entidade com dados do banco

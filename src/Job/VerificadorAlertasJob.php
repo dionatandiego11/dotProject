@@ -21,6 +21,8 @@ class VerificadorAlertasJob
     private Database $db;
     private AlertaRepository $alertaRepo;
     private UsuarioUnidadeRepository $vinculoRepo;
+    private ?string $unidadeNivelColumn = null;
+    private ?string $unidadeStatusColumn = null;
     
     public function __construct()
     {
@@ -86,18 +88,18 @@ class VerificadorAlertasJob
     private function verificarConveniosVencer(): int
     {
         $sql = "SELECT 
-                    p.id,
-                    p.nome,
-                    p.data_prevista_fim,
-                    p.unidade_id,
+                    p.project_id as id,
+                    p.project_name as nome,
+                    p.project_end_date as data_prevista_fim,
+                    p.project_company as unidade_id,
                     u.unidade_responsavel_id as responsavel_id,
-                    DATEDIFF(p.data_prevista_fim, CURDATE()) as dias_restantes
-                FROM projetos p
-                JOIN dotp_unidades_organizacionais u ON u.unidade_id = p.unidade_id
-                WHERE p.tipo = 'Convenio'
-                AND p.estado NOT IN ('Concluido', 'Cancelado')
-                AND p.data_prevista_fim IS NOT NULL
-                AND DATEDIFF(p.data_prevista_fim, CURDATE()) BETWEEN 0 AND 60";
+                    DATEDIFF(p.project_end_date, CURDATE()) as dias_restantes
+                FROM dotp_projects p
+                JOIN dotp_unidades_organizacionais u ON u.unidade_id = p.project_company
+                WHERE p.project_tipo = 'Convenio'
+                AND p.project_estado NOT IN ('Concluido', 'Cancelado')
+                AND p.project_end_date IS NOT NULL
+                AND DATEDIFF(p.project_end_date, CURDATE()) BETWEEN 0 AND 60";
         
         $convenios = $this->db->fetchAll($sql);
         $count = 0;
@@ -140,15 +142,15 @@ class VerificadorAlertasJob
     private function verificarObrasParadas(): int
     {
         $sql = "SELECT 
-                    p.id,
-                    p.nome,
-                    p.unidade_id,
-                    p.coordenador_id as responsavel_id,
-                    DATEDIFF(CURDATE(), p.updated_at) as dias_sem_atualizacao
-                FROM projetos p
-                WHERE p.tipo = 'Obra'
-                AND p.estado = 'Execucao'
-                AND DATEDIFF(CURDATE(), p.updated_at) > 15";
+                    p.project_id as id,
+                    p.project_name as nome,
+                    p.project_company as unidade_id,
+                    p.project_coordenador_id as responsavel_id,
+                    DATEDIFF(CURDATE(), p.project_updated_at) as dias_sem_atualizacao
+                FROM dotp_projects p
+                WHERE p.project_tipo = 'Obra'
+                AND p.project_estado = 'Execucao'
+                AND DATEDIFF(CURDATE(), p.project_updated_at) > 15";
         
         $obras = $this->db->fetchAll($sql);
         $count = 0;
@@ -178,14 +180,14 @@ class VerificadorAlertasJob
     private function verificarProjetosParados(): int
     {
         $sql = "SELECT 
-                    p.id,
-                    p.nome,
-                    p.unidade_id,
-                    p.coordenador_id as responsavel_id,
-                    DATEDIFF(CURDATE(), p.updated_at) as dias_parado
-                FROM projetos p
-                WHERE p.estado NOT IN ('Concluido', 'Cancelado')
-                AND DATEDIFF(CURDATE(), p.updated_at) > 30";
+                    p.project_id as id,
+                    p.project_name as nome,
+                    p.project_company as unidade_id,
+                    p.project_coordenador_id as responsavel_id,
+                    DATEDIFF(CURDATE(), p.project_updated_at) as dias_parado
+                FROM dotp_projects p
+                WHERE p.project_estado NOT IN ('Concluido', 'Cancelado')
+                AND DATEDIFF(CURDATE(), p.project_updated_at) > 30";
         
         $projetos = $this->db->fetchAll($sql);
         $count = 0;
@@ -217,14 +219,14 @@ class VerificadorAlertasJob
         // Esta verificação depende da integração com o sistema contábil
         // Simulação baseada na data de atualização
         $sql = "SELECT 
-                    p.id,
-                    p.nome,
-                    p.unidade_id,
-                    p.situacao_orcamentaria,
-                    p.coordenador_id as responsavel_id
-                FROM projetos p
-                WHERE p.situacao_orcamentaria = 'empenhado'
-                AND DATEDIFF(CURDATE(), p.updated_at) > 90";
+                    p.project_id as id,
+                    p.project_name as nome,
+                    p.project_company as unidade_id,
+                    p.project_situacao_orcamentaria as situacao_orcamentaria,
+                    p.project_coordenador_id as responsavel_id
+                FROM dotp_projects p
+                WHERE p.project_situacao_orcamentaria = 'empenhado'
+                AND DATEDIFF(CURDATE(), p.project_updated_at) > 90";
         
         $projetos = $this->db->fetchAll($sql);
         $count = 0;
@@ -254,18 +256,17 @@ class VerificadorAlertasJob
     private function verificarEmendasSemExecucao(): int
     {
         $sql = "SELECT 
-                    p.id,
-                    p.nome,
-                    p.percent_execucao,
-                    p.unidade_id,
-                    p.coordenador_id as responsavel_id,
-                    p.parlamentar,
-                    DATEDIFF(p.data_prevista_fim, CURDATE()) as dias_restantes
-                FROM projetos p
-                WHERE p.tipo = 'Emenda'
-                AND p.estado NOT IN ('Concluido', 'Cancelado')
-                AND p.percent_execucao < 30
-                AND DATEDIFF(p.data_prevista_fim, CURDATE()) BETWEEN 0 AND 120";
+                    p.project_id as id,
+                    p.project_name as nome,
+                    p.project_percent_execucao as percent_execucao,
+                    p.project_company as unidade_id,
+                    p.project_coordenador_id as responsavel_id,
+                    DATEDIFF(p.project_end_date, CURDATE()) as dias_restantes
+                FROM dotp_projects p
+                WHERE p.project_tipo = 'Emenda'
+                AND p.project_estado NOT IN ('Concluido', 'Cancelado')
+                AND p.project_percent_execucao < 30
+                AND DATEDIFF(p.project_end_date, CURDATE()) BETWEEN 0 AND 120";
         
         $emendas = $this->db->fetchAll($sql);
         $count = 0;
@@ -273,7 +274,7 @@ class VerificadorAlertasJob
         foreach ($emendas as $emenda) {
             $alerta = new AlertaEntity();
             $alerta->setTipo(AlertaEntity::TIPO_EMENDA_SEM_EXECUCAO);
-            $alerta->setTitulo("Emenda de {$emenda['parlamentar']} - Execução em {$emenda['percent_execucao']}%");
+            $alerta->setTitulo("Emenda - Execução em {$emenda['percent_execucao']}%");
             $alerta->setDescricao("A emenda '{$emenda['nome']}' está com execução abaixo de 30% e faltam {$emenda['dias_restantes']} dias para o prazo final.");
             $alerta->setProjetoId($emenda['id']);
             $alerta->setUnidadeId($emenda['unidade_id']);
@@ -309,12 +310,12 @@ class VerificadorAlertasJob
                     et.nome,
                     et.data_prevista_fim,
                     et.projeto_id,
-                    p.nome as projeto_nome,
-                    p.unidade_id,
-                    p.coordenador_id as responsavel_id,
+                    p.project_name as projeto_nome,
+                    p.project_company as unidade_id,
+                    p.project_coordenador_id as responsavel_id,
                     DATEDIFF(et.data_prevista_fim, CURDATE()) as dias_restantes
-                FROM etapas et
-                JOIN projetos p ON p.id = et.projeto_id
+                FROM dotp_etapas et
+                JOIN dotp_projects p ON p.project_id = et.projeto_id
                 WHERE et.estado NOT IN ('Concluida', 'Concluida_Com_Atraso')
                 AND et.data_prevista_fim IS NOT NULL
                 AND DATEDIFF(et.data_prevista_fim, CURDATE()) BETWEEN 0 AND 7";
@@ -352,12 +353,12 @@ class VerificadorAlertasJob
                     et.nome,
                     et.data_prevista_fim,
                     et.projeto_id,
-                    p.nome as projeto_nome,
-                    p.unidade_id,
-                    p.coordenador_id as responsavel_id,
+                    p.project_name as projeto_nome,
+                    p.project_company as unidade_id,
+                    p.project_coordenador_id as responsavel_id,
                     DATEDIFF(CURDATE(), et.data_prevista_fim) as dias_atraso
-                FROM etapas et
-                JOIN projetos p ON p.id = et.projeto_id
+                FROM dotp_etapas et
+                JOIN dotp_projects p ON p.project_id = et.projeto_id
                 WHERE et.estado = 'Atrasada'
                 AND DATEDIFF(CURDATE(), et.data_prevista_fim) > 0";
         
@@ -389,17 +390,18 @@ class VerificadorAlertasJob
      */
     private function buscarSecretario(int $unidadeId): ?int
     {
+        $nivelColumn = $this->getUnidadeNivelColumn();
         // Sobe na hierarquia até encontrar a secretaria
         $sql = "WITH RECURSIVE hierarquia AS (
-                    SELECT unidade_id, unidade_pai_id, unidade_nivel
+                    SELECT unidade_id, unidade_pai_id, {$nivelColumn} as nivel
                     FROM dotp_unidades_organizacionais
                     WHERE unidade_id = ?
                     UNION ALL
-                    SELECT u.unidade_id, u.unidade_pai_id, u.unidade_nivel
+                    SELECT u.unidade_id, u.unidade_pai_id, u.{$nivelColumn} as nivel
                     FROM dotp_unidades_organizacionais u
                     JOIN hierarquia h ON h.unidade_pai_id = u.unidade_id
                 )
-                SELECT unidade_id FROM hierarquia WHERE unidade_nivel = 2 LIMIT 1";
+                SELECT unidade_id FROM hierarquia WHERE nivel = 2 LIMIT 1";
         
         $secretariaId = $this->db->fetchColumn($sql, [$unidadeId]);
         
@@ -417,11 +419,63 @@ class VerificadorAlertasJob
      */
     private function buscarPrefeito(): ?int
     {
+        $nivelColumn = $this->getUnidadeNivelColumn();
+        $statusFilter = $this->getUnidadeStatusFilter();
         $sql = "SELECT unidade_responsavel_id 
                 FROM dotp_unidades_organizacionais 
-                WHERE unidade_nivel = 1 AND unidade_ativa = 1 
+                WHERE {$nivelColumn} = 1 AND {$statusFilter}
                 LIMIT 1";
         
         return $this->db->fetchColumn($sql) ?: null;
+    }
+
+    private function getUnidadeNivelColumn(): string
+    {
+        if ($this->unidadeNivelColumn !== null) {
+            return $this->unidadeNivelColumn;
+        }
+
+        $exists = $this->db->fetchValue(
+            "SELECT COUNT(*) FROM information_schema.columns 
+             WHERE table_schema = DATABASE() 
+               AND table_name = 'dotp_unidades_organizacionais' 
+               AND column_name = 'unidade_nivel_id'"
+        );
+
+        $this->unidadeNivelColumn = ((int) $exists > 0) ? 'unidade_nivel_id' : 'unidade_nivel';
+        return $this->unidadeNivelColumn;
+    }
+
+    private function getUnidadeStatusFilter(): string
+    {
+        if ($this->unidadeStatusColumn === null) {
+            $hasStatus = $this->db->fetchValue(
+                "SELECT COUNT(*) FROM information_schema.columns 
+                 WHERE table_schema = DATABASE() 
+                   AND table_name = 'dotp_unidades_organizacionais' 
+                   AND column_name = 'unidade_status'"
+            );
+            if ((int) $hasStatus > 0) {
+                $this->unidadeStatusColumn = 'unidade_status';
+            } else {
+                $hasAtiva = $this->db->fetchValue(
+                    "SELECT COUNT(*) FROM information_schema.columns 
+                     WHERE table_schema = DATABASE() 
+                       AND table_name = 'dotp_unidades_organizacionais' 
+                       AND column_name = 'unidade_ativa'"
+                );
+                $this->unidadeStatusColumn = ((int) $hasAtiva > 0) ? 'unidade_ativa' : '';
+            }
+        }
+
+        if ($this->unidadeStatusColumn === 'unidade_status') {
+            return "unidade_status = 'ativo'";
+        }
+
+        if ($this->unidadeStatusColumn === 'unidade_ativa') {
+            return "unidade_ativa = 1";
+        }
+
+        return '1=1';
     }
 }

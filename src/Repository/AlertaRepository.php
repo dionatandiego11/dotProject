@@ -13,11 +13,8 @@ use DotProject\Entity\AlertaEntity;
 
 class AlertaRepository extends BaseRepository
 {
-        /** @var string */
-    protected $table = 'dotp_alertas';
-    
-        /** @var string */
-    protected $primaryKey = 'id';
+    protected string $table = 'dotp_alertas';
+    protected string $primaryKey = 'id';
     
     protected function hydrate(array $row): AlertaEntity
     {
@@ -71,7 +68,7 @@ class AlertaRepository extends BaseRepository
     /**
      * {@inheritdoc}
      */
-    public function save(object $entity): bool
+    public function save(object $entity): int
     {
         if (!$entity instanceof AlertaEntity) {
             throw new \InvalidArgumentException('Entity must be AlertaEntity');
@@ -92,7 +89,7 @@ class AlertaRepository extends BaseRepository
             $sql = "UPDATE {$this->table} SET " . implode(', ', $fields) . " WHERE id = ?";
             $this->db->execute($sql, $values);
             $this->clearCache();
-            return true;
+            return $entity->getId();
         } else {
             // Insert
             $columns = array_keys($data);
@@ -104,7 +101,7 @@ class AlertaRepository extends BaseRepository
             $newId = (int) $this->db->lastInsertId();
             $entity->setId($newId);
             $this->clearCache();
-            return true;
+            return $newId;
         }
     }
     
@@ -210,11 +207,14 @@ class AlertaRepository extends BaseRepository
      */
     public function findCriticosNaoLidos(int $userId): array
     {
-        return $this->findBy([
-            'destinatario_id' => $userId,
-            'prioridade' => 'Critica',
-            'lido' => 0,
-        ], ['created_at' => 'DESC']);
+        $sql = "SELECT * FROM {$this->table} 
+                WHERE destinatario_id = ? 
+                AND lido = 0 
+                AND LOWER(prioridade) = 'critica'
+                ORDER BY created_at DESC";
+
+        $rows = $this->db->fetchAllParams($sql, [$userId]);
+        return array_map([$this, 'hydrate'], $rows);
     }
     
     /**
@@ -268,11 +268,11 @@ class AlertaRepository extends BaseRepository
     {
         $sql = "SELECT 
                     a.*,
-                    p.nome as projeto_nome,
-                    p.estado as projeto_estado,
+                    p.project_name as projeto_nome,
+                    p.project_estado as projeto_estado,
                     pr.nome as programa_nome
                 FROM {$this->table} a
-                LEFT JOIN dotp_projetos_prefeitura p ON p.id = a.projeto_id
+                LEFT JOIN dotp_projects p ON p.project_id = a.projeto_id
                 LEFT JOIN dotp_programas pr ON pr.id = a.programa_id
                 WHERE a.destinatario_id = ?";
         
@@ -293,31 +293,28 @@ class AlertaRepository extends BaseRepository
      */
     public function getEstatisticas(int $userId): array
     {
-        error_log('[DEBUG] AlertaRepository::getEstatisticas() - userId: ' . $userId);
         try {
             $sql = "SELECT 
                         COUNT(*) as total,
                         COUNT(CASE WHEN lido = 0 THEN 1 END) as nao_lidos,
-                        COUNT(CASE WHEN lido = 0 AND prioridade = 'Critica' THEN 1 END) as criticos,
-                        COUNT(CASE WHEN lido = 0 AND prioridade = 'Alta' THEN 1 END) as altas,
+                        COUNT(CASE WHEN lido = 0 AND LOWER(prioridade) = 'critica' THEN 1 END) as criticos,
+                        COUNT(CASE WHEN lido = 0 AND LOWER(prioridade) = 'alta' THEN 1 END) as altas,
                         COUNT(CASE WHEN lido = 0 AND created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR) THEN 1 END) as ultimas_24h
                     FROM {$this->table}
                     WHERE destinatario_id = ?";
-            
-            error_log('[DEBUG] Executando SQL...');
+
             $result = $this->db->fetchAllParams($sql, [$userId]);
-            error_log('[DEBUG] Resultado: ' . json_encode($result));
-            
-            return $result[0] ?? [
-                'total' => 0,
-                'nao_lidos' => 0,
-                'criticos' => 0,
-                'altas' => 0,
-                'ultimas_24h' => 0,
+            $row = $result[0] ?? [];
+            $row = array_filter($row, 'is_string', ARRAY_FILTER_USE_KEY);
+
+            return [
+                'total' => (int) ($row['total'] ?? 0),
+                'nao_lidos' => (int) ($row['nao_lidos'] ?? 0),
+                'criticos' => (int) ($row['criticos'] ?? 0),
+                'altas' => (int) ($row['altas'] ?? 0),
+                'ultimas_24h' => (int) ($row['ultimas_24h'] ?? 0),
             ];
         } catch (\Throwable $e) {
-            error_log('[DEBUG] ERRO em getEstatisticas: ' . $e->getMessage());
-            error_log('[DEBUG] Arquivo: ' . $e->getFile() . ':' . $e->getLine());
             return [
                 'total' => 0,
                 'nao_lidos' => 0,

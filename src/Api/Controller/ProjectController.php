@@ -450,13 +450,17 @@ class ProjectController extends BaseController
      */
     private function formatProject(array $row, bool $detailed = false): array
     {
+        $unidadeNome = isset($row['unidade_nome']) ? trim((string) $row['unidade_nome']) : '';
+        $companyName = isset($row['company_name']) ? trim((string) $row['company_name']) : '';
+        $displayCompanyName = $unidadeNome !== '' ? $unidadeNome : ($companyName !== '' ? $companyName : null);
+
         $data = [
             'id' => (int) $row['project_id'],
             'name' => $row['project_name'],
             'short_name' => $row['project_short_name'] ?? '',
             'company' => [
                 'id' => (int) ($row['project_company'] ?? 0),
-                'name' => $row['company_name'] ?? ($row['unidade_nome'] ?? null),
+                'name' => $displayCompanyName,
             ],
             'status' => (int) ($row['project_status'] ?? 0),
             'percent_complete' => (int) ($row['project_percent_complete'] ?? 0),

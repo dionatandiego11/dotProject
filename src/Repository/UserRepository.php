@@ -15,10 +15,8 @@ use DateTime;
 
 class UserRepository extends BaseRepository
 {
-        /** @var string */
-    protected $table = 'dotp_users';
-        /** @var string */
-    protected $primaryKey = 'user_id';
+    protected string $table = 'dotp_users';
+    protected string $primaryKey = 'user_id';
     private ?bool $hasUserStatus = null;
 
     protected function hydrate(array $data): UserEntity

@@ -13,10 +13,8 @@ use DotProject\Entity\UnidadeOrganizacionalEntity;
 
 class UnidadeOrganizacionalRepository extends BaseRepository
 {
-    /** @var string */
-    protected $table = 'dotp_unidades_organizacionais';
-    /** @var string */
-    protected $primaryKey = 'unidade_id';
+    protected string $table = 'dotp_unidades_organizacionais';
+    protected string $primaryKey = 'unidade_id';
 
     private ?string $nivelColumn = null;
     private ?string $statusColumn = null;
@@ -90,7 +88,7 @@ class UnidadeOrganizacionalRepository extends BaseRepository
      */
     public function findArvore(?int $raizId = null): array
     {
-        $cacheKey = $this->cacheKey('arvore', $raizId ?? 'all');
+        $cacheKey = $this->cacheKey('arvore:' . ($raizId ?? 'all'));
         $cached = $this->cache->get($cacheKey);
         
         if ($cached) {
@@ -121,14 +119,14 @@ class UnidadeOrganizacionalRepository extends BaseRepository
             $unidades[$row['unidade_id']] = $this->hydrate($row);
         }
         
-        // Monta a árvore
+        // Monta as relacoes pai/filha
         $arvore = [];
         foreach ($unidades as $id => $unidade) {
             $paiId = $unidade->getPaiId();
             
             if ($paiId === null) {
-                // É raiz
-                if ($raizId === null || $id === $raizId) {
+                // É raiz global
+                if ($raizId === null) {
                     $arvore[$id] = $unidade;
                 }
             } else if (isset($unidades[$paiId])) {
@@ -137,8 +135,15 @@ class UnidadeOrganizacionalRepository extends BaseRepository
                 $unidade->setPai($unidades[$paiId]);
             }
         }
-        
-        $roots = array_values($arvore);
+
+        // Quando raizId é informado, retorna a subárvore da unidade alvo
+        // mesmo que ela não seja raiz global.
+        if ($raizId !== null) {
+            $roots = isset($unidades[$raizId]) ? [$unidades[$raizId]] : [];
+        } else {
+            $roots = array_values($arvore);
+        }
+
         $this->cache->set($cacheKey, $roots, 300);
         
         return $roots;

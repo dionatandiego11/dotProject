@@ -56,13 +56,14 @@ class KanbanBoardRepository extends BaseRepository
         ];
     }
 
-    public function save(object $entity): bool
+    public function save(object $entity): int
     {
         if (!$entity instanceof KanbanBoard) {
             throw new \InvalidArgumentException('Entity must be KanbanBoard');
         }
         
         $data = $this->extract($entity);
+        $result = false;
         
         if ($entity->getId() === null) {
             unset($data['board_id']);
@@ -80,7 +81,7 @@ class KanbanBoardRepository extends BaseRepository
             $this->clearCache();
         }
         
-        return $result;
+        return $result ? (int) $entity->getId() : 0;
     }
 
     public function findByCompany(int $companyId, ?int $projectId = null): array

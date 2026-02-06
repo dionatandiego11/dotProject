@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Kanban Board Component
  * 
  * Componente principal do quadro Kanban com drag & drop.
@@ -35,8 +35,15 @@ function KanbanBoard({ boardId, onTaskClick, onTaskMove, refreshKey = 0 }) {
       if (result.success) {
         const boardData = result.data?.board || result.data || null
         const columnsData = result.data?.columns || boardData?.columns || []
+        const normalizedColumns = (columnsData || [])
+          .map((col) => ({
+            ...col,
+            tasks: [...(col.tasks || [])].sort((a, b) => (a.order || 0) - (b.order || 0)),
+          }))
+          .sort((a, b) => (a.order || 0) - (b.order || 0))
+
         setBoard(boardData)
-        setColumns(columnsData || [])
+        setColumns(normalizedColumns)
       } else {
         setError(result.message || 'Failed to load board')
       }
@@ -49,11 +56,11 @@ function KanbanBoard({ boardId, onTaskClick, onTaskMove, refreshKey = 0 }) {
 
   // Handlers de Drag & Drop
   const handleDragStart = useCallback((task, columnId) => {
-    setDraggingTask({ task, sourceColumnId: columnId })
+    setDraggingTask({ task, sourceColumnId: Number(columnId) })
   }, [])
 
   const handleDragOver = useCallback((columnId) => {
-    setDragOverColumn(columnId)
+    setDragOverColumn(Number(columnId))
   }, [])
 
   const handleDragEnd = useCallback(() => {
@@ -64,10 +71,18 @@ function KanbanBoard({ boardId, onTaskClick, onTaskMove, refreshKey = 0 }) {
   const handleDrop = useCallback(async (targetColumnId, targetOrder) => {
     if (!draggingTask) return
 
+    const normalizedTargetColumnId = Number(targetColumnId)
     const { task, sourceColumnId } = draggingTask
+    const sourceColumn = columns.find(col => col.id === sourceColumnId)
+    const currentIndex = sourceColumn ? sourceColumn.tasks.findIndex(t => t.id === task.id) : -1
+    let adjustedOrder = targetOrder
 
-    // Se soltou no mesmo lugar, não faz nada
-    if (sourceColumnId === targetColumnId && task.order === targetOrder) {
+    if (sourceColumnId === normalizedTargetColumnId && currentIndex !== -1 && targetOrder > currentIndex) {
+      adjustedOrder = Math.max(0, targetOrder - 1)
+    }
+
+    // Se soltou no mesmo lugar, nÃ£o faz nada
+    if (sourceColumnId === normalizedTargetColumnId && currentIndex === adjustedOrder) {
       handleDragEnd()
       return
     }
@@ -80,26 +95,31 @@ function KanbanBoard({ boardId, onTaskClick, onTaskMove, refreshKey = 0 }) {
           tasks: col.tasks.filter(t => t.id !== task.id)
         }
       }
-      if (col.id === targetColumnId) {
+      if (col.id === normalizedTargetColumnId) {
         const newTasks = [...col.tasks]
-        newTasks.splice(targetOrder, 0, { ...task, column_id: targetColumnId })
+        newTasks.splice(adjustedOrder, 0, { ...task, column_id: normalizedTargetColumnId })
         return { ...col, tasks: newTasks }
       }
       return col
     })
 
-    setColumns(updatedColumns)
+    const normalizedColumns = updatedColumns.map(col => ({
+      ...col,
+      tasks: (col.tasks || []).map((t, idx) => ({ ...t, order: idx }))
+    }))
+
+    setColumns(normalizedColumns)
     handleDragEnd()
 
     // Envia para API
     try {
-      const result = await moveKanbanTask(task.id, targetColumnId, targetOrder)
+      const result = await moveKanbanTask(task.id, normalizedTargetColumnId, adjustedOrder)
 
       if (!result.success) {
         // Reverte em caso de erro
         loadBoard()
       } else if (onTaskMove) {
-        onTaskMove(task, sourceColumnId, targetColumnId)
+        onTaskMove(task, sourceColumnId, normalizedTargetColumnId)
       }
     } catch (err) {
       loadBoard() // Reverte
@@ -189,3 +209,6 @@ KanbanBoard.propTypes = {
 }
 
 export default KanbanBoard
+
+
+

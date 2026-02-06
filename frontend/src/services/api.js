@@ -6,14 +6,10 @@
 
 const API_BASE = '/api.php/v1';
 
-// Store token in memory
-let authToken = localStorage.getItem('dp_token');
-
 /**
  * Set authentication token
  */
 export function setToken(token) {
-    authToken = token;
     if (token) {
         localStorage.setItem('dp_token', token);
     } else {
@@ -54,36 +50,32 @@ async function apiRequest(endpoint, options = {}) {
         headers['Authorization'] = `Bearer ${token}`;
     }
 
-    try {
-        const response = await fetch(url, {
-            ...options,
-            headers,
-        });
+    const response = await fetch(url, {
+        ...options,
+        headers,
+    });
 
-        const rawText = await response.text();
-        console.log('API Response:', url, response.status, rawText.substring(0, 200));
-        let data = null;
-        if (rawText) {
-            try {
-                data = JSON.parse(rawText);
-            } catch {
-                data = { message: 'Resposta da API não é JSON', raw: rawText };
-            }
+    const rawText = await response.text();
+    console.log('API Response:', url, response.status, rawText.substring(0, 200));
+    let data = null;
+    if (rawText) {
+        try {
+            data = JSON.parse(rawText);
+        } catch {
+            data = { message: 'Resposta da API não é JSON', raw: rawText };
         }
-
-        if (!response.ok) {
-            if (response.status === 401) {
-                // Token expired
-                setToken(null);
-                window.location.href = '/login';
-            }
-            throw new Error((data && data.message) ? data.message : 'Request failed');
-        }
-
-        return data;
-    } catch (err) {
-        throw err;
     }
+
+    if (!response.ok) {
+        if (response.status === 401) {
+            // Token expired
+            setToken(null);
+            window.location.href = '/login';
+        }
+        throw new Error((data && data.message) ? data.message : 'Request failed');
+    }
+
+    return data;
 }
 
 // ===========================================

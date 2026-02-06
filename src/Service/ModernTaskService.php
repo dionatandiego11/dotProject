@@ -193,7 +193,7 @@ class ModernTaskService
         // Validate project exists and user has access
         $projectId = $data['task_project'] ?? null;
         if (!$projectId) {
-            throw new \InvalidArgumentException('Project is required');
+            throw new \RuntimeException('Project is required');
         }
         
         $this->auth->enforceProjectAccess($projectId, AuthorizationService::PERMISSION_EDIT, $createdBy);
@@ -425,6 +425,10 @@ class ModernTaskService
     public function assignUser(int $taskId, int $userId, int $percent = 100, ?int $assignedBy = null): bool
     {
         $assignedBy = $assignedBy ?? $this->auth->getCurrentUser()?->getId();
+
+        if ($assignedBy === null) {
+            throw new \RuntimeException('User not authenticated');
+        }
         
         // Check permission
         $this->auth->enforceTaskAccess($taskId, AuthorizationService::PERMISSION_EDIT, $assignedBy);
@@ -478,6 +482,10 @@ class ModernTaskService
     public function unassignUser(int $taskId, int $userId, ?int $unassignedBy = null): bool
     {
         $unassignedBy = $unassignedBy ?? $this->auth->getCurrentUser()?->getId();
+
+        if ($unassignedBy === null) {
+            throw new \RuntimeException('User not authenticated');
+        }
         
         $this->auth->enforceTaskAccess($taskId, AuthorizationService::PERMISSION_EDIT, $unassignedBy);
         
@@ -567,15 +575,19 @@ class ModernTaskService
     public function addDependency(int $taskId, int $requiredTaskId, ?int $createdBy = null): bool
     {
         $createdBy = $createdBy ?? $this->auth->getCurrentUser()?->getId();
+
+        if ($createdBy === null) {
+            throw new \RuntimeException('User not authenticated');
+        }
+
+        // Prevent self-dependency before permission checks.
+        if ($taskId === $requiredTaskId) {
+            throw new \InvalidArgumentException('Task cannot depend on itself');
+        }
         
         // Check permissions on both tasks
         $this->auth->enforceTaskAccess($taskId, AuthorizationService::PERMISSION_EDIT, $createdBy);
         $this->auth->enforceTaskAccess($requiredTaskId, AuthorizationService::PERMISSION_VIEW, $createdBy);
-        
-        // Prevent self-dependency
-        if ($taskId === $requiredTaskId) {
-            throw new \InvalidArgumentException('Task cannot depend on itself');
-        }
         
         // Check if already exists
         $sql = sprintf(
@@ -609,6 +621,10 @@ class ModernTaskService
     public function removeDependency(int $taskId, int $requiredTaskId, ?int $deletedBy = null): bool
     {
         $deletedBy = $deletedBy ?? $this->auth->getCurrentUser()?->getId();
+
+        if ($deletedBy === null) {
+            throw new \RuntimeException('User not authenticated');
+        }
         
         $this->auth->enforceTaskAccess($taskId, AuthorizationService::PERMISSION_EDIT, $deletedBy);
         

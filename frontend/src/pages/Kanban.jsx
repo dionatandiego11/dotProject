@@ -1,13 +1,13 @@
 /**
  * Kanban Page
  *
- * Kanban baseado em tarefas por projeto.
+ * Kanban baseado em board por projeto.
  */
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import Loading from '../components/Loading'
-import { getProjects, getTasks, updateTask, deleteTask, createTask, getUsuarios, getUsuario, getCurrentUser, getVinculos, getUnidade, getArvoreUnidades } from '../services/api'
+import { getProjects, getTask, updateTask, deleteTask, createTask, getUsuarios, getUsuario, getCurrentUser, getVinculos, getUnidade, getArvoreUnidades, getKanbanBoards, getKanbanBoard, createKanbanBoard, moveKanbanTask } from '../services/api'
 import { KanbanColumn } from '../components/kanban'
 import '../components/kanban/KanbanBoard.css'
 import Modal from '../components/ui/Modal'
@@ -16,13 +16,6 @@ import Input from '../components/ui/Input'
 import { useToast } from '../contexts/ToastContext'
 import { useValidation } from '../hooks/useValidation'
 
-const COLUMNS = [
-    { id: 0, name: 'Backlog' },
-    { id: 1, name: 'A Fazer' },
-    { id: 2, name: 'Em Andamento' },
-    { id: 3, name: 'Concluido' },
-]
-
 function Kanban() {
     const toast = useToast()
     const validation = useValidation()
@@ -30,13 +23,15 @@ function Kanban() {
 
     const [projects, setProjects] = useState([])
     const [selectedProjectId, setSelectedProjectId] = useState(searchParams.get('project') || '')
-    const [tasks, setTasks] = useState([])
+    const [board, setBoard] = useState(null)
+    const [columns, setColumns] = useState([])
     const [users, setUsers] = useState([])
     const [currentUser, setCurrentUser] = useState(null)
     const [unitUsers, setUnitUsers] = useState([])
     const [unitUserIds, setUnitUserIds] = useState(new Set())
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState(null)
+    const vinculosCache = useRef(new Map())
 
     const [draggingTask, setDraggingTask] = useState(null)
     const [dragOverColumn, setDragOverColumn] = useState(null)
@@ -88,12 +83,13 @@ function Kanban() {
 
     useEffect(() => {
         if (!selectedProjectId) {
-            setTasks([])
+            setBoard(null)
+            setColumns([])
             setLoading(false)
             return
         }
-        loadTasks(selectedProjectId)
-    }, [selectedProjectId])
+        loadBoard(selectedProjectId)
+    }, [selectedProjectId, projects])
 
     useEffect(() => {
         if (!selectedProjectId) {
@@ -159,14 +155,62 @@ function Kanban() {
         }
     }
 
-    async function loadTasks(projectId) {
+    async function loadBoard(projectId) {
         try {
             setLoading(true)
             setError(null)
-            const data = await getTasks({ project_id: projectId, per_page: 200 })
-            setTasks(data.data || [])
+
+            const boardsResult = await getKanbanBoards(projectId)
+            if (boardsResult?.success === false) {
+                throw new Error(boardsResult?.message || 'Falha ao carregar boards')
+            }
+            const boards = boardsResult?.data?.boards || boardsResult?.boards || []
+            const projectBoard = boards.find((b) => String(b?.project_id) === String(projectId))
+
+            let resolvedBoardId = projectBoard?.id || null
+            if (!resolvedBoardId) {
+                const project = projects.find((p) => String(p.id) === String(projectId))
+                const createResult = await createKanbanBoard({
+                    name: project?.name ? `Kanban - ${project.name}` : 'Kanban',
+                    project_id: parseInt(projectId, 10),
+                })
+                if (!createResult?.success) {
+                    throw new Error(createResult?.message || 'Falha ao criar board')
+                }
+                resolvedBoardId = createResult?.data?.id || createResult?.data?.board_id || null
+            }
+
+            if (!resolvedBoardId) {
+                setBoard(null)
+                setColumns([])
+                return null
+            }
+
+            const boardResult = await getKanbanBoard(resolvedBoardId)
+            if (!boardResult?.success) {
+                throw new Error(boardResult?.message || 'Falha ao carregar board')
+            }
+
+            const boardData = boardResult?.data?.board || boardResult?.data || null
+            const columnsData = boardResult?.data?.columns || boardData?.columns || []
+            const normalizedColumns = (columnsData || [])
+                .map((col) => ({
+                    ...col,
+                    tasks: [...(col.tasks || [])].sort((a, b) => (a.order || 0) - (b.order || 0)),
+                }))
+                .sort((a, b) => (a.order || 0) - (b.order || 0))
+
+            setBoard(boardData)
+            setColumns(normalizedColumns)
+            return { board: boardData, columns: normalizedColumns }
         } catch (err) {
-            setError('Erro de conexao')
+            const message = err instanceof Error && err.message
+                ? err.message
+                : 'Erro de conexao'
+            setError(message)
+            setBoard(null)
+            setColumns([])
+            return null
         } finally {
             setLoading(false)
         }
@@ -175,28 +219,40 @@ function Kanban() {
     async function loadUnitUsers(unitId) {
         try {
             const ids = new Set()
+            const responsavelIds = new Set()
+            let treeLoaded = false
 
             // Busca arvore da unidade para incluir subunidades
             let unitIds = [unitId]
             try {
                 const tree = await getArvoreUnidades(unitId)
-                const nodes = tree?.data || []
+                const nodes = Array.isArray(tree?.data) ? tree.data : []
                 const collect = (list) => {
                     list.forEach((node) => {
                         if (node?.id) unitIds.push(node.id)
+                        const respId = node?.responsavel_id ?? node?.responsavel?.id
+                        if (respId) responsavelIds.add(Number(respId))
                         if (node?.filhas?.length) collect(node.filhas)
                     })
                 }
-                collect(Array.isArray(nodes) ? nodes : [])
+                if (nodes.length > 0) {
+                    treeLoaded = true
+                    collect(nodes)
+                }
             } catch (err) {
                 // fallback: somente a unidade base
             }
 
             const uniqueIds = Array.from(new Set(unitIds))
             const vinculosList = await Promise.all(uniqueIds.map(async (id) => {
+                if (vinculosCache.current.has(id)) {
+                    return vinculosCache.current.get(id)
+                }
                 try {
                     const data = await getVinculos({ unidade_id: id })
-                    return data.data || []
+                    const list = data.data || []
+                    vinculosCache.current.set(id, list)
+                    return list
                 } catch {
                     return []
                 }
@@ -205,22 +261,23 @@ function Kanban() {
                 if (v?.vinculo_user_id) ids.add(Number(v.vinculo_user_id))
             })
 
-            // Sempre inclui responsaveis das unidades
-            const responsaveis = await Promise.all(uniqueIds.map(async (id) => {
+            if (!treeLoaded) {
                 try {
-                    const unidade = await getUnidade(id)
-                    return (
+                    const unidade = await getUnidade(unitId)
+                    const fallbackResp = (
                         unidade?.data?.responsavel_id ||
                         unidade?.data?.responsavel?.id ||
                         unidade?.responsavel_id ||
                         unidade?.responsavel?.id ||
                         null
                     )
+                    if (fallbackResp) responsavelIds.add(Number(fallbackResp))
                 } catch {
-                    return null
+                    // ignore
                 }
-            }))
-            responsaveis.filter(Boolean).forEach((rid) => ids.add(Number(rid)))
+            }
+
+            responsavelIds.forEach((rid) => ids.add(rid))
 
             setUnitUserIds(ids)
             let filtered = users.filter((user) => ids.has(Number(user.id)))
@@ -257,111 +314,119 @@ function Kanban() {
         setSearchParams(params)
     }
 
-    const usersById = useMemo(() => {
-        const map = new Map()
-        users.forEach((user) => {
-            map.set(user.id, user)
-        })
-        return map
-    }, [users])
+    const statusByColumnId = useMemo(() => buildStatusMaps(columns).statusByColumn, [columns])
 
-    const filteredTasks = useMemo(() => {
-        let items = [...tasks]
+    const filteredColumns = useMemo(() => {
         const text = filterText.trim().toLowerCase()
+        const ownerId = filterOwner !== 'all' ? parseInt(filterOwner, 10) : null
+        const priority = filterPriority !== 'all' ? parseInt(filterPriority, 10) : null
+        const onlyMineId = onlyMine && currentUser?.id ? Number(currentUser.id) : null
 
-        if (text) {
-            items = items.filter((task) => {
-                const values = [
-                    task.name,
-                    task.description,
-                    task.project?.name,
-                ].filter(Boolean).join(' ').toLowerCase()
-                return values.includes(text)
+        return (columns || []).map((column) => {
+            const tasks = (column.tasks || []).filter((item) => {
+                const taskData = item?.task || {}
+                if (text) {
+                    const values = [
+                        taskData.name,
+                        taskData.description,
+                        taskData.assigned_to_name,
+                    ].filter(Boolean).join(' ').toLowerCase()
+                    if (!values.includes(text)) return false
+                }
+
+                if (ownerId !== null && Number(taskData.assigned_to) !== ownerId) return false
+                if (priority !== null && Number(taskData.priority) !== priority + 1) return false
+                if (onlyMineId !== null && Number(taskData.assigned_to) !== onlyMineId) return false
+                if (overdueOnly && !taskData.is_overdue) return false
+                if (hideCompleted && (column.is_done || Number(taskData.percent_complete || 0) >= 100)) return false
+
+                return true
             })
+
+            const taskCount = tasks.length
+            const avgProgress = taskCount > 0
+                ? Math.round((tasks.reduce((acc, t) => acc + (t.task?.percent_complete || 0), 0) / taskCount) * 10) / 10
+                : 0
+
+            return {
+                ...column,
+                tasks,
+                task_count: taskCount,
+                average_progress: avgProgress,
+            }
+        })
+    }, [columns, filterText, filterOwner, filterPriority, onlyMine, overdueOnly, hideCompleted, currentUser])
+
+    const filteredStats = useMemo(() => {
+        const totals = filteredColumns.reduce((acc, column) => {
+            acc.total += column.task_count || 0
+            if (column.tasks?.length) {
+                acc.overdue += column.tasks.filter((t) => t?.task?.is_overdue).length
+            }
+            return acc
+        }, { total: 0, overdue: 0 })
+
+        return totals
+    }, [filteredColumns])
+
+    const resolveTargetOrder = (targetColumnId, targetOrder) => {
+        const fullColumn = columns.find((col) => col.id === targetColumnId)
+        if (!fullColumn) return targetOrder
+
+        const filteredColumn = filteredColumns.find((col) => col.id === targetColumnId)
+        if (!filteredColumn) {
+            return Math.max(0, Math.min(targetOrder, fullColumn.tasks?.length || 0))
         }
 
-        if (filterOwner !== 'all') {
-            const ownerId = parseInt(filterOwner, 10)
-            items = items.filter((task) => task.owner_id === ownerId)
+        if (targetOrder >= (filteredColumn.tasks?.length || 0)) {
+            return fullColumn.tasks?.length || 0
         }
 
-        if (filterPriority !== 'all') {
-            const priority = parseInt(filterPriority, 10)
-            items = items.filter((task) => task.priority === priority)
-        }
+        const nextVisible = filteredColumn.tasks?.[targetOrder]
+        if (!nextVisible) return fullColumn.tasks?.length || 0
 
-        if (onlyMine && currentUser?.id) {
-            items = items.filter((task) => task.owner_id === currentUser.id)
-        }
+        const fullIndex = (fullColumn.tasks || []).findIndex((t) => t.id === nextVisible.id)
+        return fullIndex === -1 ? (fullColumn.tasks?.length || 0) : fullIndex
+    }
 
-        if (overdueOnly) {
-            items = items.filter((task) => isOverdue(task.end_date, task.percent_complete || 0))
-        }
-
-        if (hideCompleted) {
-            items = items.filter((task) => task.status < 3 && (task.percent_complete || 0) < 100)
-        }
-
-        return items
-    }, [tasks, filterText, filterOwner, filterPriority, onlyMine, overdueOnly, hideCompleted, currentUser])
-
-    const columns = useMemo(() => {
-        const mapped = COLUMNS.map(col => ({
+    const moveTaskLocally = (list, task, sourceColumnId, targetColumnId, targetOrder) => {
+        const next = list.map((col) => ({
             ...col,
-            tasks: [],
-            task_count: 0,
-            wip_limit: null,
-            is_done: col.id === 3,
-            is_backlog: col.id === 0,
-            average_progress: 0
+            tasks: [...(col.tasks || [])],
         }))
 
-        filteredTasks.forEach(task => {
-            const colId = mapStatusToColumn(task.status)
-            const column = mapped.find(c => c.id === colId)
-            if (!column) return
-            const owner = task.owner_id ? usersById.get(task.owner_id) : null
-            const ownerName = owner?.full_name || owner?.username || null
-
-            const kanbanTask = {
-                id: task.id,
-                task_id: task.id,
-                order: 0,
-                task: {
-                    name: task.name,
-                    description: task.description || '',
-                    priority: mapPriority(task.priority),
-                    percent_complete: task.percent_complete || 0,
-                    is_overdue: isOverdue(task.end_date, task.percent_complete || 0),
-                    assigned_to: task.owner_id || null,
-                    assigned_to_name: ownerName,
-                    estimated_hours: task.duration || null,
-                    comments_count: 0,
-                    attachments_count: 0,
-                    end_date: task.end_date || null
-                }
+        let movedTask = null
+        const sourceColumn = next.find((col) => col.id === sourceColumnId)
+        if (sourceColumn) {
+            const sourceIndex = sourceColumn.tasks.findIndex((t) => t.id === task.id)
+            if (sourceIndex >= 0) {
+                movedTask = sourceColumn.tasks.splice(sourceIndex, 1)[0]
             }
+        }
 
-            column.tasks.push(kanbanTask)
-            column.task_count = column.tasks.length
+        if (!movedTask) return list
+
+        const targetColumn = next.find((col) => col.id === targetColumnId)
+        if (!targetColumn) return list
+
+        const insertAt = Math.max(0, Math.min(targetOrder, targetColumn.tasks.length))
+        targetColumn.tasks.splice(insertAt, 0, { ...movedTask, column_id: targetColumnId })
+
+        ;[sourceColumn, targetColumn].forEach((col) => {
+            if (!col) return
+            col.tasks = col.tasks.map((t, idx) => ({ ...t, order: idx }))
+            col.task_count = col.tasks.length
         })
 
-        mapped.forEach(col => {
-            if (col.tasks.length > 0) {
-                const sum = col.tasks.reduce((acc, t) => acc + (t.task.percent_complete || 0), 0)
-                col.average_progress = Math.round((sum / col.tasks.length) * 10) / 10
-            }
-        })
-
-        return mapped
-    }, [filteredTasks, usersById])
+        return next
+    }
 
     const handleDragStart = (task, columnId) => {
-        setDraggingTask({ task, sourceColumnId: columnId })
+        setDraggingTask({ task, sourceColumnId: Number(columnId) })
     }
 
     const handleDragOver = (columnId) => {
-        setDragOverColumn(columnId)
+        setDragOverColumn(Number(columnId))
     }
 
     const handleDragEnd = () => {
@@ -372,24 +437,63 @@ function Kanban() {
     const handleDrop = async (targetColumnId, targetOrder) => {
         if (!draggingTask) return
 
+        const normalizedTargetColumnId = Number(targetColumnId)
         const { task, sourceColumnId } = draggingTask
-        if (sourceColumnId === targetColumnId) {
+        const resolvedOrder = resolveTargetOrder(normalizedTargetColumnId, targetOrder)
+        const currentIndex = (columns.find((col) => col.id === sourceColumnId)?.tasks || [])
+            .findIndex((t) => t.id === task.id)
+        let adjustedOrder = resolvedOrder
+
+        if (sourceColumnId === normalizedTargetColumnId && currentIndex !== -1 && resolvedOrder > currentIndex) {
+            adjustedOrder = Math.max(0, resolvedOrder - 1)
+        }
+
+        if (sourceColumnId === normalizedTargetColumnId && currentIndex === adjustedOrder) {
             handleDragEnd()
             return
         }
 
-        const taskId = task.task_id
-        const newStatus = mapColumnToStatus(targetColumnId)
+        setColumns(moveTaskLocally(columns, task, sourceColumnId, normalizedTargetColumnId, adjustedOrder))
+        handleDragEnd()
 
         try {
-            await updateTask(taskId, { status: newStatus })
-            await loadTasks(selectedProjectId)
+            const result = await moveKanbanTask(task.id, normalizedTargetColumnId, adjustedOrder)
+            if (!result?.success) {
+                throw new Error(result?.message || 'Falha ao mover tarefa')
+            }
+
+            const mappedStatus = statusByColumnId.get(normalizedTargetColumnId)
+            if (mappedStatus !== undefined && task?.task_id) {
+                updateTask(task.task_id, { status: mappedStatus }).catch(() => {})
+            }
+
             toast.success('Tarefa movida!')
         } catch (err) {
             toast.error('Erro ao mover tarefa: ' + err.message)
-        } finally {
-            handleDragEnd()
+            await loadBoard(selectedProjectId)
         }
+    }
+
+    const moveKanbanTaskToStatus = async (taskId, desiredStatus, columnsData) => {
+        const normalizedStatus = Number.isNaN(desiredStatus) ? null : desiredStatus
+        if (!taskId || normalizedStatus === null || normalizedStatus === undefined) return
+        const { columnByStatus } = buildStatusMaps(columnsData || [])
+        const targetColumnId = columnByStatus.get(normalizedStatus)
+        if (!targetColumnId) return
+
+        const targetColumn = (columnsData || []).find((col) => col.id === targetColumnId)
+        const allTasks = (columnsData || []).flatMap((col) => col.tasks || [])
+        const kanbanTask = allTasks.find((t) => t.task_id === taskId)
+
+        if (!kanbanTask || kanbanTask.column_id === targetColumnId) return
+
+        const currentMaxOrder = (targetColumn?.tasks || []).reduce((max, t) => {
+            const order = Number(t?.order ?? 0)
+            return order > max ? order : max
+        }, -1)
+        const appendOrder = currentMaxOrder + 1
+
+        await moveKanbanTask(kanbanTask.id, targetColumnId, appendOrder)
     }
 
     const handleCreateTask = async (e) => {
@@ -406,7 +510,7 @@ function Kanban() {
 
         try {
             setCreatingTask(true)
-            await createTask({
+            const createResult = await createTask({
                 name: newTask.name,
                 description: newTask.description || null,
                 project_id: selectedProjectId ? parseInt(selectedProjectId, 10) : null,
@@ -415,11 +519,22 @@ function Kanban() {
                 owner_id: newTask.owner_id ? parseInt(newTask.owner_id, 10) : null,
                 status: parseInt(newTask.status, 10)
             })
+            const createdId = createResult?.id || createResult?.data?.id || null
             toast.success('Tarefa criada com sucesso!')
             setShowTaskModal(false)
             setNewTask({ name: '', description: '', priority: '1', end_date: '', owner_id: '', status: '0' })
             validation.clearErrors()
-            await loadTasks(selectedProjectId)
+
+            const boardResult = await loadBoard(selectedProjectId)
+            const desiredStatus = parseInt(newTask.status, 10)
+            if (createdId && boardResult?.columns?.length && desiredStatus !== 0) {
+                try {
+                    await moveKanbanTaskToStatus(createdId, desiredStatus, boardResult.columns)
+                    await loadBoard(selectedProjectId)
+                } catch (err) {
+                    toast.error('Tarefa criada, mas nao foi possivel mover no Kanban.')
+                }
+            }
         } catch (err) {
             toast.error('Erro ao criar tarefa: ' + err.message)
         } finally {
@@ -427,24 +542,29 @@ function Kanban() {
         }
     }
 
-    const openEditTask = (taskWrapper) => {
+    const openEditTask = async (taskWrapper) => {
         if (!taskWrapper?.task_id) return
-        const task = tasks.find((t) => t.id === taskWrapper.task_id)
-        if (!task) return
-        setEditingTask(task)
-        setEditTask({
-            id: task.id,
-            name: task.name || '',
-            description: task.description || '',
-            priority: String(task.priority ?? 0),
-            status: String(task.status ?? 0),
-            percent_complete: String(task.percent_complete ?? 0),
-            owner_id: task.owner_id ? String(task.owner_id) : '',
-            start_date: task.start_date || '',
-            end_date: task.end_date || '',
-            duration: task.duration != null ? String(task.duration) : ''
-        })
-        setShowEditModal(true)
+        try {
+            const data = await getTask(taskWrapper.task_id)
+            const task = data?.data || data
+            if (!task) return
+            setEditingTask(task)
+            setEditTask({
+                id: task.id,
+                name: task.name || '',
+                description: task.description || '',
+                priority: String(task.priority ?? 0),
+                status: String(task.status ?? 0),
+                percent_complete: String(task.percent_complete ?? 0),
+                owner_id: task.owner_id ? String(task.owner_id) : '',
+                start_date: task.start_date || '',
+                end_date: task.end_date || '',
+                duration: task.duration != null ? String(task.duration) : ''
+            })
+            setShowEditModal(true)
+        } catch (err) {
+            toast.error('Erro ao carregar tarefa: ' + err.message)
+        }
     }
 
     const handleUpdateTask = async (e) => {
@@ -461,6 +581,10 @@ function Kanban() {
 
         try {
             setSavingTask(true)
+            const previousStatus = typeof editingTask.status === 'number'
+                ? editingTask.status
+                : parseInt(editingTask.status || '0', 10)
+            const nextStatus = parseInt(editTask.status, 10)
             await updateTask(editingTask.id, {
                 name: editTask.name,
                 description: editTask.description || null,
@@ -475,7 +599,15 @@ function Kanban() {
             toast.success('Tarefa atualizada!')
             setShowEditModal(false)
             setEditingTask(null)
-            await loadTasks(selectedProjectId)
+            const boardResult = await loadBoard(selectedProjectId)
+            if (boardResult?.columns?.length && nextStatus !== previousStatus) {
+                try {
+                    await moveKanbanTaskToStatus(editingTask.id, nextStatus, boardResult.columns)
+                    await loadBoard(selectedProjectId)
+                } catch (err) {
+                    toast.error('Tarefa atualizada, mas nao foi possivel mover no Kanban.')
+                }
+            }
         } catch (err) {
             toast.error('Erro ao atualizar tarefa: ' + err.message)
         } finally {
@@ -493,7 +625,7 @@ function Kanban() {
             toast.success('Tarefa excluida!')
             setShowEditModal(false)
             setEditingTask(null)
-            await loadTasks(selectedProjectId)
+            await loadBoard(selectedProjectId)
         } catch (err) {
             toast.error('Erro ao excluir tarefa: ' + err.message)
         } finally {
@@ -519,7 +651,7 @@ function Kanban() {
                     {error}
                 </div>
                 <button 
-                    onClick={() => loadTasks(selectedProjectId)}
+                    onClick={() => loadBoard(selectedProjectId)}
                     style={{
                         padding: '0.5rem 1rem',
                         backgroundColor: '#3b82f6',
@@ -543,7 +675,7 @@ function Kanban() {
                         <h1 className="kanban-title">Tarefas</h1>
                         <span className="kanban-subtitle">
                             {selectedProjectId
-                                ? `${projects.find(p => String(p.id) === String(selectedProjectId))?.name || 'Projeto selecionado'}`
+                                ? `${projects.find(p => String(p.id) === String(selectedProjectId))?.name || 'Projeto selecionado'}${board?.name ? ` | ${board.name}` : ''}`
                                 : 'Selecione um projeto para ver o quadro'}
                         </span>
                     </div>
@@ -634,8 +766,8 @@ function Kanban() {
                     </label>
                 </div>
                 <div className="kanban-stats">
-                    <span className="kanban-stat">Total: {filteredTasks.length}</span>
-                    <span className="kanban-stat">Atrasadas: {filteredTasks.filter((t) => isOverdue(t.end_date, t.percent_complete || 0)).length}</span>
+                    <span className="kanban-stat">Total: {filteredStats.total}</span>
+                    <span className="kanban-stat">Atrasadas: {filteredStats.overdue}</span>
                 </div>
             </div>
 
@@ -649,7 +781,7 @@ function Kanban() {
             ) : (
                 <div className="kanban-board">
                     <div className="kanban-columns">
-                        {columns.map((column, index) => (
+                        {filteredColumns.map((column, index) => (
                             <KanbanColumn
                                 key={column.id}
                                 column={column}
@@ -1028,25 +1160,26 @@ function Kanban() {
     )
 }
 
-function mapPriority(priority) {
-    const value = typeof priority === 'number' ? priority : parseInt(priority || '0', 10)
-    return Math.max(1, Math.min(4, value + 1))
-}
+function buildStatusMaps(columns) {
+    const statusByColumn = new Map()
+    const columnByStatus = new Map()
+    const sorted = [...(columns || [])].sort((a, b) => (a.order || 0) - (b.order || 0))
+    const firstActive = sorted.find((col) => !col.is_backlog && !col.is_done)
 
-function mapStatusToColumn(status) {
-    const value = typeof status === 'number' ? status : parseInt(status || '0', 10)
-    if (value >= 3) return 3
-    return Math.max(0, Math.min(3, value))
-}
+    sorted.forEach((col) => {
+        const columnId = Number(col.id)
+        let status = 2
+        if (col.is_backlog) status = 0
+        else if (col.is_done) status = 3
+        else if (firstActive && col.id === firstActive.id) status = 1
 
-function mapColumnToStatus(columnId) {
-    const value = typeof columnId === 'number' ? columnId : parseInt(columnId || '0', 10)
-    return Math.max(0, Math.min(3, value))
-}
+        statusByColumn.set(columnId, status)
+        if (!columnByStatus.has(status)) {
+            columnByStatus.set(status, columnId)
+        }
+    })
 
-function isOverdue(endDate, percentComplete) {
-    if (!endDate || percentComplete >= 100) return false
-    return new Date(endDate) < new Date()
+    return { statusByColumn, columnByStatus }
 }
 
 export default Kanban

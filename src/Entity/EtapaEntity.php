@@ -100,10 +100,21 @@ class EtapaEntity
         $this->estado = $estado;
         return $this;
     }
+
+    public function setDataPrevistaInicio(?DateTime $data): self
+    {
+        $this->dataPrevistaInicio = $data;
+        return $this;
+    }
     
     public function getDataPrevistaFim(): ?DateTime
     {
         return $this->dataPrevistaFim;
+    }
+
+    public function getDataPrevistaInicio(): ?DateTime
+    {
+        return $this->dataPrevistaInicio;
     }
     
     public function setDataPrevistaFim(?DateTime $data): self
@@ -127,10 +138,21 @@ class EtapaEntity
     {
         return $this->dataRealInicio;
     }
+
+    public function getResponsavelId(): ?int
+    {
+        return $this->responsavelId;
+    }
     
     public function setDataRealInicio(?DateTime $data): self
     {
         $this->dataRealInicio = $data;
+        return $this;
+    }
+
+    public function setResponsavelId(?int $id): self
+    {
+        $this->responsavelId = $id;
         return $this;
     }
     
@@ -149,10 +171,21 @@ class EtapaEntity
     {
         return $this->justificativaAtraso;
     }
+
+    public function getEvidenciaUrl(): ?string
+    {
+        return $this->evidenciaUrl;
+    }
     
     public function setJustificativaAtraso(?string $justificativa): self
     {
         $this->justificativaAtraso = $justificativa;
+        return $this;
+    }
+
+    public function setEvidenciaUrl(?string $url): self
+    {
+        $this->evidenciaUrl = $url;
         return $this;
     }
     

@@ -248,6 +248,58 @@ class ProjectService
     }
 
     /**
+     * Validate project payload for legacy callers/tests.
+     *
+     * @param array<string, mixed> $data
+     * @return array<string, string>
+     */
+    public function validate(array $data): array
+    {
+        $errors = [];
+
+        if (empty(trim((string) ($data['project_name'] ?? '')))) {
+            $errors['project_name'] = 'Project name is required';
+        }
+
+        if (!empty($data['project_start_date']) && strtotime((string) $data['project_start_date']) === false) {
+            $errors['project_start_date'] = 'Invalid start date';
+        }
+
+        if (!empty($data['project_end_date']) && strtotime((string) $data['project_end_date']) === false) {
+            $errors['project_end_date'] = 'Invalid end date';
+        }
+
+        return $errors;
+    }
+
+    /**
+     * Calculate average progress from task rows.
+     *
+     * @param array<int, array<string, mixed>> $tasks
+     */
+    public function calculateProgress(array $tasks): float
+    {
+        if (empty($tasks)) {
+            return 0.0;
+        }
+
+        $total = 0.0;
+        $count = 0;
+
+        foreach ($tasks as $task) {
+            $percent = (float) ($task['task_percent_complete'] ?? 0);
+            $total += max(0.0, min(100.0, $percent));
+            $count++;
+        }
+
+        if ($count === 0) {
+            return 0.0;
+        }
+
+        return round($total / $count, 2);
+    }
+
+    /**
      * Generate a random color for project identifier
      */
     private function generateProjectColor(): string

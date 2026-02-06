@@ -35,7 +35,7 @@ class KanbanController extends BaseController
             $this->kanbanService = $this->kanbanService ?? new KanbanService();
             $userId = $this->getCurrentUserId();
             $companyId = $this->getCurrentCompanyId();
-            $projectId = $this->request->getParam('project_id');
+            $projectId = $this->request->getQueryParam('project_id');
             
             $boards = $this->kanbanService->getAccessibleBoards(
                 $companyId,
@@ -233,7 +233,16 @@ class KanbanController extends BaseController
     
     private function getCurrentCompanyId(): int
     {
-        // Placeholder
-        return 1;
+        $userId = $this->getCurrentUserId();
+        if ($userId === null) {
+            return 1;
+        }
+
+        $db = \DotProject\Core\Database::getInstance();
+        $companyId = $db->fetchValue(
+            sprintf("SELECT user_company FROM `%s` WHERE user_id = %d", $db->table('users'), $userId)
+        );
+
+        return $companyId ? (int) $companyId : 1;
     }
 }

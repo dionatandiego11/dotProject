@@ -20,12 +20,17 @@ class TaskEntity
     private ?string $description = null;
     private int $projectId;
     private ?ProjetoEntity $project = null;
-    private int $ownerId;
+    private int $ownerId = 0;
+    private ?int $parentTaskId = null;
     private ?int $assignedTo = null;
     private ?DateTime $startDate = null;
     private ?DateTime $endDate = null;
+    private ?DateTime $actualEndDate = null;
     private int $priority = 1; // 0=baixa, 1=normal, 2=alta, 3=urgente
+    private int $status = 0;
     private int $percentComplete = 0;
+    private ?float $estimatedHours = null;
+    private ?float $actualHours = null;
     
     // Novos campos do PPA
     private ?int $etapaId = null; // FK opcional para etapa
@@ -58,6 +63,17 @@ class TaskEntity
     public function setName(string $name): self
     {
         $this->name = $name;
+        return $this;
+    }
+
+    public function getDescription(): ?string
+    {
+        return $this->description;
+    }
+
+    public function setDescription(?string $description): self
+    {
+        $this->description = $description;
         return $this;
     }
     
@@ -94,6 +110,28 @@ class TaskEntity
     public function setAssignedTo(?int $userId): self
     {
         $this->assignedTo = $userId;
+        return $this;
+    }
+
+    public function getParentTaskId(): ?int
+    {
+        return $this->parentTaskId;
+    }
+
+    public function setParentTaskId(?int $parentTaskId): self
+    {
+        $this->parentTaskId = $parentTaskId;
+        return $this;
+    }
+
+    public function getOwnerId(): int
+    {
+        return $this->ownerId;
+    }
+
+    public function setOwnerId(int $ownerId): self
+    {
+        $this->ownerId = $ownerId;
         return $this;
     }
     
@@ -136,7 +174,7 @@ class TaskEntity
     
     public function setPriority(int $priority): self
     {
-        $this->priority = max(0, min(3, $priority));
+        $this->priority = max(0, min(4, $priority));
         return $this;
     }
     
@@ -154,10 +192,98 @@ class TaskEntity
     {
         return $this->endDate;
     }
+
+    public function getStartDate(): ?DateTime
+    {
+        return $this->startDate;
+    }
+
+    public function setStartDate(?DateTime $date): self
+    {
+        $this->startDate = $date;
+        return $this;
+    }
     
     public function setEndDate(?DateTime $date): self
     {
         $this->endDate = $date;
+        return $this;
+    }
+
+    public function getActualEndDate(): ?DateTime
+    {
+        return $this->actualEndDate;
+    }
+
+    public function setActualEndDate(?DateTime $date): self
+    {
+        $this->actualEndDate = $date;
+        return $this;
+    }
+
+    public function getEstimatedHours(): ?float
+    {
+        return $this->estimatedHours;
+    }
+
+    public function setEstimatedHours(?float $hours): self
+    {
+        $this->estimatedHours = $hours;
+        return $this;
+    }
+
+    public function getActualHours(): ?float
+    {
+        return $this->actualHours;
+    }
+
+    public function setActualHours(?float $hours): self
+    {
+        $this->actualHours = $hours;
+        return $this;
+    }
+
+    public function getStatus(): int
+    {
+        return $this->status;
+    }
+
+    public function setStatus(int $status): self
+    {
+        $this->status = $status;
+        return $this;
+    }
+
+    public function getPercentComplete(): int
+    {
+        return $this->percentComplete;
+    }
+
+    public function setPercentComplete(int $percent): self
+    {
+        $this->percentComplete = max(0, min(100, $percent));
+        return $this;
+    }
+
+    public function getCreatedAt(): ?DateTime
+    {
+        return $this->createdAt;
+    }
+
+    public function setCreatedAt(?DateTime $createdAt): self
+    {
+        $this->createdAt = $createdAt;
+        return $this;
+    }
+
+    public function getUpdatedAt(): ?DateTime
+    {
+        return $this->updatedAt;
+    }
+
+    public function setUpdatedAt(?DateTime $updatedAt): self
+    {
+        $this->updatedAt = $updatedAt;
         return $this;
     }
     
@@ -179,10 +305,39 @@ class TaskEntity
     
     public function isAtrasada(): bool
     {
-        if ($this->isConcluida() || !$this->endDate) {
+        if ($this->isConcluida() || $this->isCompleted() || !$this->endDate) {
             return false;
         }
         return new DateTime() > $this->endDate;
+    }
+
+    public function isCompleted(): bool
+    {
+        return $this->percentComplete >= 100 || $this->status === 1 || $this->estado === 'Concluida';
+    }
+
+    public function isOverdue(): bool
+    {
+        return $this->isAtrasada();
+    }
+
+    public function isActive(): bool
+    {
+        return !$this->isCompleted() && $this->status === 0;
+    }
+
+    public function getDaysRemaining(): ?int
+    {
+        if ($this->endDate === null) {
+            return null;
+        }
+
+        $today = new DateTime('today');
+        $target = clone $this->endDate;
+        $target->setTime(0, 0, 0);
+        $diff = $today->diff($target);
+
+        return $diff->invert ? -$diff->days : $diff->days;
     }
     
     /**
@@ -240,6 +395,23 @@ class TaskEntity
             'atrasada' => $this->isAtrasada(),
             'evidencia_url' => $this->evidenciaAnexo,
             'created_at' => $this->createdAt?->format('Y-m-d H:i:s'),
+            'updated_at' => $this->updatedAt?->format('Y-m-d H:i:s'),
+            // Compatibilidade com formato legado (dotp_tasks)
+            'task_id' => $this->id,
+            'task_name' => $this->name,
+            'task_description' => $this->description,
+            'task_project' => $this->projectId,
+            'task_parent' => $this->parentTaskId,
+            'task_owner' => $this->ownerId,
+            'task_assigned_to' => $this->assignedTo,
+            'task_status' => $this->status,
+            'task_priority' => $this->priority,
+            'task_percent_complete' => $this->percentComplete,
+            'task_hours' => $this->estimatedHours,
+            'task_actual_hours' => $this->actualHours,
+            'task_start_date' => $this->startDate?->format('Y-m-d'),
+            'task_end_date' => $this->endDate?->format('Y-m-d'),
+            'task_actual_end_date' => $this->actualEndDate?->format('Y-m-d'),
         ];
     }
 }

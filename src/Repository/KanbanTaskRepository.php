@@ -2,7 +2,7 @@
 /**
  * Kanban Task Repository
  * 
- * Repository para gerenciar posição de tarefas no Kanban.
+ * Repository para gerenciar posiÃ§Ã£o de tarefas no Kanban.
  * 
  * @package DotProject\Repository
  * @license GPL-2.0-or-later
@@ -22,7 +22,7 @@ class KanbanTaskRepository extends BaseRepository
 {
     protected string $table = 'dotp_kanban_tasks';
     protected string $primaryKey = 'kanban_task_id';
-    protected int $cacheTtl = 60; // Cache curto por ser volátil
+    protected int $cacheTtl = 60; // Cache curto por ser volÃ¡til
     
     /**
      * {@inheritdoc}
@@ -122,7 +122,7 @@ class KanbanTaskRepository extends BaseRepository
     }
     
     /**
-     * Encontra posição de uma tarefa no kanban
+     * Encontra posiÃ§Ã£o de uma tarefa no kanban
      */
     public function findByTask(int $taskId): ?KanbanTask
     {
@@ -131,7 +131,7 @@ class KanbanTaskRepository extends BaseRepository
     }
     
     /**
-     * Verifica se uma tarefa está em algum board
+     * Verifica se uma tarefa estÃ¡ em algum board
      */
     public function isTaskInBoard(int $taskId): bool
     {
@@ -143,6 +143,77 @@ class KanbanTaskRepository extends BaseRepository
      */
     public function moveToColumn(int $kanbanTaskId, int $newColumnId, int $newOrder, ?int $movedBy = null): bool
     {
+        $current = $this->db->fetchOne(sprintf(
+            "SELECT kanban_task_column_id, kanban_task_order FROM `%s` WHERE %s = %d",
+            $this->table,
+            $this->primaryKey,
+            $kanbanTaskId
+        ));
+
+        if (!$current) {
+            return false;
+        }
+
+        $currentColumnId = (int) ($current['kanban_task_column_id'] ?? 0);
+        $currentOrder = (int) ($current['kanban_task_order'] ?? 0);
+
+        if ($newOrder < 0) {
+            $newOrder = 0;
+        }
+
+        $maxOrder = max(0, $this->getNextOrder($newColumnId));
+        if ($newOrder > $maxOrder) {
+            $newOrder = $maxOrder;
+        }
+
+        if ($currentColumnId === $newColumnId) {
+            if ($newOrder === $currentOrder) {
+                return true;
+            }
+
+            if ($newOrder > $currentOrder) {
+                $this->db->execute(
+                    sprintf(
+                        "UPDATE `%s`
+                         SET kanban_task_order = kanban_task_order - 1
+                         WHERE kanban_task_column_id = ? AND kanban_task_order > ? AND kanban_task_order <= ?",
+                        $this->table
+                    ),
+                    [$currentColumnId, $currentOrder, $newOrder]
+                );
+            } else {
+                $this->db->execute(
+                    sprintf(
+                        "UPDATE `%s`
+                         SET kanban_task_order = kanban_task_order + 1
+                         WHERE kanban_task_column_id = ? AND kanban_task_order >= ? AND kanban_task_order < ?",
+                        $this->table
+                    ),
+                    [$currentColumnId, $newOrder, $currentOrder]
+                );
+            }
+        } else {
+            $this->db->execute(
+                sprintf(
+                    "UPDATE `%s`
+                     SET kanban_task_order = kanban_task_order + 1
+                     WHERE kanban_task_column_id = ? AND kanban_task_order >= ?",
+                    $this->table
+                ),
+                [$newColumnId, $newOrder]
+            );
+
+            $this->db->execute(
+                sprintf(
+                    "UPDATE `%s`
+                     SET kanban_task_order = kanban_task_order - 1
+                     WHERE kanban_task_column_id = ? AND kanban_task_order > ?",
+                    $this->table
+                ),
+                [$currentColumnId, $currentOrder]
+            );
+        }
+
         $result = $this->db->update(
             $this->table,
             [
@@ -191,11 +262,11 @@ class KanbanTaskRepository extends BaseRepository
      */
     public function addTaskToColumn(int $taskId, int $columnId, ?int $movedBy = null): ?KanbanTask
     {
-        // Verifica se já existe
+        // Verifica se jÃ¡ existe
         $existing = $this->findByTask($taskId);
         if ($existing) {
             // Move para nova coluna
-            $this->moveToColumn($existing->getId() ?? 0, $columnId, 999, $movedBy);
+            $this->moveToColumn($existing->getId() ?? 0, $columnId, $this->getNextOrder($columnId), $movedBy);
             return $existing;
         }
         
@@ -203,7 +274,7 @@ class KanbanTaskRepository extends BaseRepository
         $kanbanTask = new KanbanTask();
         $kanbanTask->setTaskId($taskId);
         $kanbanTask->setColumnId($columnId);
-        $kanbanTask->setOrder(999); // Vai para o final
+        $kanbanTask->setOrder($this->getNextOrder($columnId));
         $kanbanTask->setMovedBy($movedBy);
         
         if ($this->save($kanbanTask) > 0) {
@@ -227,7 +298,7 @@ class KanbanTaskRepository extends BaseRepository
     }
     
     /**
-     * Obtém próxima ordem disponível em uma coluna
+     * ObtÃ©m prÃ³xima ordem disponÃ­vel em uma coluna
      */
     public function getNextOrder(int $columnId): int
     {
@@ -236,13 +307,17 @@ class KanbanTaskRepository extends BaseRepository
             $this->table,
             $columnId
         );
-        
-        $max = (int) ($this->db->fetchValue($sql) ?? 0);
-        return $max + 1;
+
+        $maxValue = $this->db->fetchValue($sql);
+        if ($maxValue === null) {
+            return 0;
+        }
+
+        return ((int) $maxValue) + 1;
     }
     
     /**
-     * Obtém estatísticas de tempo médio em cada coluna
+     * ObtÃ©m estatÃ­sticas de tempo mÃ©dio em cada coluna
      */
     public function getColumnTimeStats(int $boardId): array
     {
@@ -263,7 +338,7 @@ class KanbanTaskRepository extends BaseRepository
     }
     
     /**
-     * Obtém tarefas "travadas" (muito tempo na mesma coluna)
+     * ObtÃ©m tarefas "travadas" (muito tempo na mesma coluna)
      * 
      * @return array<KanbanTask>
      */
@@ -297,3 +372,5 @@ class KanbanTaskRepository extends BaseRepository
         return (int) $this->db->fetchValue($sql);
     }
 }
+
+

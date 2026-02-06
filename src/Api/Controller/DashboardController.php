@@ -26,6 +26,8 @@ class DashboardController extends BaseController
     private ?AlertaRepository $alertaRepo = null;
     private ?UnidadeOrganizacionalRepository $unidadeRepo = null;
     private ?UsuarioUnidadeRepository $vinculoRepo = null;
+    private ?string $unidadeNivelColumn = null;
+    private ?string $unidadeStatusColumn = null;
 
     /** @var bool Cache para verificar se tabelas modernas existem */
     private ?bool $hasModernTables = null;
@@ -47,16 +49,8 @@ class DashboardController extends BaseController
 
     private function getAlertaRepo(): AlertaRepository
     {
-        error_log('[DEBUG] getAlertaRepo() chamado');
         if ($this->alertaRepo === null) {
-            error_log('[DEBUG] Criando nova instancia de AlertaRepository...');
-            try {
-                $this->alertaRepo = new AlertaRepository();
-                error_log('[DEBUG] AlertaRepository criado com sucesso');
-            } catch (\Throwable $e) {
-                error_log('[DEBUG] ERRO ao criar AlertaRepository: ' . $e->getMessage());
-                throw $e;
-            }
+            $this->alertaRepo = new AlertaRepository();
         }
         return $this->alertaRepo;
     }
@@ -77,6 +71,66 @@ class DashboardController extends BaseController
         return $this->vinculoRepo;
     }
 
+    private function getUnidadeNivelColumn(): string
+    {
+        if ($this->unidadeNivelColumn !== null) {
+            return $this->unidadeNivelColumn;
+        }
+
+        $db = \DotProject\Core\Database::getInstance();
+        $exists = $db->fetchValue(
+            "SELECT COUNT(*) FROM information_schema.columns 
+             WHERE table_schema = DATABASE() 
+               AND table_name = 'dotp_unidades_organizacionais' 
+               AND column_name = 'unidade_nivel_id'"
+        );
+
+        $this->unidadeNivelColumn = ((int) $exists > 0) ? 'unidade_nivel_id' : 'unidade_nivel';
+        return $this->unidadeNivelColumn;
+    }
+
+    private function getUnidadeStatusColumn(): ?string
+    {
+        if ($this->unidadeStatusColumn !== null) {
+            return $this->unidadeStatusColumn;
+        }
+
+        $db = \DotProject\Core\Database::getInstance();
+        $hasStatus = $db->fetchValue(
+            "SELECT COUNT(*) FROM information_schema.columns 
+             WHERE table_schema = DATABASE() 
+               AND table_name = 'dotp_unidades_organizacionais' 
+               AND column_name = 'unidade_status'"
+        );
+
+        if ((int) $hasStatus > 0) {
+            $this->unidadeStatusColumn = 'unidade_status';
+            return $this->unidadeStatusColumn;
+        }
+
+        $hasAtiva = $db->fetchValue(
+            "SELECT COUNT(*) FROM information_schema.columns 
+             WHERE table_schema = DATABASE() 
+               AND table_name = 'dotp_unidades_organizacionais' 
+               AND column_name = 'unidade_ativa'"
+        );
+
+        $this->unidadeStatusColumn = ((int) $hasAtiva > 0) ? 'unidade_ativa' : null;
+        return $this->unidadeStatusColumn;
+    }
+
+    private function getUnidadeStatusFilter(string $alias): string
+    {
+        $column = $this->getUnidadeStatusColumn();
+        if ($column === 'unidade_status') {
+            return "{$alias}.unidade_status = 'ativo'";
+        }
+        if ($column === 'unidade_ativa') {
+            return "{$alias}.unidade_ativa = 1";
+        }
+        return '1=1';
+    }
+
     /**
      * Verifica se as tabelas modernas (programas, projetos, etapas) existem
      */
@@ -90,7 +144,7 @@ class DashboardController extends BaseController
             $db = \DotProject\Core\Database::getInstance();
             $result = $db->fetchValue("SELECT COUNT(*) FROM information_schema.tables 
                 WHERE table_schema = DATABASE() 
-                AND table_name IN ('dotp_programas', 'dotp_projetos_prefeitura', 'dotp_etapas')");
+                AND table_name IN ('dotp_programas', 'dotp_projects', 'dotp_etapas')");
             $this->hasModernTables = ((int) $result) >= 3;
         } catch (\Exception $e) {
             $this->hasModernTables = false;
@@ -176,6 +230,8 @@ class DashboardController extends BaseController
         );
 
         // Projetos por secretaria
+        $nivelColumn = $this->getUnidadeNivelColumn();
+        $statusFilter = $this->getUnidadeStatusFilter('u');
         $porSecretaria = $db->fetchAll(
             "SELECT 
                 u.unidade_id,
@@ -187,7 +243,7 @@ class DashboardController extends BaseController
                 AVG(p.percent_execucao) as percentual_execucao
             FROM dotp_unidades_organizacionais u
             LEFT JOIN dotp_projetos_prefeitura p ON p.unidade_id = u.unidade_id AND p.estado != 'Cancelado'
-            WHERE u.unidade_nivel_id = 2 AND u.unidade_status = 'ativo'
+            WHERE u.{$nivelColumn} = 2 AND {$statusFilter}
             GROUP BY u.unidade_id
             ORDER BY u.unidade_nome"
         );
@@ -434,13 +490,9 @@ class DashboardController extends BaseController
      */
     public function secretario(): Response
     {
-        error_log('[DEBUG] DashboardController::secretario() iniciado');
         try {
             $userId = $this->getUserId();
-            error_log('[DEBUG] userId: ' . ($userId ?? 'null'));
-            error_log('[DEBUG] Obtendo escopo...');
             $escopo = $this->getPermissionService()->getEscopoDados($userId);
-            error_log('[DEBUG] escopo: ' . ($escopo ? json_encode($escopo) : 'null'));
 
             if (!$escopo) {
                 return $this->json(['error' => 'Escopo não encontrado'], 403);
@@ -461,15 +513,11 @@ class DashboardController extends BaseController
             }
 
             try {
-                error_log('[DEBUG] checkModernTables: ' . ($this->checkModernTables() ? 'true' : 'false'));
                 if ($this->checkModernTables()) {
-                    error_log('[DEBUG] Chamando getSecretarioDashboardModern...');
                     $data = $this->getSecretarioDashboardModern($unidadeId, $unidadesEscopo);
                 } else {
-                    error_log('[DEBUG] Chamando getSecretarioDashboardLegacy...');
                     $data = $this->getSecretarioDashboardLegacy($userId);
                 }
-                error_log('[DEBUG] Dados obtidos: ' . json_encode($data));
             } catch (\Throwable $e) {
                 \DotProject\Core\Logger::error('Dashboard secretario falhou, aplicando fallback legado', [
                     'user_id' => $userId,
@@ -483,11 +531,12 @@ class DashboardController extends BaseController
 
             return $this->json(['data' => $data]);
         } catch (\Throwable $e) {
-            return $this->json([
-                'error' => 'Erro ao carregar dashboard: ' . $e->getMessage(),
+            \DotProject\Core\Logger::error('Erro ao carregar dashboard do secretario', [
+                'error' => $e->getMessage(),
                 'file' => $e->getFile(),
-                'line' => $e->getLine()
-            ], 500);
+                'line' => $e->getLine(),
+            ]);
+            return $this->json(['error' => 'Erro ao carregar dashboard'], 500);
         }
     }
 
@@ -496,11 +545,9 @@ class DashboardController extends BaseController
      */
     private function getSecretarioDashboardModern(int $unidadeId, array $unidadesEscopo): array
     {
-        error_log('[DEBUG] getSecretarioDashboardModern() - unidadeId: ' . $unidadeId . ', unidadesEscopo: ' . json_encode($unidadesEscopo));
         $db = \DotProject\Core\Database::getInstance();
 
         if (empty($unidadesEscopo)) {
-            error_log('[DEBUG] unidadesEscopo vazio, retornando dados padrão');
             $alertas = ['total' => 0, 'nao_lidos' => 0];
             try {
                 $userId = $this->getUserId();
@@ -523,10 +570,8 @@ class DashboardController extends BaseController
             ];
         }
         $placeholders = implode(',', array_fill(0, count($unidadesEscopo), '?'));
-        error_log('[DEBUG] placeholders: ' . $placeholders);
 
         // Programas da secretaria
-        error_log('[DEBUG] Query 1: Programas...');
         try {
             $programas = $db->fetchAll(
                 "SELECT 
@@ -540,14 +585,11 @@ class DashboardController extends BaseController
                 ORDER BY percent_execucao ASC",
                 $unidadesEscopo
             );
-            error_log('[DEBUG] Query 1 OK: ' . count($programas) . ' programas');
         } catch (\Throwable $e) {
-            error_log('[DEBUG] Query 1 ERRO: ' . $e->getMessage());
             throw $e;
         }
 
         // Projetos da secretaria
-        error_log('[DEBUG] Query 2: Projetos resumo...');
         $projetos = $db->fetchAll(
             "SELECT 
                 estado,
@@ -558,10 +600,8 @@ class DashboardController extends BaseController
             GROUP BY estado",
             $unidadesEscopo
         );
-        error_log('[DEBUG] Query 2 OK: ' . count($projetos) . ' registros');
 
         // Projetos que precisam de atenção
-        error_log('[DEBUG] Query 3: Projetos atencao...');
         $atencao = $db->fetchAll(
             "SELECT 
                 p.id,
@@ -579,16 +619,12 @@ class DashboardController extends BaseController
             LIMIT 15",
             $unidadesEscopo
         );
-        error_log('[DEBUG] Query 3 OK: ' . count($atencao) . ' registros');
 
         // Alertas da secretaria
-        error_log('[DEBUG] Query 4: Alertas...');
         $userId = $this->getUserId();
         try {
             $alertas = $this->getAlertaRepo()->getEstatisticas($userId);
-            error_log('[DEBUG] Query 4 OK: ' . json_encode($alertas));
         } catch (\Exception $e) {
-            error_log('[DEBUG] Query 4 ERRO: ' . $e->getMessage());
             $alertas = ['total' => 0, 'nao_lidos' => 0];
         }
 
@@ -1000,6 +1036,8 @@ class DashboardController extends BaseController
         ];
 
         // Panorama por secretaria
+        $nivelColumn = $this->getUnidadeNivelColumn();
+        $statusFilter = $this->getUnidadeStatusFilter('u');
         $panorama = $db->fetchAll(
             "SELECT 
                 u.unidade_id,
@@ -1009,7 +1047,7 @@ class DashboardController extends BaseController
                 AVG(p.percent_execucao) as execucao_media
             FROM dotp_unidades_organizacionais u
             LEFT JOIN dotp_projetos_prefeitura p ON p.unidade_id = u.unidade_id AND p.estado != 'Cancelado'
-            WHERE u.unidade_nivel_id = 2 AND u.unidade_status = 'ativo'
+            WHERE u.{$nivelColumn} = 2 AND {$statusFilter}
             GROUP BY u.unidade_id
             ORDER BY u.unidade_nome"
         );
@@ -1092,8 +1130,16 @@ class DashboardController extends BaseController
     public function alertas(): Response
     {
         $userId = $this->getUserId();
-        $apenasNaoLidos = $this->request->getQuery('nao_lidos', false);
+        $apenasNaoLidos = filter_var(
+            $this->request->getQuery('nao_lidos', false),
+            FILTER_VALIDATE_BOOL
+        );
         $limit = (int) $this->request->getQuery('limit', 50);
+        if ($limit <= 0) {
+            $limit = 50;
+        } elseif ($limit > 200) {
+            $limit = 200;
+        }
 
         try {
             $alertas = $this->getAlertaRepo()->findComDetalhes($userId, $apenasNaoLidos, $limit);

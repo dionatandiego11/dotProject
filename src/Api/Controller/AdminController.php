@@ -19,6 +19,7 @@ use DotProject\Repository\UnidadeOrganizacionalRepository;
 use DotProject\Repository\UsuarioUnidadeRepository;
 use DotProject\Repository\HistoricoMovimentacaoRepository;
 use DotProject\Repository\UserRepository;
+use DotProject\Core\Logger;
 use DotProject\Service\UserService;
 
 class AdminController extends BaseController
@@ -32,21 +33,14 @@ class AdminController extends BaseController
 
     public function __construct(Request $request, Response $response)
     {
-        error_log('DEBUG AdminController - Construtor chamado');
         parent::__construct($request, $response);
-        error_log('DEBUG AdminController - Criando NivelHierarquicoRepository...');
         $this->nivelRepo = new NivelHierarquicoRepository();
-        error_log('DEBUG AdminController - Criando UnidadeOrganizacionalRepository...');
         $this->unidadeRepo = new UnidadeOrganizacionalRepository();
-        error_log('DEBUG AdminController - Criando UsuarioUnidadeRepository...');
         $this->vinculoRepo = new UsuarioUnidadeRepository();
-        error_log('DEBUG AdminController - Criando HistoricoMovimentacaoRepository...');
         $this->historicoRepo = new HistoricoMovimentacaoRepository();
-        error_log('DEBUG AdminController - Criando UserRepository...');
         $this->userRepo = new UserRepository();
-        error_log('DEBUG AdminController - Criando UserService...');
         $this->userService = new UserService();
-        error_log('DEBUG AdminController - Construtor concluido');
+        Logger::debug('AdminController inicializado');
     }
 
     // ===========================================
@@ -141,13 +135,12 @@ class AdminController extends BaseController
                 'data' => $nivel->toArray(),
             ], 201);
         } catch (\Throwable $e) {
-            error_log('ERRO createNivel: ' . $e->getMessage());
-            error_log('Trace: ' . $e->getTraceAsString());
-            return $this->json([
-                'error' => 'Erro ao criar nivel: ' . $e->getMessage(),
+            Logger::error('Erro ao criar nivel', [
+                'error' => $e->getMessage(),
                 'file' => $e->getFile(),
-                'line' => $e->getLine()
-            ], 500);
+                'line' => $e->getLine(),
+            ]);
+            return $this->json(['error' => 'Erro ao criar nivel'], 500);
         }
     }
 
@@ -237,7 +230,7 @@ class AdminController extends BaseController
      */
     public function listUnidades(): Response
     {
-        $arvore = $this->request->getQuery('arvore', false);
+        $arvore = $this->normalizeBool($this->request->getQuery('arvore', false));
         $nivel = $this->request->getQuery('nivel');
 
         if ($arvore) {
@@ -304,11 +297,8 @@ class AdminController extends BaseController
         try {
             $data = $this->request->getJsonBody();
 
-            error_log('DEBUG createUnidade - Dados recebidos: ' . json_encode($data));
-
             $errors = $this->validateUnidade($data);
             if (!empty($errors)) {
-                error_log('DEBUG createUnidade - Erros de validacao: ' . json_encode($errors));
                 return $this->validationError($errors);
             }
 
@@ -324,28 +314,23 @@ class AdminController extends BaseController
             // O frontend envia 'responsavel' como string, mas o backend espera 'responsavel_id' como int
             // Vamos ignorar o campo 'responsavel' por enquanto
             $unidade->setResponsavelId($data['responsavel_id'] ?? null);
-            $unidade->setPodeCriarProjetos($data['pode_criar_projetos'] ?? true);
-            $unidade->setPodeCriarProgramas($data['pode_criar_programas'] ?? false);
-
-            error_log('DEBUG createUnidade - Salvando unidade: ' . $unidade->getNome());
+            $unidade->setPodeCriarProjetos($this->normalizeBool($data['pode_criar_projetos'] ?? null, true));
+            $unidade->setPodeCriarProgramas($this->normalizeBool($data['pode_criar_programas'] ?? null, false));
 
             $id = $this->unidadeRepo->save($unidade);
             $unidade->setId($id);
-
-            error_log('DEBUG createUnidade - Unidade criada com ID: ' . $id);
 
             return $this->json([
                 'message' => 'Unidade criada com sucesso',
                 'data' => $unidade->toArray(),
             ], 201);
         } catch (\Throwable $e) {
-            error_log('ERRO createUnidade: ' . $e->getMessage());
-            error_log('Trace: ' . $e->getTraceAsString());
-            return $this->json([
-                'error' => 'Erro ao criar unidade: ' . $e->getMessage(),
+            Logger::error('Erro ao criar unidade', [
+                'error' => $e->getMessage(),
                 'file' => $e->getFile(),
-                'line' => $e->getLine()
-            ], 500);
+                'line' => $e->getLine(),
+            ]);
+            return $this->json(['error' => 'Erro ao criar unidade'], 500);
         }
     }
 
@@ -384,13 +369,13 @@ class AdminController extends BaseController
             $unidade->setResponsavelId($data['responsavel_id']);
         }
         if (isset($data['ativa'])) {
-            $unidade->setAtiva((bool) $data['ativa']);
+            $unidade->setAtiva($this->normalizeBool($data['ativa']));
         }
         if (isset($data['pode_criar_projetos'])) {
-            $unidade->setPodeCriarProjetos((bool) $data['pode_criar_projetos']);
+            $unidade->setPodeCriarProjetos($this->normalizeBool($data['pode_criar_projetos']));
         }
         if (isset($data['pode_criar_programas'])) {
-            $unidade->setPodeCriarProgramas((bool) $data['pode_criar_programas']);
+            $unidade->setPodeCriarProgramas($this->normalizeBool($data['pode_criar_programas']));
         }
 
         $this->unidadeRepo->save($unidade);
@@ -427,8 +412,11 @@ class AdminController extends BaseController
                 'message' => 'Unidade removida com sucesso',
             ]);
         } catch (\Throwable $e) {
-            error_log('ERRO deleteUnidade: ' . $e->getMessage());
-            error_log('Trace: ' . $e->getTraceAsString());
+            Logger::error('Erro ao remover unidade', [
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
 
             // Se a unidade ja nao existe, considera a remocao bem-sucedida
             try {
@@ -458,7 +446,14 @@ class AdminController extends BaseController
         }
 
         try {
-            $this->unidadeRepo->mover($id, $data['pai_id']);
+            $paiId = $data['pai_id'];
+            if ($paiId === null || $paiId === '') {
+                $paiId = null;
+            } else {
+                $paiId = (int) $paiId;
+            }
+
+            $this->unidadeRepo->mover($id, $paiId);
 
             return $this->json([
                 'message' => 'Unidade movida com sucesso',
@@ -619,7 +614,7 @@ class AdminController extends BaseController
     public function listUsuarios(): Response
     {
         $query = (string) ($this->request->getQuery('q') ?? '');
-        $includeInactive = (bool) $this->request->getQuery('include_inactive', false);
+        $includeInactive = $this->normalizeBool($this->request->getQuery('include_inactive', false));
 
         if ($query !== '') {
             $users = $this->userService->searchUsers($query);
@@ -824,10 +819,20 @@ class AdminController extends BaseController
             $errors['nome'] = 'Nome e obrigatorio';
         }
 
-        if (empty($data['nivel']) || !is_int($data['nivel'])) {
+        if (!isset($data['nivel']) || $data['nivel'] === '' || !is_numeric($data['nivel'])) {
             $errors['nivel'] = 'Nivel e obrigatorio e deve ser um numero inteiro';
         }
 
         return $errors;
+    }
+
+    private function normalizeBool(mixed $value, bool $default = false): bool
+    {
+        if ($value === null) {
+            return $default;
+        }
+
+        $parsed = filter_var($value, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE);
+        return $parsed ?? $default;
     }
 }

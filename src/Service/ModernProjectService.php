@@ -159,8 +159,7 @@ class ModernProjectService
      * @param array<string, mixed> $data Project data
      * @param int|null $createdBy User creating (null = current user)
      * @return ProjectEntity Created project
-     * @throws \InvalidArgumentException If validation fails
-     * @throws \RuntimeException If no permission
+     * @throws \RuntimeException If validation/auth/permission fails
      */
     public function createProject(array $data, ?int $createdBy = null): ProjectEntity
     {
@@ -176,7 +175,7 @@ class ModernProjectService
         // Validate
         $validation = $this->validator->validateProject($data);
         if ($validation->fails()) {
-            throw new \InvalidArgumentException($validation->firstError() ?? 'Validation failed');
+            throw new \RuntimeException($validation->firstError() ?? 'Validation failed');
         }
         
         // Create entity
@@ -625,6 +624,10 @@ class ModernProjectService
     public function bulkUpdateStatus(array $projectIds, int $newStatus, ?int $updatedBy = null): int
     {
         $updatedBy = $updatedBy ?? $this->auth->getCurrentUser()?->getId();
+        if ($updatedBy === null) {
+            throw new \RuntimeException('User not authenticated');
+        }
+
         $updated = 0;
         
         foreach ($projectIds as $projectId) {

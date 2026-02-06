@@ -61,7 +61,7 @@ $router->get("{$prefix}/alertas", function () use ($request, $response) {
     return $controller->alertas();
 });
 
-$router->put("{$prefix}/alertas/:id/lido", function ($id) use ($request, $response) {
+$router->put("{$prefix}/alertas/{id}/lido", function ($id) use ($request, $response) {
     $controller = new DashboardController($request, $response);
     return $controller->marcarAlertaLido((int) $id);
 });

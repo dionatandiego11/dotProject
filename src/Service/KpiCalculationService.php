@@ -16,6 +16,7 @@ class KpiCalculationService
 {
     private Database $db;
     private Cache $cache;
+    private ?string $unidadeNivelColumn = null;
     
     public function __construct()
     {
@@ -40,16 +41,14 @@ class KpiCalculationService
             COUNT(DISTINCT CASE WHEN p.estado = 'Critico' THEN p.id END) as programas_criticos,
             COUNT(DISTINCT CASE WHEN p.estado = 'Parado' THEN p.id END) as programas_parados,
             COUNT(DISTINCT CASE WHEN p.estado = 'Atencao' THEN p.id END) as programas_atencao,
-            COUNT(DISTINCT pr.id) as total_projetos,
-            COUNT(DISTINCT CASE WHEN pr.estado = 'Concluido' THEN pr.id END) as projetos_concluidos,
-            COUNT(DISTINCT CASE WHEN pr.estado = 'Atrasado' THEN pr.id END) as projetos_atrasados,
+            COUNT(DISTINCT pr.project_id) as total_projetos,
+            COUNT(DISTINCT CASE WHEN pr.project_estado = 'Concluido' THEN pr.project_id END) as projetos_concluidos,
+            COUNT(DISTINCT CASE WHEN pr.project_estado = 'Atrasado' THEN pr.project_id END) as projetos_atrasados,
             AVG(p.percent_execucao) as percent_execucao_media
-        FROM ppa ppa
-        LEFT JOIN programas p ON p.ppa_id = ppa.id
-        LEFT JOIN projetos pr ON pr.programa_id = p.id
-        WHERE ppa.id = ?";
+        FROM dotp_programas p
+        LEFT JOIN dotp_projects pr ON pr.project_programa_id = p.id";
         
-        $result = $this->db->fetchOne($sql, [$ppaId]) ?? [];
+        $result = $this->db->fetchOne($sql) ?? [];
         
         $kpis = [
             'ppa_id' => $ppaId,
@@ -88,12 +87,12 @@ class KpiCalculationService
             p.nome as programa,
             p.estado,
             p.percent_execucao,
-            COUNT(DISTINCT pr.id) as total_projetos,
-            COUNT(DISTINCT CASE WHEN pr.estado = 'Concluido' THEN pr.id END) as concluidos,
-            COUNT(DISTINCT CASE WHEN pr.estado = 'Atrasado' THEN pr.id END) as atrasados,
-            COUNT(DISTINCT CASE WHEN pr.estado = 'Em_Execucao' THEN pr.id END) as em_execucao
-        FROM programas p
-        LEFT JOIN projetos pr ON pr.programa_id = p.id
+            COUNT(DISTINCT pr.project_id) as total_projetos,
+            COUNT(DISTINCT CASE WHEN pr.project_estado = 'Concluido' THEN pr.project_id END) as concluidos,
+            COUNT(DISTINCT CASE WHEN pr.project_estado = 'Atrasado' THEN pr.project_id END) as atrasados,
+            COUNT(DISTINCT CASE WHEN pr.project_estado IN ('Execucao', 'Em_Andamento') THEN pr.project_id END) as em_execucao
+        FROM dotp_programas p
+        LEFT JOIN dotp_projects pr ON pr.project_programa_id = p.id
         WHERE p.unidade_id IN ($placeholders)
         GROUP BY p.id
         ORDER BY p.percent_execucao DESC";
@@ -107,23 +106,23 @@ class KpiCalculationService
     public function getDashboardCoordenador(int $userId): array
     {
         $sql = "SELECT 
-            pr.id,
-            pr.nome as projeto,
-            pr.estado,
-            pr.etapa_atual,
+            pr.project_id as id,
+            pr.project_name as projeto,
+            pr.project_estado as estado,
+            pr.project_etapa_atual as etapa_atual,
             e.nome as etapa_nome,
             e.estado as etapa_estado,
             e.data_prevista_fim,
             e.dias_atraso,
-            pr.percent_execucao,
+            pr.project_percent_execucao as percent_execucao,
             COUNT(DISTINCT t.task_id) as tarefas_pendentes
-        FROM projetos pr
-        JOIN etapas e ON e.projeto_id = pr.id AND e.numero = pr.etapa_atual
-        LEFT JOIN dotp_tasks t ON t.task_project = pr.id 
+        FROM dotp_projects pr
+        JOIN dotp_etapas e ON e.projeto_id = pr.project_id AND e.numero = pr.project_etapa_atual
+        LEFT JOIN dotp_tasks t ON t.task_project = pr.project_id 
             AND t.estado != 'Concluida'
-            AND t.etapa_id = pr.etapa_atual
-        WHERE pr.coordenador_id = ?
-        GROUP BY pr.id
+            AND t.etapa_id = pr.project_etapa_atual
+        WHERE pr.project_coordenador_id = ?
+        GROUP BY pr.project_id
         ORDER BY e.data_prevista_fim ASC";
         
         return $this->db->fetchAll($sql, [$userId]);
@@ -138,14 +137,14 @@ class KpiCalculationService
             t.task_id as id,
             t.task_name as tarefa,
             t.estado,
-            p.nome as projeto,
+            p.project_name as projeto,
             e.nome as etapa,
             t.task_end_date as prazo,
             t.task_priority as prioridade,
             DATEDIFF(t.task_end_date, CURDATE()) as dias_restantes
         FROM dotp_tasks t
-        JOIN projetos p ON p.id = t.task_project
-        JOIN etapas e ON e.projeto_id = p.id AND e.numero = p.etapa_atual
+        JOIN dotp_projects p ON p.project_id = t.task_project
+        JOIN dotp_etapas e ON e.projeto_id = p.project_id AND e.numero = p.project_etapa_atual
         WHERE t.task_assigned_to = ?
         AND t.estado IN ('A_Fazer', 'Em_Andamento')
         ORDER BY t.task_priority DESC, t.task_end_date ASC
@@ -159,6 +158,8 @@ class KpiCalculationService
      */
     private function getRankingSecretarias(int $ppaId): array
     {
+        $nivelColumn = $this->getUnidadeNivelColumn();
+
         $sql = "SELECT 
             u.unidade_id,
             u.unidade_nome as secretaria,
@@ -166,14 +167,13 @@ class KpiCalculationService
             AVG(p.percent_execucao) as media_execucao,
             COUNT(DISTINCT CASE WHEN p.estado = 'Concluido' THEN p.id END) as concluidos
         FROM dotp_unidades_organizacionais u
-        JOIN programas p ON p.unidade_id = u.unidade_id
-        WHERE p.ppa_id = ?
-        AND u.unidade_nivel = 2
+        JOIN dotp_programas p ON p.unidade_id = u.unidade_id
+        WHERE u.{$nivelColumn} = 2
         GROUP BY u.unidade_id
         ORDER BY media_execucao DESC
         LIMIT 10";
         
-        return $this->db->fetchAll($sql, [$ppaId]);
+        return $this->db->fetchAll($sql);
     }
     
     /**
@@ -182,23 +182,22 @@ class KpiCalculationService
     public function getProjetosRisco(int $ppaId, int $limite = 10): array
     {
         $sql = "SELECT 
-            pr.id,
-            pr.nome as projeto,
-            pr.estado,
+            pr.project_id as id,
+            pr.project_name as projeto,
+            pr.project_estado as estado,
             p.nome as programa,
             u.unidade_nome as secretaria,
             e.dias_atraso,
             e.justificativa_atraso
-        FROM projetos pr
-        JOIN programas p ON p.id = pr.programa_id
+        FROM dotp_projects pr
+        JOIN dotp_programas p ON p.id = pr.project_programa_id
         JOIN dotp_unidades_organizacionais u ON u.unidade_id = p.unidade_id
-        JOIN etapas e ON e.projeto_id = pr.id AND e.numero = pr.etapa_atual
-        WHERE p.ppa_id = ?
-        AND (pr.estado = 'Atrasado' OR e.estado = 'Critica')
+        JOIN dotp_etapas e ON e.projeto_id = pr.project_id AND e.numero = pr.project_etapa_atual
+        WHERE (pr.project_estado = 'Atrasado' OR e.estado = 'Critica')
         ORDER BY e.dias_atraso DESC
         LIMIT ?";
         
-        return $this->db->fetchAll($sql, [$ppaId, $limite]);
+        return $this->db->fetchAll($sql, [$limite]);
     }
     
     /**
@@ -238,5 +237,22 @@ class KpiCalculationService
         
         $results = $this->db->fetchAll($sql, [$userId]);
         return array_column($results, 'vinculo_unidade_id');
+    }
+
+    private function getUnidadeNivelColumn(): string
+    {
+        if ($this->unidadeNivelColumn !== null) {
+            return $this->unidadeNivelColumn;
+        }
+
+        $exists = $this->db->fetchValue(
+            "SELECT COUNT(*) FROM information_schema.columns 
+             WHERE table_schema = DATABASE() 
+               AND table_name = 'dotp_unidades_organizacionais' 
+               AND column_name = 'unidade_nivel_id'"
+        );
+
+        $this->unidadeNivelColumn = ((int) $exists > 0) ? 'unidade_nivel_id' : 'unidade_nivel';
+        return $this->unidadeNivelColumn;
     }
 }
