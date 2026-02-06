@@ -172,7 +172,7 @@ class CriticalFlowsIntegrationTest extends TestCase
             sprintf('SELECT user_company FROM `%s` WHERE user_id = %d', $this->db->table('users'), $userId)
         ) ?? 0);
 
-        $updated = $this->db->update('users', ['user_company' => 0], sprintf('user_id = %d', $userId));
+        $updated = $this->db->update('users', ['user_company' => null], sprintf('user_id = %d', $userId));
         $this->assertTrue($updated, 'Falha ao preparar usuario para teste de fallback de unidade');
 
         try {
