@@ -17,6 +17,10 @@ class KpiCalculationService
     private Database $db;
     private Cache $cache;
     private ?string $unidadeNivelColumn = null;
+    private ?string $vinculoStatusColumn = null;
+    private ?bool $hasTaskAssignedToColumn = null;
+    private ?bool $hasTaskEstadoColumn = null;
+    private ?bool $hasUserTasksTable = null;
     
     public function __construct()
     {
@@ -119,8 +123,7 @@ class KpiCalculationService
         FROM dotp_projects pr
         JOIN dotp_etapas e ON e.projeto_id = pr.project_id AND e.numero = pr.project_etapa_atual
         LEFT JOIN dotp_tasks t ON t.task_project = pr.project_id 
-            AND t.estado != 'Concluida'
-            AND t.etapa_id = pr.project_etapa_atual
+            AND COALESCE(t.task_percent_complete, 0) < 100
         WHERE pr.project_coordenador_id = ?
         GROUP BY pr.project_id
         ORDER BY e.data_prevista_fim ASC";
@@ -133,24 +136,47 @@ class KpiCalculationService
      */
     public function getDashboardTecnico(int $userId): array
     {
+        $assignmentJoin = '';
+        $assignmentWhere = 't.task_owner = ?';
+        $params = [$userId];
+
+        if ($this->hasTaskAssignedToColumn()) {
+            $assignmentWhere = 't.task_assigned_to = ?';
+        } elseif ($this->hasUserTasksTable()) {
+            $assignmentJoin = 'JOIN dotp_user_tasks ut ON ut.task_id = t.task_id';
+            $assignmentWhere = 'ut.user_id = ?';
+        }
+
+        $estadoSelect = $this->hasTaskEstadoColumn()
+            ? 't.estado'
+            : "CASE
+                    WHEN COALESCE(t.task_percent_complete, 0) >= 100 THEN 'Concluida'
+                    WHEN COALESCE(t.task_percent_complete, 0) > 0 THEN 'Em_Andamento'
+                    ELSE 'A_Fazer'
+               END";
+
         $sql = "SELECT 
             t.task_id as id,
             t.task_name as tarefa,
-            t.estado,
+            {$estadoSelect} as estado,
             p.project_name as projeto,
             e.nome as etapa,
             t.task_end_date as prazo,
             t.task_priority as prioridade,
-            DATEDIFF(t.task_end_date, CURDATE()) as dias_restantes
+            CASE
+                WHEN t.task_end_date IS NULL THEN NULL
+                ELSE DATEDIFF(DATE(t.task_end_date), CURDATE())
+            END as dias_restantes
         FROM dotp_tasks t
         JOIN dotp_projects p ON p.project_id = t.task_project
-        JOIN dotp_etapas e ON e.projeto_id = p.project_id AND e.numero = p.project_etapa_atual
-        WHERE t.task_assigned_to = ?
-        AND t.estado IN ('A_Fazer', 'Em_Andamento')
+        LEFT JOIN dotp_etapas e ON e.projeto_id = p.project_id AND e.numero = p.project_etapa_atual
+        {$assignmentJoin}
+        WHERE {$assignmentWhere}
+        AND COALESCE(t.task_percent_complete, 0) < 100
         ORDER BY t.task_priority DESC, t.task_end_date ASC
         LIMIT 20";
         
-        return $this->db->fetchAll($sql, [$userId]);
+        return $this->db->fetchAll($sql, $params);
     }
     
     /**
@@ -205,14 +231,25 @@ class KpiCalculationService
      */
     public function getEstatisticasTarefas(int $projetoId): array
     {
-        $sql = "SELECT 
-            COUNT(*) as total,
-            COUNT(CASE WHEN estado = 'Concluida' THEN 1 END) as concluidas,
-            COUNT(CASE WHEN estado = 'Em_Andamento' THEN 1 END) as em_andamento,
-            COUNT(CASE WHEN estado = 'A_Fazer' THEN 1 END) as a_fazer,
-            COUNT(CASE WHEN estado = 'Bloqueada' THEN 1 END) as bloqueadas
-        FROM dotp_tasks
-        WHERE task_project = ?";
+        if ($this->hasTaskEstadoColumn()) {
+            $sql = "SELECT 
+                COUNT(*) as total,
+                COUNT(CASE WHEN estado = 'Concluida' THEN 1 END) as concluidas,
+                COUNT(CASE WHEN estado = 'Em_Andamento' THEN 1 END) as em_andamento,
+                COUNT(CASE WHEN estado = 'A_Fazer' THEN 1 END) as a_fazer,
+                COUNT(CASE WHEN estado = 'Bloqueada' THEN 1 END) as bloqueadas
+            FROM dotp_tasks
+            WHERE task_project = ?";
+        } else {
+            $sql = "SELECT
+                COUNT(*) as total,
+                COUNT(CASE WHEN COALESCE(task_percent_complete, 0) >= 100 THEN 1 END) as concluidas,
+                COUNT(CASE WHEN COALESCE(task_percent_complete, 0) > 0 AND COALESCE(task_percent_complete, 0) < 100 THEN 1 END) as em_andamento,
+                COUNT(CASE WHEN COALESCE(task_percent_complete, 0) = 0 THEN 1 END) as a_fazer,
+                0 as bloqueadas
+            FROM dotp_tasks
+            WHERE task_project = ?";
+        }
         
         return $this->db->fetchOne($sql, [$projetoId]) ?? [
             'total' => 0,
@@ -230,12 +267,14 @@ class KpiCalculationService
      */
     private function getUserUnidades(int $userId): array
     {
+        $statusColumn = $this->resolveVinculoStatusColumn();
+        $activeStatus = $this->vinculoStatusValueForSql(true, $statusColumn);
         $sql = "SELECT vinculo_unidade_id 
                 FROM dotp_usuario_unidades 
                 WHERE vinculo_user_id = ? 
-                AND vinculo_ativo = 1";
+                AND {$statusColumn} = ?";
         
-        $results = $this->db->fetchAll($sql, [$userId]);
+        $results = $this->db->fetchAll($sql, [$userId, $activeStatus]);
         return array_column($results, 'vinculo_unidade_id');
     }
 
@@ -254,5 +293,81 @@ class KpiCalculationService
 
         $this->unidadeNivelColumn = ((int) $exists > 0) ? 'unidade_nivel_id' : 'unidade_nivel';
         return $this->unidadeNivelColumn;
+    }
+
+    private function resolveVinculoStatusColumn(): string
+    {
+        if ($this->vinculoStatusColumn !== null) {
+            return $this->vinculoStatusColumn;
+        }
+
+        $hasStatus = (int) ($this->db->fetchValue(
+            "SELECT COUNT(*) FROM information_schema.columns
+             WHERE table_schema = DATABASE()
+               AND table_name = 'dotp_usuario_unidades'
+               AND column_name = 'vinculo_status'"
+        ) ?? 0);
+
+        $this->vinculoStatusColumn = $hasStatus > 0 ? 'vinculo_status' : 'vinculo_ativo';
+        return $this->vinculoStatusColumn;
+    }
+
+    private function vinculoStatusValueForSql(bool $ativo, string $column): int|string
+    {
+        if ($column === 'vinculo_status') {
+            return $ativo ? 'ativo' : 'inativo';
+        }
+
+        return $ativo ? 1 : 0;
+    }
+
+    private function hasTaskAssignedToColumn(): bool
+    {
+        if ($this->hasTaskAssignedToColumn !== null) {
+            return $this->hasTaskAssignedToColumn;
+        }
+
+        $exists = (int) ($this->db->fetchValue(
+            "SELECT COUNT(*) FROM information_schema.columns
+             WHERE table_schema = DATABASE()
+               AND table_name = 'dotp_tasks'
+               AND column_name = 'task_assigned_to'"
+        ) ?? 0);
+
+        $this->hasTaskAssignedToColumn = $exists > 0;
+        return $this->hasTaskAssignedToColumn;
+    }
+
+    private function hasTaskEstadoColumn(): bool
+    {
+        if ($this->hasTaskEstadoColumn !== null) {
+            return $this->hasTaskEstadoColumn;
+        }
+
+        $exists = (int) ($this->db->fetchValue(
+            "SELECT COUNT(*) FROM information_schema.columns
+             WHERE table_schema = DATABASE()
+               AND table_name = 'dotp_tasks'
+               AND column_name = 'estado'"
+        ) ?? 0);
+
+        $this->hasTaskEstadoColumn = $exists > 0;
+        return $this->hasTaskEstadoColumn;
+    }
+
+    private function hasUserTasksTable(): bool
+    {
+        if ($this->hasUserTasksTable !== null) {
+            return $this->hasUserTasksTable;
+        }
+
+        $exists = (int) ($this->db->fetchValue(
+            "SELECT COUNT(*) FROM information_schema.tables
+             WHERE table_schema = DATABASE()
+               AND table_name = 'dotp_user_tasks'"
+        ) ?? 0);
+
+        $this->hasUserTasksTable = $exists > 0;
+        return $this->hasUserTasksTable;
     }
 }
