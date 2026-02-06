@@ -15,6 +15,11 @@ use DotProject\Event\ProjetoStatusChangedEvent;
 
 abstract class AbstractProjetoState extends AbstractState implements ProjetoStateInterface
 {
+    public function getColor(): string
+    {
+        return $this->getDefaultColor();
+    }
+
     /**
      * {@inheritdoc}
      */

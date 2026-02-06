@@ -22,7 +22,7 @@ class StateFactory
      */
     public static function createProjetoState(string $estado): ProjetoStateInterface
     {
-        $className = "DotProject\\State\\Projeto\\{$estado}State";
+        $className = self::buildClassName('DotProject\\State\\Projeto', $estado);
         return self::createState($className, $estado);
     }
     
@@ -31,7 +31,7 @@ class StateFactory
      */
     public static function createEtapaState(string $estado): EtapaStateInterface
     {
-        $className = "DotProject\\State\\Etapa\\{$estado}State";
+        $className = self::buildClassName('DotProject\\State\\Etapa', $estado);
         return self::createState($className, $estado);
     }
     
@@ -40,8 +40,44 @@ class StateFactory
      */
     public static function createProgramaState(string $estado): ProgramaStateInterface
     {
-        $className = "DotProject\\State\\Programa\\{$estado}State";
+        $className = self::buildClassName('DotProject\\State\\Programa', $estado);
         return self::createState($className, $estado);
+    }
+
+    /**
+     * Resolve fully-qualified state class name from raw state value.
+     */
+    private static function buildClassName(string $namespace, string $estado): string
+    {
+        $stateClass = self::normalizeStateClass($estado);
+        return "{$namespace}\\{$stateClass}State";
+    }
+
+    /**
+     * Normalize snake_case, kebab-case and spaced names to PascalCase.
+     */
+    private static function normalizeStateClass(string $estado): string
+    {
+        $estado = trim($estado);
+        if ($estado === '') {
+            return $estado;
+        }
+
+        if (preg_match('/^[A-Za-z][A-Za-z0-9]*$/', $estado) === 1) {
+            return $estado;
+        }
+
+        $parts = preg_split('/[^A-Za-z0-9]+/', $estado, -1, PREG_SPLIT_NO_EMPTY);
+        if ($parts === false || $parts === []) {
+            return $estado;
+        }
+
+        $parts = array_map(
+            static fn(string $part): string => ucfirst(strtolower($part)),
+            $parts
+        );
+
+        return implode('', $parts);
     }
     
     /**

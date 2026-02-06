@@ -49,13 +49,17 @@ class PermissionService
             return false;
         }
         
-        $role = $vinculoPrincipal['vinculo_role'];
-        $unidadeId = $vinculoPrincipal['vinculo_unidade_id'];
-        $nivelId = $vinculoPrincipal['unidade_nivel'];
-        
+        $role = (string) ($vinculoPrincipal['vinculo_role'] ?? self::ROLE_TECNICO);
+        $unidadeId = (int) ($vinculoPrincipal['vinculo_unidade_id'] ?? 0);
+        $nivelId = (int) ($vinculoPrincipal['unidade_nivel'] ?? 0);
+
         // Prefeito e Controlador podem tudo
         if (in_array($role, [self::ROLE_PREFEITO, self::ROLE_CONTROLADOR], true)) {
             return true;
+        }
+
+        if ($nivelId <= 0 || $unidadeId <= 0) {
+            return false;
         }
         
         // Busca permissões do nível
@@ -188,6 +192,26 @@ class PermissionService
         
         $ids = implode(',', $unidades);
         return "{$tabelaAlias}.unidade_id IN ({$ids})";
+    }
+
+    /**
+     * Retorna os IDs de unidades no escopo do usuário.
+     *
+     * @return int[]
+     */
+    public function getUserUnidadesIds(int $userId): array
+    {
+        $escopo = $this->getEscopoDados($userId);
+        if (!$escopo) {
+            return [];
+        }
+
+        $unidades = $escopo['unidades_escopo'] ?? [];
+        if (!is_array($unidades)) {
+            return [];
+        }
+
+        return array_values(array_unique(array_map('intval', $unidades)));
     }
     
     /**
