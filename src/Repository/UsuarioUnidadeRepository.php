@@ -19,6 +19,7 @@ class UsuarioUnidadeRepository
     private ?string $vinculoStatusColumn = null;
     private ?string $unidadeStatusColumn = null;
     private ?string $unidadeNivelColumn = null;
+    private ?string $userStatusColumn = null;
 
     public function __construct()
     {
@@ -170,14 +171,25 @@ class UsuarioUnidadeRepository
      */
     public function atualizarVinculo(int $vinculoId, array $dados): void
     {
-        $camposPermitidos = ['vinculo_role', 'vinculo_cargo', 'vinculo_nivel_acesso', 
-                            'vinculo_is_principal', 'vinculo_data_fim', 'vinculo_ativo'];
+        $vinculoStatusColumn = $this->resolveVinculoStatusColumn();
+        $camposPermitidos = [
+            'vinculo_role',
+            'vinculo_cargo',
+            'vinculo_nivel_acesso',
+            'vinculo_is_principal',
+            'vinculo_data_fim',
+            $vinculoStatusColumn,
+        ];
 
         $sets = [];
         $values = [];
 
         foreach ($dados as $campo => $valor) {
-            $dbCampo = 'vinculo_' . $campo;
+            $dbCampo = str_starts_with($campo, 'vinculo_') ? $campo : 'vinculo_' . $campo;
+            if ($campo === 'status' || $campo === 'ativo') {
+                $dbCampo = $vinculoStatusColumn;
+                $valor = $this->normalizeVinculoStatusValue($valor, $vinculoStatusColumn);
+            }
             if (in_array($dbCampo, $camposPermitidos, true)) {
                 $sets[] = "$dbCampo = ?";
                 $values[] = $valor;
@@ -296,14 +308,21 @@ class UsuarioUnidadeRepository
     {
         $vinculoStatusColumn = $this->resolveVinculoStatusColumn();
         $vinculoStatusValue = $this->vinculoStatusValueForSql(true, $vinculoStatusColumn);
-        $sql = "SELECT u.user_id, u.user_first_name, u.user_last_name, u.user_email
+        $userStatusFilter = $this->getUserStatusFilterSql('u');
+        $sql = "SELECT
+                    u.user_id,
+                    u.user_username,
+                    COALESCE(c.contact_first_name, '') AS user_first_name,
+                    COALESCE(c.contact_last_name, '') AS user_last_name,
+                    c.contact_email AS user_email
                 FROM dotp_users u
+                LEFT JOIN dotp_contacts c ON c.contact_id = u.user_contact
                 WHERE NOT EXISTS (
                     SELECT 1 FROM {$this->table} v 
                     WHERE v.vinculo_user_id = u.user_id AND v.{$vinculoStatusColumn} = ?
                 )
-                AND u.user_active = 1
-                ORDER BY u.user_first_name, u.user_last_name";
+                {$userStatusFilter}
+                ORDER BY COALESCE(c.contact_first_name, u.user_username), COALESCE(c.contact_last_name, ''), u.user_username";
 
         return $this->db->fetchAllParams($sql, [$vinculoStatusValue]);
     }
@@ -388,5 +407,66 @@ class UsuarioUnidadeRepository
         );
         $this->unidadeNivelColumn = $exists > 0 ? 'unidade_nivel_id' : 'unidade_nivel';
         return $this->unidadeNivelColumn;
+    }
+
+    private function resolveUserStatusColumn(): string
+    {
+        if ($this->userStatusColumn !== null) {
+            return $this->userStatusColumn;
+        }
+
+        $hasUserStatus = (int) $this->db->fetchValue(
+            "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?",
+            ['dotp_users', 'user_status']
+        );
+        if ($hasUserStatus > 0) {
+            $this->userStatusColumn = 'user_status';
+            return $this->userStatusColumn;
+        }
+
+        $hasUserActive = (int) $this->db->fetchValue(
+            "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?",
+            ['dotp_users', 'user_active']
+        );
+        $this->userStatusColumn = $hasUserActive > 0 ? 'user_active' : '';
+        return $this->userStatusColumn;
+    }
+
+    private function getUserStatusFilterSql(string $alias): string
+    {
+        $column = $this->resolveUserStatusColumn();
+        if ($column === 'user_status') {
+            return "AND {$alias}.user_status = 0";
+        }
+        if ($column === 'user_active') {
+            return "AND {$alias}.user_active = 1";
+        }
+        return '';
+    }
+
+    private function normalizeVinculoStatusValue(mixed $value, string $column): int|string
+    {
+        if ($column !== 'vinculo_status') {
+            return filter_var($value, FILTER_VALIDATE_BOOL) ? 1 : 0;
+        }
+
+        if (is_string($value)) {
+            $normalized = strtolower(trim($value));
+            if (in_array($normalized, ['ativo', 'afastado', 'substituto', 'inativo'], true)) {
+                return $normalized;
+            }
+            if (in_array($normalized, ['1', 'true', 'sim', 'yes'], true)) {
+                return 'ativo';
+            }
+            if (in_array($normalized, ['0', 'false', 'nao', 'no'], true)) {
+                return 'inativo';
+            }
+        }
+
+        if (is_int($value) || is_bool($value)) {
+            return ((int) $value) === 1 ? 'ativo' : 'inativo';
+        }
+
+        return 'inativo';
     }
 }
