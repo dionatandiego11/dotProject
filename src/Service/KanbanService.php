@@ -600,6 +600,12 @@ class KanbanService
         $globalCache = new Cache();
         $globalCache->invalidate('*DashboardController*dashboard*');
         $globalCache->invalidate('dashboard:*');
+
+        // Analytics endpoints use dedicated prefix and need explicit invalidation.
+        $analyticsCache = new Cache(prefix: 'analytics:');
+        $analyticsCache->invalidate('dashboard:*');
+        $analyticsCache->invalidate('productivity:*');
+        $analyticsCache->invalidate('completion-trend:*');
     }
 
     private function isOverdue(?string $endDate, int $percentComplete): bool

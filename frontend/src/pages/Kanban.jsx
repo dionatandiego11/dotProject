@@ -319,6 +319,27 @@ function Kanban() {
 
     const statusByColumnId = useMemo(() => buildStatusMaps(columns).statusByColumn, [columns])
 
+    const normalizeProgressForStatus = (status, currentPercent) => {
+        const numericStatus = Number(status)
+        const rawPercent = Number(currentPercent)
+        const percent = Number.isFinite(rawPercent) ? rawPercent : 0
+
+        if (numericStatus === 0) {
+            return 0
+        }
+        if (numericStatus === 3) {
+            return 100
+        }
+        if (numericStatus === 1) {
+            return (percent < 0 || percent > 99) ? 0 : percent
+        }
+        if (numericStatus === 2) {
+            return (percent <= 0 || percent >= 100) ? 50 : percent
+        }
+
+        return Math.max(0, Math.min(100, percent))
+    }
+
     const filteredColumns = useMemo(() => {
         const text = filterText.trim().toLowerCase()
         const ownerId = filterOwner !== 'all' ? parseInt(filterOwner, 10) : null
@@ -392,7 +413,7 @@ function Kanban() {
         return fullIndex === -1 ? (fullColumn.tasks?.length || 0) : fullIndex
     }
 
-    const moveTaskLocally = (list, task, sourceColumnId, targetColumnId, targetOrder) => {
+    const moveTaskLocally = (list, task, sourceColumnId, targetColumnId, targetOrder, taskPatch = null) => {
         const next = list.map((col) => ({
             ...col,
             tasks: [...(col.tasks || [])],
@@ -413,7 +434,10 @@ function Kanban() {
         if (!targetColumn) return list
 
         const insertAt = Math.max(0, Math.min(targetOrder, targetColumn.tasks.length))
-        targetColumn.tasks.splice(insertAt, 0, { ...movedTask, column_id: targetColumnId })
+        const patchedTask = taskPatch
+            ? { ...movedTask, task: { ...(movedTask.task || {}), ...taskPatch } }
+            : movedTask
+        targetColumn.tasks.splice(insertAt, 0, { ...patchedTask, column_id: targetColumnId })
 
         ;[sourceColumn, targetColumn].forEach((col) => {
             if (!col) return
@@ -442,6 +466,10 @@ function Kanban() {
 
         const normalizedTargetColumnId = Number(targetColumnId)
         const { task, sourceColumnId } = draggingTask
+        const mappedStatus = statusByColumnId.get(normalizedTargetColumnId)
+        const mappedPercent = mappedStatus !== undefined
+            ? normalizeProgressForStatus(mappedStatus, task?.task?.percent_complete)
+            : Number(task?.task?.percent_complete || 0)
         const resolvedOrder = resolveTargetOrder(normalizedTargetColumnId, targetOrder)
         const currentIndex = (columns.find((col) => col.id === sourceColumnId)?.tasks || [])
             .findIndex((t) => t.id === task.id)
@@ -456,7 +484,14 @@ function Kanban() {
             return
         }
 
-        setColumns(moveTaskLocally(columns, task, sourceColumnId, normalizedTargetColumnId, adjustedOrder))
+        setColumns(moveTaskLocally(
+            columns,
+            task,
+            sourceColumnId,
+            normalizedTargetColumnId,
+            adjustedOrder,
+            { percent_complete: mappedPercent }
+        ))
         handleDragEnd()
 
         try {
@@ -465,9 +500,11 @@ function Kanban() {
                 throw new Error(result?.message || 'Falha ao mover tarefa')
             }
 
-            const mappedStatus = statusByColumnId.get(normalizedTargetColumnId)
             if (mappedStatus !== undefined && task?.task_id) {
-                updateTask(task.task_id, { status: mappedStatus }).catch(() => {})
+                await updateTask(task.task_id, {
+                    status: mappedStatus,
+                    percent_complete: mappedPercent,
+                })
             }
 
             toast.success('Tarefa movida!')
