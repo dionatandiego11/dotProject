@@ -26,6 +26,11 @@ Consolidar o que foi estabilizado no sistema e definir o proximo plano de execuc
 - Cobertura de integracao ampliada com testes de stale cache para notificacoes e atualizacao de percentual de projeto.
 - Contrato de cache documentado em `docs/api/repository_cache_contract.md`.
 
+### Checkpoint 2026-02-09 (migracao incremental de legado)
+- Nova migracao `db/migrations/20260209_harden_notifications_integrity.sql` para normalizar nulls legados em notificacoes e endurecer colunas criticas (`notification_is_read`, `notification_is_sent`, `notification_channel`, `notification_created_at`).
+- Novos indices compostos aplicados para padroes de consulta reais do repositório (`countUnread`, `findPending`, `getStats`).
+- Script de verificacao `db/migrations/20260209_verify_notifications_integrity.sql` adicionado e validado com resultado esperado (todos checks `0/1` corretos).
+
 ### Entregas recentes (mais relevantes)
 - `530c9756` sincronizacao de `companies` com `unidades` + script de verificacao.
 - `802120d3` backfill de `dotp_users.user_company` e normalizacao de `board_company`.
