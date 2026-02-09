@@ -17,16 +17,24 @@ class TaskRepository extends BaseRepository
 {
     protected string $table = 'dotp_tasks';
     protected string $primaryKey = 'task_id';
+    private ?bool $hasTaskAssignedTo = null;
 
     protected function hydrate(array $data): TaskEntity
     {
+        $assignedTo = null;
+        if (array_key_exists('task_assigned_to', $data) && !empty($data['task_assigned_to'])) {
+            $assignedTo = (int) $data['task_assigned_to'];
+        } elseif (!empty($data['task_owner'])) {
+            $assignedTo = (int) $data['task_owner'];
+        }
+
         $entity = new TaskEntity();
         $entity->setId((int) $data['task_id']);
         $entity->setName($data['task_name']);
         $entity->setDescription($data['task_description'] ?? null);
         $entity->setProjectId((int) $data['task_project']);
         $entity->setParentTaskId($data['task_parent'] ? (int) $data['task_parent'] : null);
-        $entity->setAssignedTo(!empty($data['task_assigned_to']) ? (int) $data['task_assigned_to'] : null);
+        $entity->setAssignedTo($assignedTo);
         $entity->setOwnerId((int) ($data['task_owner'] ?? 0));
         $entity->setStatus((int) ($data['task_status'] ?? 0));
         $entity->setPriority((int) ($data['task_priority'] ?? 3));
@@ -59,13 +67,12 @@ class TaskRepository extends BaseRepository
             throw new \InvalidArgumentException('Entity must be TaskEntity');
         }
 
-        return [
+        $data = [
             'task_id' => $entity->getId(),
             'task_name' => $entity->getName(),
             'task_description' => $entity->getDescription(),
             'task_project' => $entity->getProjectId(),
             'task_parent' => $entity->getParentTaskId(),
-            'task_assigned_to' => $entity->getAssignedTo(),
             'task_owner' => $entity->getOwnerId(),
             'task_status' => $entity->getStatus(),
             'task_priority' => $entity->getPriority(),
@@ -76,6 +83,12 @@ class TaskRepository extends BaseRepository
             'task_end_date' => $entity->getEndDate()?->format('Y-m-d'),
             'task_actual_end_date' => $entity->getActualEndDate()?->format('Y-m-d'),
         ];
+
+        if ($this->supportsTaskAssignedTo()) {
+            $data['task_assigned_to'] = $entity->getAssignedTo();
+        }
+
+        return $data;
     }
 
     public function save(object $entity): int
@@ -129,7 +142,8 @@ class TaskRepository extends BaseRepository
      */
     public function findByAssignee(int $userId): array
     {
-        return $this->findBy(['task_assigned_to' => $userId, 'task_status' => 0], ['task_end_date' => 'ASC']);
+        $assigneeField = $this->supportsTaskAssignedTo() ? 'task_assigned_to' : 'task_owner';
+        return $this->findBy([$assigneeField => $userId, 'task_status' => 0], ['task_end_date' => 'ASC']);
     }
 
     /**
@@ -173,5 +187,29 @@ class TaskRepository extends BaseRepository
                 FROM {$this->table} 
                 WHERE task_project = ?";
         return $this->db->fetchOne($sql, [$projectId]) ?: ['pending' => 0, 'completed' => 0, 'overdue' => 0, 'total' => 0];
+    }
+
+    private function supportsTaskAssignedTo(): bool
+    {
+        if ($this->hasTaskAssignedTo !== null) {
+            return $this->hasTaskAssignedTo;
+        }
+
+        try {
+            $table = trim((string) $this->table, '`');
+            $count = (int) ($this->db->fetchValue(
+                "SELECT COUNT(*)
+                 FROM information_schema.columns
+                 WHERE table_schema = DATABASE()
+                   AND table_name = ?
+                   AND column_name = 'task_assigned_to'",
+                [$table]
+            ) ?? 0);
+            $this->hasTaskAssignedTo = $count > 0;
+        } catch (\Throwable $e) {
+            $this->hasTaskAssignedTo = false;
+        }
+
+        return $this->hasTaskAssignedTo;
     }
 }

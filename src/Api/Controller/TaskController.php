@@ -23,6 +23,8 @@ use DotProject\Service\PermissionService;
  */
 class TaskController extends BaseController
 {
+    private ?bool $hasTaskAssignedTo = null;
+
     /**
      * GET /v1/tasks
      * 
@@ -231,13 +233,20 @@ class TaskController extends BaseController
             (int) $body['project_id']
         )) ?? 0;
 
-        $task = new Task();
-        $task->fill([
+        $ownerId = isset($body['owner_id']) ? (int) $body['owner_id'] : (int) ($this->getUserId() ?? 0);
+        if ($ownerId <= 0) {
+            $ownerId = (int) ($this->getUserId() ?? 0);
+        }
+
+        $assigneeRaw = $body['assigned_to'] ?? $body['assigned_to_id'] ?? $body['owner_id'] ?? null;
+        $assigneeId = ($assigneeRaw !== null && (int) $assigneeRaw > 0) ? (int) $assigneeRaw : null;
+
+        $taskPayload = [
             'task_name' => $body['name'],
             'task_project' => (int) $body['project_id'],
             'task_parent' => $body['parent_id'] ?? 0,
             'task_milestone' => $body['milestone'] ?? 0,
-            'task_owner' => $body['owner_id'] ?? $this->getUserId(),
+            'task_owner' => $ownerId,
             'task_creator' => $this->getUserId(),
             'task_start_date' => $body['start_date'] ?? date('Y-m-d'),
             'task_end_date' => $body['end_date'] ?? null,
@@ -251,7 +260,14 @@ class TaskController extends BaseController
             'task_order' => $maxOrder + 1,
             'task_access' => $body['access'] ?? 0,
             'task_type' => $body['type'] ?? 0,
-        ]);
+        ];
+
+        if ($this->supportsTaskAssignedToColumn()) {
+            $taskPayload['task_assigned_to'] = $assigneeId;
+        }
+
+        $task = new Task();
+        $task->fill($taskPayload);
 
         if (!$task->save()) {
             return $this->error('Failed to create task');
@@ -345,6 +361,16 @@ class TaskController extends BaseController
             }
         }
 
+        if ($this->supportsTaskAssignedToColumn()) {
+            if (array_key_exists('assigned_to', $body) || array_key_exists('assigned_to_id', $body)) {
+                $assigneeRaw = $body['assigned_to'] ?? $body['assigned_to_id'];
+                $task->setAttribute('task_assigned_to', ($assigneeRaw !== null && (int) $assigneeRaw > 0) ? (int) $assigneeRaw : null);
+            } elseif (array_key_exists('owner_id', $body)) {
+                $ownerId = (int) ($body['owner_id'] ?? 0);
+                $task->setAttribute('task_assigned_to', $ownerId > 0 ? $ownerId : null);
+            }
+        }
+
         if (!$task->save()) {
             return $this->error('Failed to update task');
         }
@@ -400,6 +426,14 @@ class TaskController extends BaseController
      */
     private function formatTask(array $row, bool $detailed = false): array
     {
+        $ownerId = !empty($row['task_owner']) ? (int) $row['task_owner'] : null;
+        $assigneeId = null;
+        if (array_key_exists('task_assigned_to', $row) && !empty($row['task_assigned_to'])) {
+            $assigneeId = (int) $row['task_assigned_to'];
+        } else {
+            $assigneeId = $ownerId;
+        }
+
         $data = [
             'id' => (int) $row['task_id'],
             'name' => $row['task_name'],
@@ -413,7 +447,8 @@ class TaskController extends BaseController
             'start_date' => $row['task_start_date'] ?? null,
             'end_date' => $row['task_end_date'] ?? null,
             'duration' => (int) ($row['task_duration'] ?? 0),
-            'owner_id' => $row['task_owner'] ? (int) $row['task_owner'] : null,
+            'owner_id' => $ownerId,
+            'assigned_to' => $assigneeId,
             'milestone' => (bool) ($row['task_milestone'] ?? false),
         ];
 
@@ -430,6 +465,30 @@ class TaskController extends BaseController
         }
 
         return $data;
+    }
+
+    private function supportsTaskAssignedToColumn(): bool
+    {
+        if ($this->hasTaskAssignedTo !== null) {
+            return $this->hasTaskAssignedTo;
+        }
+
+        try {
+            $tasksTable = $this->db->table('tasks');
+            $count = (int) ($this->db->fetchValue(
+                "SELECT COUNT(*)
+                 FROM information_schema.columns
+                 WHERE table_schema = DATABASE()
+                   AND table_name = ?
+                   AND column_name = 'task_assigned_to'",
+                [$tasksTable]
+            ) ?? 0);
+            $this->hasTaskAssignedTo = $count > 0;
+        } catch (\Throwable $e) {
+            $this->hasTaskAssignedTo = false;
+        }
+
+        return $this->hasTaskAssignedTo;
     }
 
     /**

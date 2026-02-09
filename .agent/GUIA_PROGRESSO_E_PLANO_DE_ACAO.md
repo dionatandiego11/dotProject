@@ -11,7 +11,7 @@ Consolidar o que foi estabilizado no sistema e definir o proximo plano de execuc
 ### Estado atual validado
 - API, regras de unidade e fluxo de kanban estabilizados em ambiente WSL + Docker.
 - Suite de testes passando no container `phpfpm`.
-- Resultado da ultima execucao: `OK (263 tests, 500 assertions)`.
+- Resultado da ultima execucao: `OK (264 tests, 505 assertions)`.
 
 ### Checkpoint 2026-02-09
 - Kanban padronizado para contrato canonico: `unidade_id` como campo oficial e `company_id` como compatibilidade.
@@ -38,10 +38,17 @@ Consolidar o que foi estabilizado no sistema e definir o proximo plano de execuc
 - Frontend (`frontend/src/pages/Kanban.jsx`) passou a enviar `unidade_id` do projeto ao criar board.
 - Cobertura de integracao ampliada para garantir que board de projeto retorna tarefas no schema legado.
 
+### Checkpoint 2026-02-09 (modernizacao de atribuicao de tarefas)
+- Nova migracao `db/migrations/20260209_add_task_assigned_to.sql` para alinhar schema legado de tarefas com servicos/repositorios modernos.
+- Script de verificacao `db/migrations/20260209_verify_task_assigned_to.sql` adicionado e validado com resultado esperado.
+- `TaskController` atualizado para aceitar `assigned_to/assigned_to_id`, manter fallback para `owner_id` e operar com compatibilidade quando a coluna ainda nao existe.
+- `TaskRepository` endurecido para fallback automatico de assignee em bases nao migradas (`task_owner`) e uso canônico de `task_assigned_to` quando disponivel.
+- Cobertura de integracao ampliada para validar retorno de `assigned_to` com fallback para `owner`.
+
 ### Status de iteracoes (2026-02-09)
 - Iteracao 1 (`unidade` x `company`): concluida no escopo P0 critico.
 - Iteracao 2 (cache/invalidação): concluida no escopo P0 critico.
-- Iteracao 3 (migracoes pequenas): em andamento, com pacote de `notifications` entregue e validado.
+- Iteracao 3 (migracoes pequenas): em andamento, com pacotes de `notifications` e `task_assigned_to` entregues e validados.
 
 ### Entregas recentes (mais relevantes)
 - `6f142d02` restauracao do kanban por projeto em schema legado + alinhamento de unidade no board.

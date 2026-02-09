@@ -7,6 +7,7 @@ namespace DotProject\Tests\Integration;
 use DotProject\Api\Controller\AdminController;
 use DotProject\Api\Controller\KanbanController;
 use DotProject\Api\Controller\ProjectController;
+use DotProject\Api\Controller\TaskController;
 use DotProject\Api\Request;
 use DotProject\Api\Response;
 use DotProject\Core\Cache;
@@ -21,6 +22,14 @@ use PHPUnit\Framework\TestCase;
  * Controller-only wrapper to avoid legacy permission coupling in tests.
  */
 class IntegrationProjectController extends ProjectController
+{
+    protected function checkPermission(string $module, string $action): bool
+    {
+        return true;
+    }
+}
+
+class IntegrationTaskController extends TaskController
 {
     protected function checkPermission(string $module, string $action): bool
     {
@@ -385,6 +394,42 @@ class CriticalFlowsIntegrationTest extends TestCase
         $after = $repo->findBy(['project_id' => $projectId], null, 1);
         $this->assertNotEmpty($after);
         $this->assertSame(67, $after[0]->getPercentComplete());
+    }
+
+    public function testTaskShowReturnsAssignedToWithOwnerFallback(): void
+    {
+        $unidade = $this->pickAnyUnidade();
+        if ($unidade === null) {
+            $this->markTestSkipped('Base sem unidade para teste de assignee em tarefa.');
+        }
+
+        $unidadeId = (int) $unidade['id'];
+        $this->ensureCompanyExistsForUnidade($unidadeId, (string) $unidade['nome']);
+
+        $projectId = $this->insertProject($unidadeId, 'it_task_assignee_' . bin2hex(random_bytes(4)));
+        $this->projectIds[] = $projectId;
+
+        $taskId = $this->insertTask($projectId, 'IT Assignee Task ' . bin2hex(random_bytes(3)));
+        $this->taskIds[] = $taskId;
+
+        $request = $this->createMock(Request::class);
+        $request->method('getParam')
+            ->willReturnCallback(function (string $key, mixed $default = null) use ($taskId) {
+                return match ($key) {
+                    'id' => $taskId,
+                    '_user_id' => 1,
+                    default => $default,
+                };
+            });
+
+        $response = new Response();
+        $controller = new IntegrationTaskController($request, $response);
+        $result = $controller->show();
+        $body = $this->responseBody($result);
+
+        $this->assertSame($taskId, (int) ($body['id'] ?? 0));
+        $this->assertSame(1, (int) ($body['owner_id'] ?? 0));
+        $this->assertSame(1, (int) ($body['assigned_to'] ?? 0));
     }
 
     public function testKanbanBoardReturnsProjectTasksWithLegacyTaskSchema(): void

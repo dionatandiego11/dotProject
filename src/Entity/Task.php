@@ -20,6 +20,7 @@ namespace DotProject\Entity;
  * @property int|null $task_milestone
  * @property int $task_project
  * @property int $task_owner
+ * @property int|null $task_assigned_to
  * @property string|null $task_start_date
  * @property float|null $task_duration
  * @property int|null $task_duration_type
@@ -62,6 +63,7 @@ class Task extends BaseEntity
             'task_milestone',
             'task_project',
             'task_owner',
+            'task_assigned_to',
             'task_start_date',
             'task_duration',
             'task_duration_type',
