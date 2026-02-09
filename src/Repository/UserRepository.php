@@ -199,7 +199,7 @@ class UserRepository extends BaseRepository
         );
         
         if ($result) {
-            $this->cache->delete($this->cacheKey("find:{$userId}"));
+            $this->clearCache();
         }
         
         return $result;

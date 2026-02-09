@@ -60,7 +60,8 @@ abstract class BaseRepository implements RepositoryInterface
      */
     protected function cacheKey(string $suffix): string
     {
-        return sprintf('%s:%s:%s', static::class, $this->table, $suffix);
+        $repositoryNamespace = str_replace('\\', '.', static::class);
+        return sprintf('%s:%s:%s', $repositoryNamespace, $this->table, $suffix);
     }
 
     /**

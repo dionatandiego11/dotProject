@@ -88,6 +88,7 @@ class KanbanTaskRepository extends BaseRepository
         }
         
         if ($result) {
+            $this->clearCache();
             $this->cache->invalidate("kanban:column:*");
         }
         
@@ -226,6 +227,7 @@ class KanbanTaskRepository extends BaseRepository
         );
         
         if ($result) {
+            $this->clearCache();
             $this->cache->invalidate("kanban:column:*");
         }
         
@@ -250,7 +252,8 @@ class KanbanTaskRepository extends BaseRepository
                     "{$this->primaryKey} = " . (int) $kanbanTaskId
                 );
             }
-            $this->cache->invalidate("kanban:column:{$columnId}");
+            $this->clearCache();
+            $this->cache->invalidate("kanban:column:*");
             return true;
         } catch (\Exception $e) {
             return false;

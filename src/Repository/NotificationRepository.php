@@ -113,7 +113,7 @@ class NotificationRepository extends BaseRepository
         }
         
         if ($result) {
-            $this->cache->invalidate("notifications:*");
+            $this->clearCache();
         }
         
         return $result ? (int) $entity->getId() : 0;
@@ -144,7 +144,7 @@ class NotificationRepository extends BaseRepository
      */
     public function countUnread(int $userId): int
     {
-        $cacheKey = "notifications:unread:{$userId}";
+        $cacheKey = $this->cacheKey("countUnread:{$userId}");
         $cached = $this->cache->get($cacheKey);
         
         if ($cached !== null) {
@@ -176,7 +176,7 @@ class NotificationRepository extends BaseRepository
         );
         
         if ($result) {
-            $this->cache->invalidate("notifications:*");
+            $this->clearCache();
         }
         
         return $result;
@@ -203,7 +203,7 @@ class NotificationRepository extends BaseRepository
         );
         
         if ($result) {
-            $this->cache->invalidate("notifications:*");
+            $this->clearCache();
         }
         
         return $result;
@@ -240,7 +240,7 @@ class NotificationRepository extends BaseRepository
         $result = $this->db->query($sql);
         
         if ($result) {
-            $this->cache->invalidate("notifications:*");
+            $this->clearCache();
         }
         
         return $result ? $this->db->affectedRows() : 0;

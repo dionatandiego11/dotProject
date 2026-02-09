@@ -109,8 +109,7 @@ class TaskRepository extends BaseRepository
     {
         $result = $this->db->delete($this->table, "task_id = {$id}");
         if ($result) {
-            $this->cache->delete($this->cacheKey("find:{$id}"));
-            $this->cache->invalidate($this->cacheKey('*'));
+            $this->clearCache();
         }
         return $result;
     }

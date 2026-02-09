@@ -11,6 +11,9 @@ use DotProject\Api\Request;
 use DotProject\Api\Response;
 use DotProject\Core\Cache;
 use DotProject\Core\Database;
+use DotProject\Entity\Notification;
+use DotProject\Repository\NotificationRepository;
+use DotProject\Repository\ProjectRepository;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -32,6 +35,8 @@ class CriticalFlowsIntegrationTest extends TestCase
     /** @var int[] */
     private array $boardIds = [];
     /** @var int[] */
+    private array $notificationIds = [];
+    /** @var int[] */
     private array $createdCompanyIds = [];
 
     protected function setUp(): void
@@ -44,6 +49,7 @@ class CriticalFlowsIntegrationTest extends TestCase
     {
         $this->cleanupBoards();
         $this->cleanupProjects();
+        $this->cleanupNotifications();
         $this->cleanupCompanies();
         (new Cache())->clear();
     }
@@ -313,6 +319,70 @@ class CriticalFlowsIntegrationTest extends TestCase
         $this->assertSame($unidadeId, (int) ($boardData['company']['id'] ?? 0));
     }
 
+    public function testNotificationCountUnreadUsesFreshValueAfterSaveMutations(): void
+    {
+        $userId = (int) ($this->db->fetchValue(
+            sprintf('SELECT user_id FROM `%s` ORDER BY user_id LIMIT 1', $this->db->table('users'))
+        ) ?? 0);
+
+        if ($userId <= 0) {
+            $this->markTestSkipped('Base sem usuarios para teste de cache de notificacoes.');
+        }
+
+        $repo = new NotificationRepository($this->db, new Cache());
+        $baselineUnread = $repo->countUnread($userId);
+
+        $notification = (new Notification())
+            ->setUserId($userId)
+            ->setType(Notification::TYPE_SYSTEM)
+            ->setTitle('IT notif ' . bin2hex(random_bytes(4)))
+            ->setMessage('cache invalidation integration test')
+            ->setChannel(Notification::CHANNEL_IN_APP)
+            ->setIsRead(false)
+            ->setIsSent(false);
+
+        $notificationId = $repo->save($notification);
+        $this->assertGreaterThan(0, $notificationId);
+        $this->notificationIds[] = $notificationId;
+
+        $unreadAfterCreate = $repo->countUnread($userId);
+        $this->assertSame($baselineUnread + 1, $unreadAfterCreate);
+
+        $notification->setIsRead(true);
+        $notification->setReadAt(new \DateTime());
+        $updatedId = $repo->save($notification);
+        $this->assertSame($notificationId, $updatedId);
+
+        $unreadAfterRead = $repo->countUnread($userId);
+        $this->assertSame($baselineUnread, $unreadAfterRead);
+    }
+
+    public function testProjectUpdatePercentCompleteInvalidatesFindByCache(): void
+    {
+        $unidade = $this->pickAnyUnidade();
+        if ($unidade === null) {
+            $this->markTestSkipped('Base sem unidade para teste de cache em projetos.');
+        }
+
+        $unidadeId = (int) $unidade['id'];
+        $this->ensureCompanyExistsForUnidade($unidadeId, (string) $unidade['nome']);
+
+        $projectId = $this->insertProject($unidadeId, 'it_project_cache_' . bin2hex(random_bytes(4)));
+        $this->projectIds[] = $projectId;
+
+        $repo = new ProjectRepository($this->db, new Cache());
+        $before = $repo->findBy(['project_id' => $projectId], null, 1);
+        $this->assertNotEmpty($before);
+        $this->assertSame(0, $before[0]->getPercentComplete());
+
+        $updated = $repo->updatePercentComplete($projectId, 67);
+        $this->assertTrue($updated);
+
+        $after = $repo->findBy(['project_id' => $projectId], null, 1);
+        $this->assertNotEmpty($after);
+        $this->assertSame(67, $after[0]->getPercentComplete());
+    }
+
     public function testAdminGetArvoreReturnsNodeWhenRaizIdIsNotGlobalRoot(): void
     {
         $target = $this->db->fetchOne(
@@ -469,6 +539,15 @@ class CriticalFlowsIntegrationTest extends TestCase
         }
 
         $this->boardIds = [];
+    }
+
+    private function cleanupNotifications(): void
+    {
+        foreach ($this->notificationIds as $notificationId) {
+            $this->db->delete('notifications', sprintf('notification_id = %d', (int) $notificationId));
+        }
+
+        $this->notificationIds = [];
     }
 
     private function cleanupCompanies(): void

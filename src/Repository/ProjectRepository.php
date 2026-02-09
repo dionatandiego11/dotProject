@@ -138,8 +138,7 @@ class ProjectRepository extends BaseRepository
         );
 
         if ($result) {
-            $this->cache->delete($this->cacheKey("find:{$id}"));
-            $this->cache->invalidate($this->cacheKey('findAll'));
+            $this->clearCache();
         }
 
         return $result;
@@ -214,7 +213,7 @@ class ProjectRepository extends BaseRepository
         );
 
         if ($result) {
-            $this->cache->delete($this->cacheKey("find:{$projectId}"));
+            $this->clearCache();
         }
 
         return $result;
