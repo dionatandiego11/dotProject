@@ -702,6 +702,9 @@ class AdminController extends BaseController
         if (empty($data['user_username'])) {
             return $this->validationError(['user_username' => 'Username e obrigatorio']);
         }
+        if (!array_key_exists('user_password', $data) || trim((string) $data['user_password']) === '') {
+            return $this->validationError(['user_password' => 'Senha e obrigatoria']);
+        }
 
         $currentUserId = $this->getUserId() ?? 0;
 

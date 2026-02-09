@@ -6,6 +6,19 @@ import Input from '../../components/ui/Input'
 import { useToast } from '../../contexts/ToastContext'
 import { useValidation } from '../../hooks/useValidation'
 
+const ALLOWED_VINCULO_ROLES = ['coordenador', 'gestor', 'analista', 'tecnico']
+
+function normalizeVinculoRole(role) {
+    const value = String(role || '').trim().toLowerCase()
+    return ALLOWED_VINCULO_ROLES.includes(value) ? value : ''
+}
+
+function isPrincipalVinculo(vinculo) {
+    return vinculo?.vinculo_is_principal === true
+        || vinculo?.vinculo_is_principal === 1
+        || vinculo?.vinculo_is_principal === '1'
+}
+
 function UsuariosAdmin() {
     const toast = useToast()
     const validation = useValidation()
@@ -30,7 +43,7 @@ function UsuariosAdmin() {
         contact_phone: '',
         user_status: '0',
         unidade_id: '',
-        vinculo_role: 'analista'
+        vinculo_role: ''
     })
 
     useEffect(() => {
@@ -60,17 +73,17 @@ function UsuariosAdmin() {
             const data = await getVinculos({ user_id: userId })
             const vinculos = data.data || []
             if (vinculos.length > 0) {
-                const principal = vinculos.find(v => v.vinculo_is_principal) || vinculos[0]
+                const principal = vinculos.find(isPrincipalVinculo) || vinculos[0]
                 setFormData(prev => ({
                     ...prev,
                     unidade_id: principal.vinculo_unidade_id ? String(principal.vinculo_unidade_id) : '',
-                    vinculo_role: principal.vinculo_role || 'analista'
+                    vinculo_role: normalizeVinculoRole(principal.vinculo_role)
                 }))
             } else {
                 setFormData(prev => ({
                     ...prev,
                     unidade_id: '',
-                    vinculo_role: 'analista'
+                    vinculo_role: ''
                 }))
             }
         } catch (err) {
@@ -112,7 +125,7 @@ function UsuariosAdmin() {
             contact_phone: '',
             user_status: '0',
             unidade_id: '',
-            vinculo_role: 'analista'
+            vinculo_role: ''
         })
         validation.clearErrors()
         setIsModalOpen(true)
@@ -129,7 +142,7 @@ function UsuariosAdmin() {
             contact_phone: user.phone || '',
             user_status: user.status != null ? String(user.status) : '0',
             unidade_id: '',
-            vinculo_role: 'analista'
+            vinculo_role: ''
         })
         validation.clearErrors()
         setIsEditModalOpen(true)
@@ -139,11 +152,21 @@ function UsuariosAdmin() {
     async function handleCreate(e) {
         e.preventDefault()
         validation.clearErrors()
+        const normalizedRole = normalizeVinculoRole(formData.vinculo_role)
+        const hasSelectedUnidade = !!formData.unidade_id
+        const hasRoleWithoutUnit = !!normalizedRole && !hasSelectedUnidade
+        const hasUnitWithoutRole = hasSelectedUnidade && !normalizedRole
 
         const isValid = validation.validateFields({
             user_username: () => validation.validateRequired(formData.user_username, 'Login'),
             user_password: () => validation.validateRequired(formData.user_password, 'Senha'),
-            contact_email: () => validation.validateEmail(formData.contact_email, 'Email')
+            contact_email: () => validation.validateEmail(formData.contact_email, 'Email'),
+            unidade_id: () => hasRoleWithoutUnit
+                ? 'Selecione a unidade para definir papel'
+                : null,
+            vinculo_role: () => hasUnitWithoutRole
+                ? 'Papel na unidade e obrigatorio'
+                : null
         })
 
         if (!isValid) return
@@ -160,11 +183,11 @@ function UsuariosAdmin() {
                 user_status: parseInt(formData.user_status, 10)
             })
             const createdUserId = created?.data?.id
-            if (createdUserId && formData.unidade_id) {
+            if (createdUserId && hasSelectedUnidade && normalizedRole) {
                 await createVinculo({
                     user_id: createdUserId,
                     unidade_id: parseInt(formData.unidade_id, 10),
-                    role: formData.vinculo_role || 'analista',
+                    role: normalizedRole,
                     is_principal: 1
                 })
             }
@@ -182,10 +205,20 @@ function UsuariosAdmin() {
         e.preventDefault()
         if (!editingUser) return
         validation.clearErrors()
+        const normalizedRole = normalizeVinculoRole(formData.vinculo_role)
+        const hasSelectedUnidade = !!formData.unidade_id
+        const hasRoleWithoutUnit = !!normalizedRole && !hasSelectedUnidade
+        const hasUnitWithoutRole = hasSelectedUnidade && !normalizedRole
 
         const isValid = validation.validateFields({
             user_username: () => validation.validateRequired(formData.user_username, 'Login'),
-            contact_email: () => validation.validateEmail(formData.contact_email, 'Email')
+            contact_email: () => validation.validateEmail(formData.contact_email, 'Email'),
+            unidade_id: () => hasRoleWithoutUnit
+                ? 'Selecione a unidade para definir papel'
+                : null,
+            vinculo_role: () => hasUnitWithoutRole
+                ? 'Papel na unidade e obrigatorio'
+                : null
         })
 
         if (!isValid) return
@@ -201,11 +234,11 @@ function UsuariosAdmin() {
                 contact_phone: formData.contact_phone || null,
                 user_status: parseInt(formData.user_status, 10)
             })
-            if (formData.unidade_id) {
+            if (hasSelectedUnidade && normalizedRole) {
                 await createVinculo({
                     user_id: editingUser.id,
                     unidade_id: parseInt(formData.unidade_id, 10),
-                    role: formData.vinculo_role || 'analista',
+                    role: normalizedRole,
                     is_principal: 1
                 })
             }
@@ -456,7 +489,7 @@ function UserForm({ formData, setFormData, validation, requirePassword, onSubmit
 
             <div style={{ marginBottom: 16 }}>
                 <label style={{ display: 'block', marginBottom: 6, fontWeight: 500 }}>
-                    Senha {requirePassword ? '*' : '(opcional)'}
+                    {requirePassword ? 'Senha inicial *' : 'Nova senha (opcional)'}
                 </label>
                 <Input
                     type="password"
@@ -466,6 +499,7 @@ function UserForm({ formData, setFormData, validation, requirePassword, onSubmit
                         validation.clearFieldError('user_password')
                     }}
                     placeholder={requirePassword ? 'Defina uma senha' : 'Deixe em branco para manter'}
+                    required={requirePassword}
                     error={validation.errors.user_password}
                     fullWidth
                 />
@@ -546,7 +580,15 @@ function UserForm({ formData, setFormData, validation, requirePassword, onSubmit
                 </label>
                 <select
                     value={formData.unidade_id}
-                    onChange={(e) => setFormData({ ...formData, unidade_id: e.target.value })}
+                    onChange={(e) => {
+                        const unidadeId = e.target.value
+                        setFormData({
+                            ...formData,
+                            unidade_id: unidadeId,
+                            vinculo_role: unidadeId ? formData.vinculo_role : ''
+                        })
+                        validation.clearFieldError('unidade_id')
+                    }}
                     style={{
                         width: '100%',
                         padding: '10px 12px',
@@ -566,6 +608,11 @@ function UserForm({ formData, setFormData, validation, requirePassword, onSubmit
                         </optgroup>
                     ))}
                 </select>
+                {validation.errors.unidade_id && (
+                    <span style={{ color: 'var(--color-danger-500)', fontSize: '0.75rem' }}>
+                        {validation.errors.unidade_id}
+                    </span>
+                )}
             </div>
 
             <div style={{ marginTop: 12 }}>
@@ -574,19 +621,29 @@ function UserForm({ formData, setFormData, validation, requirePassword, onSubmit
                 </label>
                 <select
                     value={formData.vinculo_role}
-                    onChange={(e) => setFormData({ ...formData, vinculo_role: e.target.value })}
+                    onChange={(e) => {
+                        setFormData({ ...formData, vinculo_role: normalizeVinculoRole(e.target.value) })
+                        validation.clearFieldError('vinculo_role')
+                    }}
                     style={{
                         width: '100%',
                         padding: '10px 12px',
                         border: '1px solid #d1d5db',
                         borderRadius: 8
                     }}
+                    disabled={!formData.unidade_id || loadingUnidades || loadingVinculo}
                 >
+                    <option value="">Selecione o papel</option>
                     <option value="coordenador">Coordenador</option>
                     <option value="gestor">Gestor</option>
                     <option value="analista">Analista</option>
                     <option value="tecnico">Tecnico</option>
                 </select>
+                {validation.errors.vinculo_role && (
+                    <span style={{ color: 'var(--color-danger-500)', fontSize: '0.75rem' }}>
+                        {validation.errors.vinculo_role}
+                    </span>
+                )}
             </div>
         </form>
     )

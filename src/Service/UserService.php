@@ -122,6 +122,11 @@ class UserService
                 throw new \InvalidArgumentException('Email already exists');
             }
         }
+
+        $password = trim((string) ($data['user_password'] ?? ''));
+        if ($password === '') {
+            throw new \InvalidArgumentException('Password is required');
+        }
         
         // Create contact first (if contact data provided)
         $contactId = null;
@@ -141,7 +146,7 @@ class UserService
         // Create user entity
         $user = new UserEntity();
         $user->setUsername($data['user_username']);
-        $user->setPassword($this->hashPassword($data['user_password'] ?? $this->generateRandomPassword()));
+        $user->setPassword($this->hashPassword($password));
         $user->setContactId($contactId);
         $user->setCompanyId($data['user_company'] ?? null);
         $user->setDepartmentId($data['user_department'] ?? null);
