@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getProjects, createProject, updateProject, deleteProject, getUnidades } from '../services/api'
 import Modal from '../components/ui/Modal'
@@ -6,6 +6,83 @@ import Button from '../components/ui/Button'
 import Input from '../components/ui/Input'
 import { useToast } from '../contexts/ToastContext'
 import { useValidation } from '../hooks/useValidation'
+
+function buildUnidadeHierarchy(unidade, unidadeById) {
+    const hierarchy = []
+    const visited = new Set()
+    let current = unidade
+
+    while (current && !visited.has(current.id)) {
+        hierarchy.unshift(current)
+        visited.add(current.id)
+        const parentId = current.pai_id
+        current = parentId ? unidadeById.get(parentId) || null : null
+    }
+
+    return hierarchy
+}
+
+function buildGroupedUnidades(unidades) {
+    const unidadeById = new Map()
+    const collator = new Intl.Collator('pt-BR', { sensitivity: 'base', numeric: true })
+
+    for (const rawUnidade of unidades) {
+        if (!rawUnidade || rawUnidade.id === null || rawUnidade.id === undefined) continue
+        const id = Number(rawUnidade.id)
+        const paiId = rawUnidade.pai_id === null || rawUnidade.pai_id === undefined
+            ? null
+            : Number(rawUnidade.pai_id)
+
+        unidadeById.set(id, {
+            ...rawUnidade,
+            id,
+            pai_id: paiId
+        })
+    }
+
+    const grouped = new Map()
+
+    for (const unidade of unidadeById.values()) {
+        const hierarchy = buildUnidadeHierarchy(unidade, unidadeById)
+        const secretariaNode = hierarchy.find((node) => node.nivel === 2)
+        const groupLabel = secretariaNode?.nome || 'Demais unidades'
+
+        let relativeHierarchy = hierarchy
+        if (secretariaNode) {
+            const index = hierarchy.findIndex((node) => node.id === secretariaNode.id)
+            relativeHierarchy = hierarchy.slice(index)
+        }
+
+        const path = hierarchy.map((node) => node.nome).join(' > ')
+        const pathLabel = relativeHierarchy.map((node) => node.nome).join(' > ') || unidade.nome
+        const levelLabel = unidade.nivel_label ? ` (${unidade.nivel_label})` : ''
+        const option = {
+            id: unidade.id,
+            label: `${pathLabel}${levelLabel}`,
+            path,
+            nivel: unidade.nivel ?? Number.MAX_SAFE_INTEGER
+        }
+
+        if (!grouped.has(groupLabel)) {
+            grouped.set(groupLabel, [])
+        }
+
+        grouped.get(groupLabel).push(option)
+    }
+
+    return Array.from(grouped.entries())
+        .map(([label, options]) => ({
+            label,
+            options: options.sort((a, b) => {
+                if (a.nivel !== b.nivel) {
+                    return a.nivel - b.nivel
+                }
+
+                return collator.compare(a.path, b.path)
+            })
+        }))
+        .sort((a, b) => collator.compare(a.label, b.label))
+}
 
 function Projects() {
     const toast = useToast()
@@ -18,6 +95,7 @@ function Projects() {
     const [search, setSearch] = useState('')
     const [unidades, setUnidades] = useState([])
     const [unidadesLoading, setUnidadesLoading] = useState(false)
+    const groupedUnidades = useMemo(() => buildGroupedUnidades(unidades), [unidades])
 
     // Modal state
     const [isModalOpen, setIsModalOpen] = useState(false)
@@ -561,11 +639,14 @@ function Projects() {
                                 <option value="">
                                     {unidadesLoading ? 'Carregando unidades...' : 'Selecione uma unidade'}
                                 </option>
-                                {unidades.map((unidade) => (
-                                    <option key={unidade.id} value={unidade.id}>
-                                        {unidade.nome}
-                                        {unidade.nivel_label ? ` (${unidade.nivel_label})` : ''}
-                                    </option>
+                                {groupedUnidades.map((grupo, index) => (
+                                    <optgroup key={`${grupo.label}-${index}`} label={grupo.label}>
+                                        {grupo.options.map((unidade) => (
+                                            <option key={unidade.id} value={unidade.id}>
+                                                {unidade.label}
+                                            </option>
+                                        ))}
+                                    </optgroup>
                                 ))}
                             </select>
                             {validation.errors.company_id && (
@@ -784,11 +865,14 @@ function Projects() {
                                 <option value="">
                                     {unidadesLoading ? 'Carregando unidades...' : 'Selecione uma unidade'}
                                 </option>
-                                {unidades.map((unidade) => (
-                                    <option key={unidade.id} value={unidade.id}>
-                                        {unidade.nome}
-                                        {unidade.nivel_label ? ` (${unidade.nivel_label})` : ''}
-                                    </option>
+                                {groupedUnidades.map((grupo, index) => (
+                                    <optgroup key={`${grupo.label}-${index}`} label={grupo.label}>
+                                        {grupo.options.map((unidade) => (
+                                            <option key={unidade.id} value={unidade.id}>
+                                                {unidade.label}
+                                            </option>
+                                        ))}
+                                    </optgroup>
                                 ))}
                             </select>
                             {validation.errors.company_id && (
