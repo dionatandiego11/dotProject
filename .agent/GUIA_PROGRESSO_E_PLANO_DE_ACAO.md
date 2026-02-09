@@ -11,7 +11,7 @@ Consolidar o que foi estabilizado no sistema e definir o proximo plano de execuc
 ### Estado atual validado
 - API, regras de unidade e fluxo de kanban estabilizados em ambiente WSL + Docker.
 - Suite de testes passando no container `phpfpm`.
-- Resultado da ultima execucao: `OK (262 tests, 493 assertions)`.
+- Resultado da ultima execucao: `OK (263 tests, 500 assertions)`.
 
 ### Checkpoint 2026-02-09
 - Kanban padronizado para contrato canonico: `unidade_id` como campo oficial e `company_id` como compatibilidade.
@@ -38,7 +38,16 @@ Consolidar o que foi estabilizado no sistema e definir o proximo plano de execuc
 - Frontend (`frontend/src/pages/Kanban.jsx`) passou a enviar `unidade_id` do projeto ao criar board.
 - Cobertura de integracao ampliada para garantir que board de projeto retorna tarefas no schema legado.
 
+### Status de iteracoes (2026-02-09)
+- Iteracao 1 (`unidade` x `company`): concluida no escopo P0 critico.
+- Iteracao 2 (cache/invalidação): concluida no escopo P0 critico.
+- Iteracao 3 (migracoes pequenas): em andamento, com pacote de `notifications` entregue e validado.
+
 ### Entregas recentes (mais relevantes)
+- `6f142d02` restauracao do kanban por projeto em schema legado + alinhamento de unidade no board.
+- `7575970e` hardening de integridade em notifications com migration verificavel.
+- `972d3cbd` padronizacao de cache keys de repositorio e invalidacao de escrita.
+- `bc679ce8` contrato canonico de unidade no kanban + documentacao de mapeamento.
 - `530c9756` sincronizacao de `companies` com `unidades` + script de verificacao.
 - `802120d3` backfill de `dotp_users.user_company` e normalizacao de `board_company`.
 - `90324614` resolucao de unidade do kanban via vinculo antes da criacao do board.
