@@ -6,12 +6,16 @@
 
 import PropTypes from 'prop-types'
 
-function KanbanTask({ task, columnId, index, onDragStart, onClick }) {
+function KanbanTask({ task, columnId, index, onDragStart, onDragEnd, onClick }) {
   const { task: taskData } = task
 
   const handleDragStart = (e) => {
     e.dataTransfer.effectAllowed = 'move'
     onDragStart(task, columnId)
+  }
+
+  const handleDragEnd = () => {
+    onDragEnd?.()
   }
 
   const getPriorityColor = (priority) => {
@@ -54,6 +58,7 @@ function KanbanTask({ task, columnId, index, onDragStart, onClick }) {
       className={`kanban-task ${isOverdue ? 'kanban-task-overdue' : ''}`}
       draggable
       onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
       onClick={() => onClick?.(task)}
     >
       {/* Prioridade */}
@@ -168,6 +173,7 @@ KanbanTask.propTypes = {
   columnId: PropTypes.number.isRequired,
   index: PropTypes.number.isRequired,
   onDragStart: PropTypes.func.isRequired,
+  onDragEnd: PropTypes.func,
   onClick: PropTypes.func,
 }
 

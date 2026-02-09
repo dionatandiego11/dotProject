@@ -67,7 +67,6 @@ function KanbanColumn({
       style={getColumnStyle()}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
-      onDragLeave={onDragEnd}
     >
       <div className="kanban-column-header">
         <div className="kanban-column-title">
@@ -88,6 +87,7 @@ function KanbanColumn({
             columnId={column.id}
             index={taskIndex}
             onDragStart={onDragStart}
+            onDragEnd={onDragEnd}
             onClick={onTaskClick}
           />
         ))}
