@@ -11,7 +11,7 @@ Consolidar o que foi estabilizado no sistema e definir o proximo plano de execuc
 ### Estado atual validado
 - API, regras de unidade e fluxo de kanban estabilizados em ambiente WSL + Docker.
 - Suite de testes passando no container `phpfpm`.
-- Resultado da ultima execucao: `OK (264 tests, 505 assertions)`.
+- Resultado da ultima execucao: `OK (270 tests, 576 assertions)`.
 
 ### Checkpoint 2026-02-09
 - Kanban padronizado para contrato canonico: `unidade_id` como campo oficial e `company_id` como compatibilidade.
@@ -37,6 +37,11 @@ Consolidar o que foi estabilizado no sistema e definir o proximo plano de execuc
 - `KanbanController` passou a resolver unidade do projeto (`project_company`) ao listar/criar boards com `project_id`, evitando mismatch com `user_company`.
 - Frontend (`frontend/src/pages/Kanban.jsx`) passou a enviar `unidade_id` do projeto ao criar board.
 - Cobertura de integracao ampliada para garantir que board de projeto retorna tarefas no schema legado.
+
+### Checkpoint 2026-02-09 (kanban -> dashboard analytics)
+- Fluxo de drag-and-drop no Kanban passou a sincronizar `status` e `percent_complete` da tarefa em toda mudanca de coluna no frontend.
+- `KanbanService` passou a invalidar tambem o cache com prefixo `analytics:` (dashboard/produtividade/trend), eliminando stale no card de concluidas.
+- Cobertura de integracao ampliada no `KanbanFlowIntegrationTest` com cenario especifico de cache aquecido para garantir reflexo imediato da tarefa concluida no dashboard.
 
 ### Checkpoint 2026-02-09 (modernizacao de atribuicao de tarefas)
 - Nova migracao `db/migrations/20260209_add_task_assigned_to.sql` para alinhar schema legado de tarefas com servicos/repositorios modernos.

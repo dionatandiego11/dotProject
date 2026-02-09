@@ -6,6 +6,7 @@ namespace DotProject\Tests\Integration;
 
 use DotProject\Core\Cache;
 use DotProject\Core\Database;
+use DotProject\Service\AnalyticsService;
 use DotProject\Service\KanbanService;
 use DotProject\Service\UnidadeCompanySyncService;
 use PHPUnit\Framework\TestCase;
@@ -161,6 +162,96 @@ class KanbanFlowIntegrationTest extends TestCase
         $taskState = $this->taskState((int) $taskId);
         $this->assertSame(3, (int) ($taskState['task_status'] ?? -1));
         $this->assertSame(100, (int) ($taskState['task_percent_complete'] ?? -1));
+    }
+
+    public function testMoveToDoneInvalidatesAnalyticsDashboardCache(): void
+    {
+        $unidade = $this->pickAnyUnidade();
+        if ($unidade === null) {
+            $this->markTestSkipped('Base sem unidade ativa para teste de sincronizacao Kanban -> Dashboard.');
+        }
+
+        $synced = (new UnidadeCompanySyncService($this->db))
+            ->ensureCompanyForUnidade((int) $unidade['id'], (string) $unidade['nome']);
+        $this->assertTrue($synced, 'Falha ao sincronizar unidade/company para teste Kanban -> Dashboard.');
+
+        $projectId = $this->db->insert('projects', [
+            'project_company' => (int) $unidade['id'],
+            'project_company_internal' => 0,
+            'project_department' => 0,
+            'project_name' => 'IT Kanban Analytics ' . bin2hex(random_bytes(3)),
+            'project_short_name' => 'ITKANBAN',
+            'project_owner' => 1,
+            'project_creator' => 1,
+            'project_status' => 1,
+            'project_percent_complete' => 0,
+            'project_color_identifier' => '#3B82F6',
+            'project_priority' => 1,
+            'project_type' => 0,
+            'project_start_date' => date('Y-m-d H:i:s'),
+        ]);
+        $this->assertNotFalse($projectId, 'Falha ao criar projeto para teste Kanban -> Dashboard.');
+        $this->projectId = (int) $projectId;
+
+        $board = $this->service->createBoard([
+            'name' => 'Kanban Analytics Board',
+            'project_id' => (int) $projectId,
+            'company_id' => (int) $unidade['id'],
+        ], 1);
+        $this->boardId = $board->getId();
+        $this->assertNotNull($this->boardId);
+
+        $taskId = $this->db->insert('tasks', [
+            'task_name' => 'Validar cache dashboard analytics',
+            'task_project' => (int) $projectId,
+            'task_owner' => 1,
+            'task_creator' => 1,
+            'task_start_date' => date('Y-m-d H:i:s'),
+            'task_end_date' => date('Y-m-d H:i:s', strtotime('+7 days')),
+            'task_status' => 0,
+            'task_priority' => 1,
+            'task_percent_complete' => 0,
+            'task_description' => 'Nao concluida no baseline',
+        ]);
+        $this->assertNotFalse($taskId, 'Falha ao criar tarefa para teste Kanban -> Dashboard.');
+        $this->taskId = (int) $taskId;
+
+        $boardData = $this->service->getBoard((int) $this->boardId, 1);
+        $columns = $boardData['columns'] ?? [];
+        $this->assertNotEmpty($columns);
+
+        $doneColumnId = $this->findColumnId($columns, 'Done');
+        $this->assertNotNull($doneColumnId);
+
+        $kanbanTask = $this->findKanbanTaskByTaskId($columns, (int) $taskId);
+        $this->assertNotNull($kanbanTask, 'Tarefa deveria ser sincronizada automaticamente ao abrir board.');
+
+        $taskState = $this->taskState((int) $taskId);
+        $this->assertSame(0, (int) ($taskState['task_percent_complete'] ?? -1));
+
+        $analyticsBeforeMove = new AnalyticsService($this->db);
+        $baseline = $analyticsBeforeMove->getDashboardSummary(1);
+        $baselineCompleted = (int) (($baseline['tasks']['completed'] ?? 0));
+
+        // Segunda leitura sem mudancas para garantir cache aquecido.
+        $cachedBaseline = $analyticsBeforeMove->getDashboardSummary(1);
+        $this->assertSame($baselineCompleted, (int) (($cachedBaseline['tasks']['completed'] ?? 0)));
+
+        $this->assertTrue($this->service->moveTask((int) $kanbanTask['id'], (int) $doneColumnId, 0, 1));
+
+        $taskState = $this->taskState((int) $taskId);
+        $this->assertSame(3, (int) ($taskState['task_status'] ?? -1));
+        $this->assertSame(100, (int) ($taskState['task_percent_complete'] ?? -1));
+
+        // Nova instancia para simular novo request HTTP (sem cache em memoria L1 do request anterior).
+        $analyticsAfterMove = new AnalyticsService($this->db);
+        $after = $analyticsAfterMove->getDashboardSummary(1);
+        $afterCompleted = (int) (($after['tasks']['completed'] ?? 0));
+        $this->assertSame(
+            $baselineCompleted + 1,
+            $afterCompleted,
+            'Dashboard analytics deveria refletir imediatamente tarefa movida para Done.'
+        );
     }
 
     /**
