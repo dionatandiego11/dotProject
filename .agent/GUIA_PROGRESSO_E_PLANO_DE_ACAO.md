@@ -1,6 +1,6 @@
-# Guia de Progresso e Plano de Acao
+﻿# Guia de Progresso e Plano de Acao
 
-Data de referencia: 2026-02-06
+Data de referencia: 2026-02-09
 Branch alvo: `devel`
 
 ## Objetivo
@@ -11,7 +11,7 @@ Consolidar o que foi estabilizado no sistema e definir o proximo plano de execuc
 ### Estado atual validado
 - API, regras de unidade e fluxo de kanban estabilizados em ambiente WSL + Docker.
 - Suite de testes passando no container `phpfpm`.
-- Resultado da ultima execucao: `OK (274 tests, 601 assertions)`.
+- Resultado da ultima execucao: `OK (276 tests, 610 assertions)`.
 
 ### Checkpoint 2026-02-09
 - Kanban padronizado para contrato canonico: `unidade_id` como campo oficial e `company_id` como compatibilidade.
@@ -28,7 +28,7 @@ Consolidar o que foi estabilizado no sistema e definir o proximo plano de execuc
 
 ### Checkpoint 2026-02-09 (migracao incremental de legado)
 - Nova migracao `db/migrations/20260209_harden_notifications_integrity.sql` para normalizar nulls legados em notificacoes e endurecer colunas criticas (`notification_is_read`, `notification_is_sent`, `notification_channel`, `notification_created_at`).
-- Novos indices compostos aplicados para padroes de consulta reais do repositório (`countUnread`, `findPending`, `getStats`).
+- Novos indices compostos aplicados para padroes de consulta reais do repositÃ³rio (`countUnread`, `findPending`, `getStats`).
 - Script de verificacao `db/migrations/20260209_verify_notifications_integrity.sql` adicionado e validado com resultado esperado (todos checks `0/1` corretos).
 
 ### Checkpoint 2026-02-09 (kanban projeto com schema legado)
@@ -47,7 +47,7 @@ Consolidar o que foi estabilizado no sistema e definir o proximo plano de execuc
 - Nova migracao `db/migrations/20260209_add_task_assigned_to.sql` para alinhar schema legado de tarefas com servicos/repositorios modernos.
 - Script de verificacao `db/migrations/20260209_verify_task_assigned_to.sql` adicionado e validado com resultado esperado.
 - `TaskController` atualizado para aceitar `assigned_to/assigned_to_id`, manter fallback para `owner_id` e operar com compatibilidade quando a coluna ainda nao existe.
-- `TaskRepository` endurecido para fallback automatico de assignee em bases nao migradas (`task_owner`) e uso canônico de `task_assigned_to` quando disponivel.
+- `TaskRepository` endurecido para fallback automatico de assignee em bases nao migradas (`task_owner`) e uso canÃ´nico de `task_assigned_to` quando disponivel.
 - Cobertura de integracao ampliada para validar retorno de `assigned_to` com fallback para `owner`.
 
 ### Checkpoint 2026-02-09 (integridade de progresso de tarefas)
@@ -63,10 +63,26 @@ Consolidar o que foi estabilizado no sistema e definir o proximo plano de execuc
 - Validacao de `ProjectController::update` foi corrigida para modo parcial (evitando regressao de exigir campos de criacao em updates parciais).
 - Cobertura de integracao ampliada para criacao/edicao de projeto garantindo coerencia de status/progresso no backend.
 
+### Checkpoint 2026-02-09 (escopo de unidade + fluxo de tarefas)
+- Corrigido erro `Validation failed` no drag-and-drop do Kanban: update parcial de tarefa (`status`/`percent_complete`) agora valida com fallback dos dados atuais (`task_name` e `task_project`), sem exigir payload de criacao.
+- Frontend de projetos (`frontend/src/pages/Projects.jsx`) passou a buscar unidades com `escopo=1`.
+- Backend de unidades (`AdminController::listUnidades`) passou a aplicar filtro por escopo quando `?escopo=1`.
+- Backend de projetos (`ProjectController`) passou a bloquear create/update fora da `unidades_escopo` do usuario autenticado.
+- Sincronizacao estrutural de vinculos:
+  - `AdminController` sincroniza `dotp_users.user_company` apos criar/atualizar/desativar vinculo e apos definir principal;
+  - `UserService::createUser` passou a retornar `data.id` persistido, evitando quebra no fluxo `createUsuario -> createVinculo`.
+- Novas migracoes pequenas:
+  - `db/migrations/20260209_backfill_user_company_from_vinculo_principal.sql`
+  - `db/migrations/20260209_verify_user_company_from_vinculo_principal.sql`
+  - verificado com `divergencias = 0`.
+- Cobertura de testes ampliada:
+  - `CriticalFlowsIntegrationTest`: update parcial de tarefa sem regressao de validacao;
+  - `AdminUserDeletionIntegrationTest`: garantia de retorno de `data.id` no create de usuario.
+
 ### Status de iteracoes (2026-02-09)
 - Iteracao 1 (`unidade` x `company`): concluida no escopo P0 critico.
-- Iteracao 2 (cache/invalidação): concluida no escopo P0 critico.
-- Iteracao 3 (migracoes pequenas): em andamento, com pacotes de `notifications` e `task_assigned_to` entregues e validados.
+- Iteracao 2 (cache/invalidacao): concluida no escopo P0 critico.
+- Iteracao 3 (migracoes pequenas): em andamento, com pacotes de `notifications`, `task_assigned_to`, `tasks/projects progress` e `user_company backfill` entregues e validados.
 
 ### Entregas recentes (mais relevantes)
 - `6f142d02` restauracao do kanban por projeto em schema legado + alinhamento de unidade no board.
@@ -150,6 +166,17 @@ Criterio de pronto:
 2. Rodar testes focados e depois suite completa.
 3. Commit atomico com mensagem objetiva.
 4. `git push origin devel` ao fim de cada bloco validado.
+
+## Proximo dia (retomada objetiva)
+1. Validar fluxo manual com usuario de unidade nova:
+   - criar usuario + vinculo principal;
+   - confirmar dashboard sem classificacao indevida em "Sem Secretaria";
+   - criar projeto e confirmar select limitado ao escopo.
+2. Validar Kanban fim-a-fim no mesmo cenario:
+   - criar tarefa com datas;
+   - mover `Backlog -> To Do -> In Progress -> Done`;
+   - confirmar persistencia de datas e reflexo no Dashboard.
+3. Se o fluxo estiver estavel, fechar pacote com commit unico e registrar hash neste guia.
 
 ## Comandos de verificacao (WSL)
 ```bash
