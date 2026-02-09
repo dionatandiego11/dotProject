@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { createUnidade, updateUnidade, getVinculos, createVinculo, deleteVinculo } from '../../services/api'
 import Modal from '../../components/ui/Modal'
 
@@ -290,6 +290,82 @@ function UnidadeForm({ unidade, unidades, niveis, usuarios = [], onSave, onCance
     const paiOptions = getUnidadesPaiOptions()
     const nivelAtual = NIVEL_INFO[formData.nivel]
 
+    const unidadesById = useMemo(() => {
+        const map = new Map()
+        ;(unidades || []).forEach((item) => {
+            if (item?.id) map.set(Number(item.id), item)
+        })
+        return map
+    }, [unidades])
+
+    const resolveSecretariaId = (unidadeId) => {
+        const numericId = Number(unidadeId || 0)
+        if (!numericId) return null
+        let current = unidadesById.get(numericId)
+        if (!current) return null
+        if (current.nivel === 2 || current.nivel_label === 'Secretaria') return Number(current.id)
+        let safety = 0
+        while (current && current.pai_id && safety < 20) {
+            const parent = unidadesById.get(Number(current.pai_id))
+            if (!parent) break
+            if (parent.nivel === 2 || parent.nivel_label === 'Secretaria') return Number(parent.id)
+            current = parent
+            safety += 1
+        }
+        return null
+    }
+
+    const secretariaContextoId = useMemo(() => {
+        if (!formData.pai_id) return null
+        return resolveSecretariaId(formData.pai_id)
+    }, [formData.pai_id, unidadesById])
+
+    const usuariosAgrupados = useMemo(() => {
+        const groups = new Map()
+
+        ;(usuarios || []).forEach((user) => {
+            const unidadeBase = Number(
+                user?.company_id ??
+                user?.unidade_id ??
+                user?.department_id ??
+                0
+            )
+            const secretariaId = resolveSecretariaId(unidadeBase)
+            const key = secretariaId ? `sec-${secretariaId}` : 'sem-secretaria'
+            if (!groups.has(key)) {
+                const secretariaNome = secretariaId
+                    ? (unidadesById.get(secretariaId)?.nome || 'Secretaria')
+                    : 'Sem Secretaria'
+                groups.set(key, {
+                    id: secretariaId,
+                    nome: secretariaNome,
+                    usuarios: []
+                })
+            }
+            groups.get(key).usuarios.push(user)
+        })
+
+        const ordered = Array.from(groups.values()).sort((a, b) => {
+            if (secretariaContextoId !== null) {
+                if (a.id === secretariaContextoId && b.id !== secretariaContextoId) return -1
+                if (a.id !== secretariaContextoId && b.id === secretariaContextoId) return 1
+            }
+            if (a.id === null && b.id !== null) return 1
+            if (a.id !== null && b.id === null) return -1
+            return a.nome.localeCompare(b.nome)
+        })
+
+        ordered.forEach((group) => {
+            group.usuarios.sort((a, b) => {
+                const aNome = (a?.full_name || a?.username || '').trim()
+                const bNome = (b?.full_name || b?.username || '').trim()
+                return aNome.localeCompare(bNome)
+            })
+        })
+
+        return ordered
+    }, [usuarios, unidadesById, secretariaContextoId])
+
     return (
         <div
             style={styles.overlay}
@@ -444,10 +520,21 @@ function UnidadeForm({ unidade, unidades, niveis, usuarios = [], onSave, onCance
                                 onChange={handleChange}
                             >
                                 <option value="">Sem responsavel definido</option>
-                                {usuarios.map(user => (
-                                    <option key={user.id} value={user.id}>
-                                        {user.full_name || user.username}
-                                    </option>
+                                {usuariosAgrupados.map((group) => (
+                                    <optgroup
+                                        key={group.id === null ? 'sem-secretaria' : `secretaria-${group.id}`}
+                                        label={
+                                            group.id !== null && secretariaContextoId === group.id
+                                                ? `${group.nome} (Secretaria atual)`
+                                                : group.nome
+                                        }
+                                    >
+                                        {group.usuarios.map((user) => (
+                                            <option key={user.id} value={user.id}>
+                                                {user.full_name || user.username}
+                                            </option>
+                                        ))}
+                                    </optgroup>
                                 ))}
                             </select>
                         </div>

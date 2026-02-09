@@ -21,6 +21,7 @@ use DotProject\Repository\HistoricoMovimentacaoRepository;
 use DotProject\Repository\UserRepository;
 use DotProject\Core\Logger;
 use DotProject\Service\UserService;
+use DotProject\Service\UnidadeCompanySyncService;
 
 class AdminController extends BaseController
 {
@@ -30,6 +31,7 @@ class AdminController extends BaseController
     private HistoricoMovimentacaoRepository $historicoRepo;
     private UserRepository $userRepo;
     private UserService $userService;
+    private UnidadeCompanySyncService $unidadeCompanySync;
 
     public function __construct(Request $request, Response $response)
     {
@@ -40,6 +42,7 @@ class AdminController extends BaseController
         $this->historicoRepo = new HistoricoMovimentacaoRepository();
         $this->userRepo = new UserRepository();
         $this->userService = new UserService();
+        $this->unidadeCompanySync = new UnidadeCompanySyncService($this->db);
         Logger::debug('AdminController inicializado');
     }
 
@@ -294,6 +297,7 @@ class AdminController extends BaseController
      */
     public function createUnidade(): Response
     {
+        $transactionStarted = false;
         try {
             $data = $this->request->getJsonBody();
 
@@ -317,14 +321,27 @@ class AdminController extends BaseController
             $unidade->setPodeCriarProjetos($this->normalizeBool($data['pode_criar_projetos'] ?? null, true));
             $unidade->setPodeCriarProgramas($this->normalizeBool($data['pode_criar_programas'] ?? null, false));
 
+            $this->db->beginTransaction();
+            $transactionStarted = true;
             $id = $this->unidadeRepo->save($unidade);
             $unidade->setId($id);
+
+            $synced = $this->unidadeCompanySync->ensureCompanyForUnidade($id, $unidade->getNome());
+            if (!$synced) {
+                $this->db->rollback();
+                return $this->error('Falha ao sincronizar unidade com companies legadas', 500);
+            }
+
+            $this->db->commit();
 
             return $this->json([
                 'message' => 'Unidade criada com sucesso',
                 'data' => $unidade->toArray(),
             ], 201);
         } catch (\Throwable $e) {
+            if ($transactionStarted) {
+                $this->db->rollback();
+            }
             Logger::error('Erro ao criar unidade', [
                 'error' => $e->getMessage(),
                 'file' => $e->getFile(),
@@ -345,45 +362,67 @@ class AdminController extends BaseController
             return $this->notFound('Unidade nao encontrada');
         }
 
-        $data = $this->request->getJsonBody();
+        try {
+            $transactionStarted = false;
+            $data = $this->request->getJsonBody();
 
-        if (isset($data['nome'])) {
-            $unidade->setNome($data['nome']);
-        }
-        if (isset($data['sigla'])) {
-            $unidade->setSigla($data['sigla']);
-        }
-        if (isset($data['descricao'])) {
-            $unidade->setDescricao($data['descricao']);
-        }
-        if (isset($data['endereco'])) {
-            $unidade->setEndereco($data['endereco']);
-        }
-        if (isset($data['email'])) {
-            $unidade->setEmail($data['email']);
-        }
-        if (isset($data['telefone'])) {
-            $unidade->setTelefone($data['telefone']);
-        }
-        if (isset($data['responsavel_id'])) {
-            $unidade->setResponsavelId($data['responsavel_id']);
-        }
-        if (isset($data['ativa'])) {
-            $unidade->setAtiva($this->normalizeBool($data['ativa']));
-        }
-        if (isset($data['pode_criar_projetos'])) {
-            $unidade->setPodeCriarProjetos($this->normalizeBool($data['pode_criar_projetos']));
-        }
-        if (isset($data['pode_criar_programas'])) {
-            $unidade->setPodeCriarProgramas($this->normalizeBool($data['pode_criar_programas']));
-        }
+            if (isset($data['nome'])) {
+                $unidade->setNome($data['nome']);
+            }
+            if (isset($data['sigla'])) {
+                $unidade->setSigla($data['sigla']);
+            }
+            if (isset($data['descricao'])) {
+                $unidade->setDescricao($data['descricao']);
+            }
+            if (isset($data['endereco'])) {
+                $unidade->setEndereco($data['endereco']);
+            }
+            if (isset($data['email'])) {
+                $unidade->setEmail($data['email']);
+            }
+            if (isset($data['telefone'])) {
+                $unidade->setTelefone($data['telefone']);
+            }
+            if (isset($data['responsavel_id'])) {
+                $unidade->setResponsavelId($data['responsavel_id']);
+            }
+            if (isset($data['ativa'])) {
+                $unidade->setAtiva($this->normalizeBool($data['ativa']));
+            }
+            if (isset($data['pode_criar_projetos'])) {
+                $unidade->setPodeCriarProjetos($this->normalizeBool($data['pode_criar_projetos']));
+            }
+            if (isset($data['pode_criar_programas'])) {
+                $unidade->setPodeCriarProgramas($this->normalizeBool($data['pode_criar_programas']));
+            }
 
-        $this->unidadeRepo->save($unidade);
+            $this->db->beginTransaction();
+            $transactionStarted = true;
+            $this->unidadeRepo->save($unidade);
+            $synced = $this->unidadeCompanySync->ensureCompanyForUnidade($id, $unidade->getNome());
+            if (!$synced) {
+                $this->db->rollback();
+                return $this->error('Falha ao sincronizar unidade com companies legadas', 500);
+            }
+            $this->db->commit();
 
-        return $this->json([
-            'message' => 'Unidade atualizada com sucesso',
-            'data' => $unidade->toArray(),
-        ]);
+            return $this->json([
+                'message' => 'Unidade atualizada com sucesso',
+                'data' => $unidade->toArray(),
+            ]);
+        } catch (\Throwable $e) {
+            if ($transactionStarted) {
+                $this->db->rollback();
+            }
+            Logger::error('Erro ao atualizar unidade', [
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'unidade_id' => $id,
+            ]);
+            return $this->json(['error' => 'Erro ao atualizar unidade'], 500);
+        }
     }
 
     /**

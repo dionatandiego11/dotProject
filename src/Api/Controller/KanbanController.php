@@ -17,6 +17,7 @@ use DotProject\Api\Response;
 use DotProject\Dto\ApiResponse;
 use DotProject\Service\AuthorizationService;
 use DotProject\Service\KanbanService;
+use DotProject\Service\UnidadeCompanySyncService;
 
 /**
  * Controller Kanban
@@ -24,6 +25,7 @@ use DotProject\Service\KanbanService;
 class KanbanController extends BaseController
 {
     private ?KanbanService $kanbanService = null;
+    private ?UnidadeCompanySyncService $unidadeCompanySync = null;
     
     /**
      * GET /v1/kanban/boards
@@ -142,6 +144,13 @@ class KanbanController extends BaseController
                     ...$this->unidadeValidationError('Unidade informada e invalida'),
                 ]);
                 $this->response->json($response->toArray(), 422)->send();
+                return;
+            }
+
+            $this->unidadeCompanySync = $this->unidadeCompanySync ?? new UnidadeCompanySyncService();
+            if (!$this->unidadeCompanySync->ensureCompanyForUnidade($companyId)) {
+                $response = ApiResponse::error('Falha ao sincronizar unidade com company legada');
+                $this->response->json($response->toArray(), 500)->send();
                 return;
             }
 
@@ -454,7 +463,10 @@ class KanbanController extends BaseController
         ) ?? 0);
 
         if ($companyId > 0 && $this->unidadeExists($companyId)) {
-            return $companyId;
+            $this->unidadeCompanySync = $this->unidadeCompanySync ?? new UnidadeCompanySyncService();
+            if ($this->unidadeCompanySync->ensureCompanyForUnidade($companyId)) {
+                return $companyId;
+            }
         }
 
         return $fallbackCompanyId;
