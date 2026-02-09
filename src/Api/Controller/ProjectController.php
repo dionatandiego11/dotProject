@@ -210,6 +210,9 @@ class ProjectController extends BaseController
                 $this->unidadeValidationError('Unidade responsavel nao encontrada.')
             );
         }
+        if ($guard = $this->ensureCanUseTargetUnidade($unidadeId)) {
+            return $guard;
+        }
 
         $project = new Project();
         $project->fill([
@@ -372,6 +375,9 @@ class ProjectController extends BaseController
                 return $this->response->validationError(
                     $this->unidadeValidationError('Unidade responsavel nao encontrada.')
                 );
+            }
+            if ($guard = $this->ensureCanUseTargetUnidade($unidadeId)) {
+                return $guard;
             }
         }
 
@@ -647,6 +653,40 @@ class ProjectController extends BaseController
             'unidade_id' => $message,
             'company_id' => $message,
         ];
+    }
+
+    private function ensureCanUseTargetUnidade(int $unidadeId): ?Response
+    {
+        $userId = $this->getUserId();
+        if ($userId === null) {
+            return $this->response->unauthorized();
+        }
+
+        $auth = AuthorizationService::getInstance();
+        if ($auth->isAdmin($userId)) {
+            return null;
+        }
+
+        $perm = new PermissionService();
+        $escopo = $perm->getEscopoDados($userId);
+        if (!$escopo) {
+            return $this->response->forbidden('Access denied');
+        }
+
+        if (in_array(
+            $escopo['role'] ?? '',
+            [PermissionService::ROLE_PREFEITO, PermissionService::ROLE_CONTROLADOR],
+            true
+        )) {
+            return null;
+        }
+
+        $unidadesEscopo = array_map('intval', (array) ($escopo['unidades_escopo'] ?? []));
+        if (in_array($unidadeId, $unidadesEscopo, true)) {
+            return null;
+        }
+
+        return $this->response->forbidden('Access denied');
     }
 
     /**

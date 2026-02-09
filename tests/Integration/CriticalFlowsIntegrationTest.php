@@ -551,6 +551,62 @@ class CriticalFlowsIntegrationTest extends TestCase
         $this->assertSame(0, (int) ($rowBacklog['task_percent_complete'] ?? -1));
     }
 
+    public function testTaskUpdateStatusAndPercentWithoutNameDoesNotFailValidation(): void
+    {
+        $unidade = $this->pickAnyUnidade();
+        if ($unidade === null) {
+            $this->markTestSkipped('Base sem unidade para teste de validacao parcial de tarefa.');
+        }
+
+        $unidadeId = (int) $unidade['id'];
+        $this->ensureCompanyExistsForUnidade($unidadeId, (string) $unidade['nome']);
+
+        $projectId = $this->insertProject($unidadeId, 'it_task_update_percent_' . bin2hex(random_bytes(4)));
+        $this->projectIds[] = $projectId;
+
+        $taskId = $this->insertTask($projectId, 'Task update percent ' . bin2hex(random_bytes(3)));
+        $this->taskIds[] = $taskId;
+
+        $seeded = $this->db->update('tasks', [
+            'task_status' => 2,
+            'task_percent_complete' => 20,
+        ], sprintf('task_id = %d', $taskId));
+        $this->assertTrue($seeded);
+
+        $request = $this->createMock(Request::class);
+        $request->method('getBody')->willReturn([
+            'status' => 2,
+            'percent_complete' => 60,
+        ]);
+        $request->method('getParam')
+            ->willReturnCallback(function (string $key, mixed $default = null) use ($taskId) {
+                return match ($key) {
+                    'id' => $taskId,
+                    '_user_id' => 1,
+                    default => $default,
+                };
+            });
+
+        $response = new Response();
+        $controller = new IntegrationTaskController($request, $response);
+        $result = $controller->update();
+        $body = $this->responseBody($result);
+
+        $this->assertSame($taskId, (int) ($body['id'] ?? 0));
+
+        $row = $this->db->fetchOne(
+            sprintf(
+                "SELECT task_status, task_percent_complete FROM `%s` WHERE task_id = %d LIMIT 1",
+                $this->db->table('tasks'),
+                $taskId
+            )
+        );
+
+        $this->assertNotNull($row);
+        $this->assertSame(2, (int) ($row['task_status'] ?? -1));
+        $this->assertSame(60, (int) ($row['task_percent_complete'] ?? -1));
+    }
+
     public function testKanbanBoardReturnsProjectTasksWithLegacyTaskSchema(): void
     {
         $unidade = $this->pickAnyUnidade();

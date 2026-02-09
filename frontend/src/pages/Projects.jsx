@@ -142,7 +142,7 @@ function Projects() {
     async function loadUnidades() {
         try {
             setUnidadesLoading(true)
-            const data = await getUnidades()
+            const data = await getUnidades({ escopo: 1 })
             setUnidades(data.data || [])
         } catch (err) {
             console.error('Erro ao carregar unidades:', err)

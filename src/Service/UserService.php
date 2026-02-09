@@ -160,9 +160,11 @@ class UserService
         }
         
         // Save user
-        if ($this->repository->save($user) <= 0) {
+        $userId = $this->repository->save($user);
+        if ($userId <= 0) {
             return null;
         }
+        $user->setId($userId);
         
         // Clear cache
         $this->cache->invalidate('users:*');

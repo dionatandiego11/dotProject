@@ -141,6 +141,45 @@ class AdminUserDeletionIntegrationTest extends TestCase
         $this->assertSame(0, (int) $contactStillExists);
     }
 
+    public function testCreateUsuarioReturnsPersistedIdForFollowUpVinculoCreation(): void
+    {
+        $suffix = bin2hex(random_bytes(4));
+        $username = 'it_create_user_' . $suffix;
+
+        $request = $this->createMock(Request::class);
+        $request->method('getJsonBody')->willReturn([
+            'user_username' => $username,
+            'user_password' => 'dotproject123',
+            'contact_first_name' => 'Integration',
+            'contact_last_name' => 'CreateUser',
+            'contact_email' => $username . '@integration.test',
+            'user_status' => 0,
+        ]);
+        $request->method('getParam')
+            ->willReturnCallback(
+                static fn(string $key, mixed $default = null): mixed => $key === '_user_id' ? 1 : $default
+            );
+
+        $response = new Response();
+        $controller = new AdminController($request, $response);
+
+        $result = $controller->createUsuario();
+        $body = $this->responseBody($result);
+
+        $this->assertSame(201, $this->responseStatus($result));
+        $userId = (int) ($body['data']['id'] ?? 0);
+        $this->assertGreaterThan(0, $userId);
+
+        $this->createdUserIds[] = $userId;
+        $contactId = (int) ($this->db->fetchValue(
+            'SELECT user_contact FROM dotp_users WHERE user_id = ?',
+            [$userId]
+        ) ?? 0);
+        if ($contactId > 0) {
+            $this->createdContactIds[] = $contactId;
+        }
+    }
+
     /**
      * @return array{user_id:int, contact_id:int}
      */

@@ -351,6 +351,13 @@ class TaskController extends BaseController
         }
 
         if (!empty($validationData)) {
+            if (!array_key_exists('task_name', $validationData)) {
+                $validationData['task_name'] = (string) ($task->getAttribute('task_name') ?? '');
+            }
+            if (!array_key_exists('task_project', $validationData)) {
+                $validationData['task_project'] = (int) ($task->getAttribute('task_project') ?? 0);
+            }
+
             $validation = $this->validation()->validateTask($validationData);
             if ($validation->fails()) {
                 return $this->response->validationError($validation->errors());

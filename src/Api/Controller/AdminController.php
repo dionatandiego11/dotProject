@@ -20,6 +20,8 @@ use DotProject\Repository\UsuarioUnidadeRepository;
 use DotProject\Repository\HistoricoMovimentacaoRepository;
 use DotProject\Repository\UserRepository;
 use DotProject\Core\Logger;
+use DotProject\Service\AuthorizationService;
+use DotProject\Service\PermissionService;
 use DotProject\Service\UserService;
 use DotProject\Service\UnidadeCompanySyncService;
 
@@ -235,9 +237,13 @@ class AdminController extends BaseController
     {
         $arvore = $this->normalizeBool($this->request->getQuery('arvore', false));
         $nivel = $this->request->getQuery('nivel');
+        $escopo = $this->normalizeBool($this->request->getQuery('escopo', false));
 
         if ($arvore) {
             $unidades = $this->unidadeRepo->findArvore();
+            if ($escopo) {
+                $unidades = $this->filterUnidadesByEscopo($unidades);
+            }
             return $this->json([
                 'data' => array_map(fn($u) => $u->toArray(true), $unidades),
             ]);
@@ -247,6 +253,9 @@ class AdminController extends BaseController
             $unidades = $this->unidadeRepo->findByNivel((int) $nivel);
         } else {
             $unidades = $this->unidadeRepo->findAllAtivas();
+        }
+        if ($escopo) {
+            $unidades = $this->filterUnidadesByEscopo($unidades);
         }
 
         return $this->json([
@@ -577,6 +586,7 @@ class AdminController extends BaseController
         $historico->setDataMovimentacao($data['data_inicio'] ?? date('Y-m-d'));
         $historico->setObservacao('Vinculo criado via admin');
         $this->historicoRepo->save($historico);
+        $this->syncUserCompanyFromPrincipalVinculo((int) $data['user_id']);
 
         return $this->json([
             'message' => 'Vinculo criado com sucesso',
@@ -597,6 +607,10 @@ class AdminController extends BaseController
 
         $data = $this->request->getJsonBody();
         $this->vinculoRepo->atualizarVinculo($id, $data);
+        $updated = $this->vinculoRepo->findById($id);
+        if (!empty($updated['vinculo_user_id'])) {
+            $this->syncUserCompanyFromPrincipalVinculo((int) $updated['vinculo_user_id']);
+        }
 
         return $this->json([
             'message' => 'Vinculo atualizado com sucesso',
@@ -625,6 +639,7 @@ class AdminController extends BaseController
         $historico->setDataMovimentacao(date('Y-m-d'));
         $historico->setObservacao('Vinculo desativado via admin');
         $this->historicoRepo->save($historico);
+        $this->syncUserCompanyFromPrincipalVinculo((int) $vinculo['vinculo_user_id']);
 
         return $this->json([
             'message' => 'Vinculo desativado com sucesso',
@@ -636,7 +651,13 @@ class AdminController extends BaseController
      */
     public function definirPrincipal(int $id): Response
     {
+        $vinculo = $this->vinculoRepo->findById($id);
+        if (!$vinculo) {
+            return $this->notFound('Vinculo nao encontrado');
+        }
+
         $this->vinculoRepo->definirPrincipal($id);
+        $this->syncUserCompanyFromPrincipalVinculo((int) $vinculo['vinculo_user_id']);
 
         return $this->json([
             'message' => 'Vinculo definido como principal',
@@ -850,6 +871,67 @@ class AdminController extends BaseController
         return $this->json([
             'message' => 'Permissoes atualizadas com sucesso',
         ]);
+    }
+
+    /**
+     * @param UnidadeOrganizacionalEntity[] $unidades
+     * @return UnidadeOrganizacionalEntity[]
+     */
+    private function filterUnidadesByEscopo(array $unidades): array
+    {
+        $userId = $this->getUserId();
+        if ($userId === null) {
+            return [];
+        }
+
+        $auth = AuthorizationService::getInstance();
+        if ($auth->isAdmin($userId)) {
+            return $unidades;
+        }
+
+        $perm = new PermissionService();
+        $escopo = $perm->getEscopoDados($userId);
+        if (!$escopo) {
+            return [];
+        }
+
+        if (in_array(
+            $escopo['role'] ?? '',
+            [PermissionService::ROLE_PREFEITO, PermissionService::ROLE_CONTROLADOR],
+            true
+        )) {
+            return $unidades;
+        }
+
+        $allowedIds = array_map('intval', (array) ($escopo['unidades_escopo'] ?? []));
+        if (empty($allowedIds)) {
+            return [];
+        }
+
+        $allowedLookup = array_fill_keys($allowedIds, true);
+        return array_values(array_filter($unidades, static function (UnidadeOrganizacionalEntity $unidade) use ($allowedLookup): bool {
+            $id = (int) ($unidade->getId() ?? 0);
+            return isset($allowedLookup[$id]);
+        }));
+    }
+
+    private function syncUserCompanyFromPrincipalVinculo(int $userId): void
+    {
+        if ($userId <= 0) {
+            return;
+        }
+
+        $principal = $this->vinculoRepo->findPrincipal($userId);
+        $companyId = null;
+        if ($principal && !empty($principal['vinculo_unidade_id'])) {
+            $companyId = (int) $principal['vinculo_unidade_id'];
+        }
+
+        $this->db->update(
+            'users',
+            ['user_company' => $companyId],
+            sprintf('user_id = %d', $userId)
+        );
     }
 
     // ===========================================
