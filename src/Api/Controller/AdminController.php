@@ -722,13 +722,18 @@ class AdminController extends BaseController
     public function deleteUsuario(int $id): Response
     {
         $user = $this->userRepo->find($id);
+        $currentUserId = $this->getUserId() ?? 0;
 
         if (!$user) {
             return $this->notFound('Usuario nao encontrado');
         }
 
-        // Soft-delete compatible with legacy schema
-        if ($this->userRepo->supportsUserStatus()) {
+        if ($id === $currentUserId) {
+            return $this->validationError(['user' => 'Nao e permitido desativar o proprio usuario']);
+        }
+
+        // Soft-delete: try to ensure user_status exists to avoid hard-delete FK failures.
+        if ($this->ensureUserStatusColumn()) {
             $updated = $this->db->update('users', ['user_status' => 1], "user_id = {$id}");
             if (!$updated) {
                 $dbError = $this->db->getError();
@@ -738,19 +743,32 @@ class AdminController extends BaseController
                 }
                 return $this->error($message, 500);
             }
+
+            // Deactivate active vínculos to keep scope and dashboards consistent.
+            $this->vinculoRepo->removerTodosVinculos($id);
+
+            // Invalidate both legacy and repository cache namespaces.
+            $this->cache->invalidate('users:*');
+            $this->cache->invalidate('DotProject.Repository.UserRepository:dotp_users:*');
+
             return $this->json([
                 'message' => 'Usuario desativado com sucesso',
             ]);
         }
 
         try {
-            $deleted = $this->userService->deleteUser($id, $this->getUserId() ?? 0);
+            $deleted = $this->userService->deleteUser($id, $currentUserId);
         } catch (\InvalidArgumentException $e) {
             return $this->validationError(['user' => $e->getMessage()]);
         }
 
         if (!$deleted) {
-            return $this->error('Falha ao excluir usuario', 500);
+            $dbError = $this->db->getError();
+            $message = 'Falha ao excluir usuario';
+            if (!empty($dbError)) {
+                $message .= ': ' . $dbError;
+            }
+            return $this->error($message, 500);
         }
 
         return $this->json([
@@ -834,5 +852,69 @@ class AdminController extends BaseController
 
         $parsed = filter_var($value, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE);
         return $parsed ?? $default;
+    }
+
+    private function ensureUserStatusColumn(): bool
+    {
+        $usersTable = $this->db->table('users');
+        $exists = (int) ($this->db->fetchValue(
+            "SELECT COUNT(*)
+             FROM information_schema.columns
+             WHERE table_schema = DATABASE()
+               AND table_name = ?
+               AND column_name = 'user_status'",
+            [$usersTable]
+        ) ?? 0);
+
+        if ($exists > 0) {
+            return true;
+        }
+
+        try {
+            $this->db->execute(
+                sprintf(
+                    "ALTER TABLE `%s` ADD COLUMN user_status TINYINT(1) NOT NULL DEFAULT 0 AFTER user_department",
+                    $usersTable
+                )
+            );
+        } catch (\Throwable $e) {
+            return false;
+        }
+
+        try {
+            $this->db->execute(sprintf(
+                "UPDATE `%s` SET user_status = 0 WHERE user_status IS NULL",
+                $usersTable
+            ));
+
+            $idxExists = (int) ($this->db->fetchValue(
+                "SELECT COUNT(*)
+                 FROM information_schema.statistics
+                 WHERE table_schema = DATABASE()
+                   AND table_name = ?
+                   AND index_name = 'idx_user_status'",
+                [$usersTable]
+            ) ?? 0);
+
+            if ($idxExists === 0) {
+                $this->db->execute(sprintf(
+                    "ALTER TABLE `%s` ADD INDEX idx_user_status (user_status)",
+                    $usersTable
+                ));
+            }
+        } catch (\Throwable $e) {
+            // Column was created; index/backfill can be handled by migration later.
+        }
+
+        $existsAfter = (int) ($this->db->fetchValue(
+            "SELECT COUNT(*)
+             FROM information_schema.columns
+             WHERE table_schema = DATABASE()
+               AND table_name = ?
+               AND column_name = 'user_status'",
+            [$usersTable]
+        ) ?? 0);
+
+        return $existsAfter > 0;
     }
 }

@@ -368,12 +368,14 @@ class UserService
      */
     public function findByEmail(string $email): ?UserEntity
     {
+        $statusClause = $this->repository->supportsUserStatus() ? ' AND u.user_status = 0' : '';
         $sql = sprintf(
             "SELECT u.* FROM `%s` u 
              JOIN `%s` c ON c.contact_id = u.user_contact 
-             WHERE c.contact_email = ? AND u.user_status = 0",
+             WHERE c.contact_email = ?%s",
             $this->db->table('users'),
-            $this->db->table('contacts')
+            $this->db->table('contacts'),
+            $statusClause
         );
         
         $data = $this->db->fetchOne($sql, [$email]);
@@ -382,7 +384,7 @@ class UserService
             return null;
         }
         
-        return $this->repository->hydrate($data);
+        return $this->repository->hydrateRow($data);
     }
     
     /**
@@ -414,6 +416,7 @@ class UserService
      */
     public function searchUsers(string $query): array
     {
+        $statusClause = $this->repository->supportsUserStatus() ? ' AND u.user_status = 0' : '';
         $sql = sprintf(
             "SELECT u.*, c.contact_first_name, c.contact_last_name, c.contact_email 
              FROM `%s` u 
@@ -422,17 +425,18 @@ class UserService
                 OR c.contact_first_name LIKE ? 
                 OR c.contact_last_name LIKE ? 
                 OR c.contact_email LIKE ?)
-             AND u.user_status = 0
+             %s
              ORDER BY u.user_username
              LIMIT 20",
             $this->db->table('users'),
-            $this->db->table('contacts')
+            $this->db->table('contacts'),
+            $statusClause
         );
         
         $pattern = '%' . $query . '%';
         $results = $this->db->fetchAll($sql, [$pattern, $pattern, $pattern, $pattern]);
         
-        return array_map(fn($row) => $this->repository->hydrate($row), $results);
+        return array_map(fn($row) => $this->repository->hydrateRow($row), $results);
     }
     
     /**
