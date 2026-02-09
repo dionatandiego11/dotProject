@@ -247,7 +247,15 @@ class KanbanService
         if (!$this->ensureSchema()) {
             return false;
         }
-        return $this->taskRepo->moveToColumn($kanbanTaskId, $targetColumnId, $newOrder, $userId);
+        $moved = $this->taskRepo->moveToColumn($kanbanTaskId, $targetColumnId, $newOrder, $userId);
+        if (!$moved) {
+            return false;
+        }
+
+        $this->syncTaskProgressFromColumn($kanbanTaskId, $targetColumnId);
+        $this->invalidateDashboardCaches();
+
+        return true;
     }
 
     /**
@@ -497,6 +505,101 @@ class KanbanService
 
         $this->columnPresenceCache[$cacheKey] = $count > 0;
         return $this->columnPresenceCache[$cacheKey];
+    }
+
+    private function syncTaskProgressFromColumn(int $kanbanTaskId, int $targetColumnId): void
+    {
+        $taskRow = $this->db->fetchOne(
+            "SELECT kanban_task_task_id
+             FROM `dotp_kanban_tasks`
+             WHERE kanban_task_id = ?
+             LIMIT 1",
+            [$kanbanTaskId]
+        );
+        if (!$taskRow || empty($taskRow['kanban_task_task_id'])) {
+            return;
+        }
+
+        $taskId = (int) $taskRow['kanban_task_task_id'];
+        $column = $this->db->fetchOne(
+            "SELECT column_board_id, column_order, column_is_backlog, column_is_done
+             FROM `dotp_kanban_columns`
+             WHERE column_id = ?
+             LIMIT 1",
+            [$targetColumnId]
+        );
+        if (!$column) {
+            return;
+        }
+
+        $boardId = (int) ($column['column_board_id'] ?? 0);
+        if ($boardId <= 0) {
+            return;
+        }
+
+        $firstActiveColumnId = (int) ($this->db->fetchValue(
+            "SELECT column_id
+             FROM `dotp_kanban_columns`
+             WHERE column_board_id = ?
+               AND column_status = 0
+               AND column_is_backlog = 0
+               AND column_is_done = 0
+             ORDER BY column_order ASC
+             LIMIT 1",
+            [$boardId]
+        ) ?? 0);
+
+        $isBacklog = (int) ($column['column_is_backlog'] ?? 0) === 1;
+        $isDone = (int) ($column['column_is_done'] ?? 0) === 1;
+        $isFirstActive = $firstActiveColumnId > 0 && $firstActiveColumnId === $targetColumnId;
+
+        $taskCurrent = $this->db->fetchOne(
+            sprintf(
+                "SELECT task_status, task_percent_complete
+                 FROM `%s`
+                 WHERE task_id = ?
+                 LIMIT 1",
+                $this->db->table('tasks')
+            ),
+            [$taskId]
+        );
+        if (!$taskCurrent) {
+            return;
+        }
+
+        $status = (int) ($taskCurrent['task_status'] ?? 0);
+        $percent = (int) ($taskCurrent['task_percent_complete'] ?? 0);
+
+        if ($isBacklog) {
+            $status = 0;
+            $percent = 0;
+        } elseif ($isDone) {
+            $status = 3;
+            $percent = 100;
+        } elseif ($isFirstActive) {
+            $status = 1;
+            if ($percent < 0 || $percent > 99) {
+                $percent = 0;
+            }
+        } else {
+            $status = 2;
+            if ($percent <= 0 || $percent >= 100) {
+                $percent = 50;
+            }
+        }
+
+        $this->db->update('tasks', [
+            'task_status' => $status,
+            'task_percent_complete' => max(0, min(100, $percent)),
+        ], 'task_id = ' . $taskId);
+    }
+
+    private function invalidateDashboardCaches(): void
+    {
+        // Dashboard data is cached with default cache prefix (dp:), not kanban prefix.
+        $globalCache = new Cache();
+        $globalCache->invalidate('*DashboardController*dashboard*');
+        $globalCache->invalidate('dashboard:*');
     }
 
     private function isOverdue(?string $endDate, int $percentComplete): bool

@@ -131,24 +131,36 @@ class KanbanFlowIntegrationTest extends TestCase
         $kanbanTask = $this->findKanbanTaskByTaskId($columns, (int) $taskId);
         $this->assertNotNull($kanbanTask, 'Tarefa deveria ser sincronizada automaticamente ao abrir board.');
         $this->assertSame($backlogColumnId, (int) ($kanbanTask['column_id'] ?? 0));
+        $taskState = $this->taskState((int) $taskId);
+        $this->assertSame(0, (int) ($taskState['task_status'] ?? -1));
+        $this->assertSame(0, (int) ($taskState['task_percent_complete'] ?? -1));
 
         $this->assertTrue($this->service->moveTask((int) $kanbanTask['id'], (int) $todoColumnId, 0, 1));
         $columns = ($this->service->getBoard((int) $this->boardId, 1)['columns'] ?? []);
         $kanbanTask = $this->findKanbanTaskByTaskId($columns, (int) $taskId);
         $this->assertNotNull($kanbanTask);
         $this->assertSame($todoColumnId, (int) ($kanbanTask['column_id'] ?? 0));
+        $taskState = $this->taskState((int) $taskId);
+        $this->assertSame(1, (int) ($taskState['task_status'] ?? -1));
+        $this->assertSame(0, (int) ($taskState['task_percent_complete'] ?? -1));
 
         $this->assertTrue($this->service->moveTask((int) $kanbanTask['id'], (int) $inProgressColumnId, 0, 1));
         $columns = ($this->service->getBoard((int) $this->boardId, 1)['columns'] ?? []);
         $kanbanTask = $this->findKanbanTaskByTaskId($columns, (int) $taskId);
         $this->assertNotNull($kanbanTask);
         $this->assertSame($inProgressColumnId, (int) ($kanbanTask['column_id'] ?? 0));
+        $taskState = $this->taskState((int) $taskId);
+        $this->assertSame(2, (int) ($taskState['task_status'] ?? -1));
+        $this->assertSame(50, (int) ($taskState['task_percent_complete'] ?? -1));
 
         $this->assertTrue($this->service->moveTask((int) $kanbanTask['id'], (int) $doneColumnId, 0, 1));
         $columns = ($this->service->getBoard((int) $this->boardId, 1)['columns'] ?? []);
         $kanbanTask = $this->findKanbanTaskByTaskId($columns, (int) $taskId);
         $this->assertNotNull($kanbanTask);
         $this->assertSame($doneColumnId, (int) ($kanbanTask['column_id'] ?? 0));
+        $taskState = $this->taskState((int) $taskId);
+        $this->assertSame(3, (int) ($taskState['task_status'] ?? -1));
+        $this->assertSame(100, (int) ($taskState['task_percent_complete'] ?? -1));
     }
 
     /**
@@ -205,5 +217,24 @@ class KanbanFlowIntegrationTest extends TestCase
             }
         }
         return null;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function taskState(int $taskId): array
+    {
+        $row = $this->db->fetchOne(
+            sprintf(
+                "SELECT task_status, task_percent_complete
+                 FROM `%s`
+                 WHERE task_id = ?
+                 LIMIT 1",
+                $this->db->table('tasks')
+            ),
+            [$taskId]
+        );
+
+        return is_array($row) ? $row : [];
     }
 }
