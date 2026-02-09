@@ -170,9 +170,12 @@ function Kanban() {
             let resolvedBoardId = projectBoard?.id || null
             if (!resolvedBoardId) {
                 const project = projects.find((p) => String(p.id) === String(projectId))
+                const projectUnitIdRaw = project?.unidade?.id || project?.unidade_id || project?.company?.id || project?.company_id
+                const projectUnitId = projectUnitIdRaw ? parseInt(projectUnitIdRaw, 10) : null
                 const createResult = await createKanbanBoard({
                     name: project?.name ? `Kanban - ${project.name}` : 'Kanban',
                     project_id: parseInt(projectId, 10),
+                    ...(projectUnitId ? { unidade_id: projectUnitId } : {}),
                 })
                 if (!createResult?.success) {
                     throw new Error(createResult?.message || 'Falha ao criar board')

@@ -31,6 +31,13 @@ Consolidar o que foi estabilizado no sistema e definir o proximo plano de execuc
 - Novos indices compostos aplicados para padroes de consulta reais do repositório (`countUnread`, `findPending`, `getStats`).
 - Script de verificacao `db/migrations/20260209_verify_notifications_integrity.sql` adicionado e validado com resultado esperado (todos checks `0/1` corretos).
 
+### Checkpoint 2026-02-09 (kanban projeto com schema legado)
+- Corrigida regressao de Kanban vazio por projeto causada por consulta incompativel com schema legado (`task_assigned_to`/nome em `dotp_users`).
+- `KanbanService::getTasksByColumn()` passou a usar fallback por deteccao de coluna e join com `dotp_contacts` para nome de responsavel.
+- `KanbanController` passou a resolver unidade do projeto (`project_company`) ao listar/criar boards com `project_id`, evitando mismatch com `user_company`.
+- Frontend (`frontend/src/pages/Kanban.jsx`) passou a enviar `unidade_id` do projeto ao criar board.
+- Cobertura de integracao ampliada para garantir que board de projeto retorna tarefas no schema legado.
+
 ### Entregas recentes (mais relevantes)
 - `530c9756` sincronizacao de `companies` com `unidades` + script de verificacao.
 - `802120d3` backfill de `dotp_users.user_company` e normalizacao de `board_company`.

@@ -34,6 +34,8 @@ class KanbanService
     private KanbanTaskRepository $taskRepo;
     private bool $schemaChecked = false;
     private bool $schemaReady = false;
+    /** @var array<string, bool> */
+    private array $columnPresenceCache = [];
     
     public function __construct(
         ?Database $db = null,
@@ -397,6 +399,17 @@ class KanbanService
      */
     private function getTasksByColumn(int $boardId): array
     {
+        $tasksTable = $this->db->table('tasks');
+        $usersTable = $this->db->table('users');
+        $contactsTable = $this->db->table('contacts');
+        $hasAssignedTo = $this->hasTableColumn($tasksTable, 'task_assigned_to');
+        $taskAssignedToSelect = $hasAssignedTo
+            ? 't.task_assigned_to'
+            : 'NULL AS task_assigned_to';
+        $assigneeJoinExpr = $hasAssignedTo
+            ? 'COALESCE(t.task_assigned_to, t.task_owner)'
+            : 't.task_owner';
+
         $sql = sprintf(
             "SELECT
                 kt.kanban_task_id,
@@ -411,19 +424,23 @@ class KanbanService
                 t.task_percent_complete,
                 t.task_end_date,
                 t.task_owner,
-                t.task_assigned_to,
+                %s,
                 t.task_duration,
-                u.user_first_name,
-                u.user_last_name,
+                ct.contact_first_name AS user_first_name,
+                ct.contact_last_name AS user_last_name,
                 u.user_username
             FROM `dotp_kanban_tasks` kt
             JOIN `dotp_kanban_columns` c ON c.column_id = kt.kanban_task_column_id
             JOIN `%s` t ON t.task_id = kt.kanban_task_task_id
-            LEFT JOIN `%s` u ON u.user_id = COALESCE(t.task_assigned_to, t.task_owner)
+            LEFT JOIN `%s` u ON u.user_id = %s
+            LEFT JOIN `%s` ct ON ct.contact_id = u.user_contact
             WHERE c.column_board_id = %d AND c.column_status = 0
             ORDER BY c.column_order ASC, kt.kanban_task_order ASC",
+            $taskAssignedToSelect,
             $this->db->table('tasks'),
             $this->db->table('users'),
+            $assigneeJoinExpr,
+            $this->db->table('contacts'),
             $boardId
         );
         
@@ -444,9 +461,12 @@ class KanbanService
                 'task' => [
                     'name' => $row['task_name'],
                     'description' => $row['task_description'] ?? '',
-                    'priority' => $this->mapPriority($row['task_priority'] ?? 0),
+                    'priority' => $this->mapPriority((int) ($row['task_priority'] ?? 0)),
                     'percent_complete' => (int) ($row['task_percent_complete'] ?? 0),
-                    'is_overdue' => $this->isOverdue($row['task_end_date'] ?? null, $row['task_percent_complete'] ?? 0),
+                    'is_overdue' => $this->isOverdue(
+                        $row['task_end_date'] ?? null,
+                        (int) ($row['task_percent_complete'] ?? 0)
+                    ),
                     'assigned_to' => $row['task_assigned_to'] ?? $row['task_owner'] ?? null,
                     'assigned_to_name' => $this->formatUserName($row),
                     'estimated_hours' => $row['task_duration'] ?? null,
@@ -457,6 +477,26 @@ class KanbanService
         }
         
         return $byColumn;
+    }
+
+    private function hasTableColumn(string $table, string $column): bool
+    {
+        $cacheKey = $table . ':' . $column;
+        if (array_key_exists($cacheKey, $this->columnPresenceCache)) {
+            return $this->columnPresenceCache[$cacheKey];
+        }
+
+        $count = (int) ($this->db->fetchValue(
+            "SELECT COUNT(*)
+             FROM information_schema.columns
+             WHERE table_schema = DATABASE()
+               AND table_name = ?
+               AND column_name = ?",
+            [$table, $column]
+        ) ?? 0);
+
+        $this->columnPresenceCache[$cacheKey] = $count > 0;
+        return $this->columnPresenceCache[$cacheKey];
     }
 
     private function isOverdue(?string $endDate, int $percentComplete): bool

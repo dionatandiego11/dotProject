@@ -36,6 +36,11 @@ class KanbanController extends BaseController
             $userId = $this->getCurrentUserId();
             $companyId = $this->getCurrentCompanyId();
             $projectId = $this->request->getQueryParam('project_id');
+            $projectIdValue = $projectId ? (int) $projectId : null;
+
+            if ($projectIdValue !== null && $projectIdValue > 0) {
+                $companyId = $this->resolveCompanyIdForProject($projectIdValue, $companyId);
+            }
 
             if ($companyId <= 0) {
                 $response = ApiResponse::success([
@@ -47,7 +52,7 @@ class KanbanController extends BaseController
             
             $boards = $this->kanbanService->getAccessibleBoards(
                 $companyId,
-                $projectId ? (int) $projectId : null,
+                $projectIdValue,
                 $userId
             );
 
@@ -112,6 +117,11 @@ class KanbanController extends BaseController
             
             if (!empty($data['unidade_id'])) {
                 $data['company_id'] = (int) $data['unidade_id'];
+            }
+
+            $projectId = isset($data['project_id']) ? (int) $data['project_id'] : 0;
+            if (empty($data['company_id']) && $projectId > 0) {
+                $data['company_id'] = $this->resolveCompanyIdForProject($projectId, 0);
             }
 
             if (empty($data['company_id'])) {
@@ -422,5 +432,31 @@ class KanbanController extends BaseController
         );
 
         return $exists !== null;
+    }
+
+    private function resolveCompanyIdForProject(int $projectId, int $fallbackCompanyId = 0): int
+    {
+        if ($projectId <= 0) {
+            return $fallbackCompanyId;
+        }
+
+        $db = \DotProject\Core\Database::getInstance();
+        $projectsTable = $db->table('projects');
+        $companyId = (int) ($db->fetchValue(
+            sprintf(
+                "SELECT project_company
+                 FROM `%s`
+                 WHERE project_id = ?
+                 LIMIT 1",
+                $projectsTable
+            ),
+            [$projectId]
+        ) ?? 0);
+
+        if ($companyId > 0 && $this->unidadeExists($companyId)) {
+            return $companyId;
+        }
+
+        return $fallbackCompanyId;
     }
 }

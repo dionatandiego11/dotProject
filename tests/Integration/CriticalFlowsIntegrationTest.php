@@ -14,6 +14,7 @@ use DotProject\Core\Database;
 use DotProject\Entity\Notification;
 use DotProject\Repository\NotificationRepository;
 use DotProject\Repository\ProjectRepository;
+use DotProject\Service\KanbanService;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -35,6 +36,8 @@ class CriticalFlowsIntegrationTest extends TestCase
     /** @var int[] */
     private array $boardIds = [];
     /** @var int[] */
+    private array $taskIds = [];
+    /** @var int[] */
     private array $notificationIds = [];
     /** @var int[] */
     private array $createdCompanyIds = [];
@@ -48,6 +51,7 @@ class CriticalFlowsIntegrationTest extends TestCase
     protected function tearDown(): void
     {
         $this->cleanupBoards();
+        $this->cleanupTasks();
         $this->cleanupProjects();
         $this->cleanupNotifications();
         $this->cleanupCompanies();
@@ -383,6 +387,44 @@ class CriticalFlowsIntegrationTest extends TestCase
         $this->assertSame(67, $after[0]->getPercentComplete());
     }
 
+    public function testKanbanBoardReturnsProjectTasksWithLegacyTaskSchema(): void
+    {
+        $unidade = $this->pickAnyUnidade();
+        if ($unidade === null) {
+            $this->markTestSkipped('Base sem unidade para teste de tarefas no Kanban.');
+        }
+
+        $unidadeId = (int) $unidade['id'];
+        $this->ensureCompanyExistsForUnidade($unidadeId, (string) $unidade['nome']);
+
+        $projectId = $this->insertProject($unidadeId, 'it_kanban_schema_' . bin2hex(random_bytes(4)));
+        $this->projectIds[] = $projectId;
+        $this->taskIds[] = $this->insertTask($projectId, 'IT Task ' . bin2hex(random_bytes(3)));
+
+        $service = new KanbanService($this->db, null, new Cache());
+        $board = $service->createBoard([
+            'name' => 'IT Board ' . bin2hex(random_bytes(4)),
+            'project_id' => $projectId,
+            'company_id' => $unidadeId,
+        ], 1);
+
+        $boardId = (int) ($board->getId() ?? 0);
+        $this->assertGreaterThan(0, $boardId);
+        $this->boardIds[] = $boardId;
+
+        $payload = $service->getBoard($boardId, 1);
+        $this->assertIsArray($payload);
+
+        $columns = $payload['columns'] ?? [];
+        $this->assertNotEmpty($columns);
+
+        $taskTotal = 0;
+        foreach ($columns as $column) {
+            $taskTotal += count($column['tasks'] ?? []);
+        }
+        $this->assertGreaterThanOrEqual(1, $taskTotal);
+    }
+
     public function testAdminGetArvoreReturnsNodeWhenRaizIdIsNotGlobalRoot(): void
     {
         $target = $this->db->fetchOne(
@@ -440,6 +482,33 @@ class CriticalFlowsIntegrationTest extends TestCase
         ]);
 
         $this->assertNotFalse($id, 'Falha ao inserir projeto de integração');
+        return (int) $id;
+    }
+
+    private function insertTask(int $projectId, string $name): int
+    {
+        $id = $this->db->insert('tasks', [
+            'task_name' => $name,
+            'task_project' => $projectId,
+            'task_parent' => 0,
+            'task_milestone' => 0,
+            'task_owner' => 1,
+            'task_creator' => 1,
+            'task_start_date' => date('Y-m-d H:i:s'),
+            'task_duration' => 1,
+            'task_duration_type' => 1,
+            'task_hours_worked' => 0,
+            'task_end_date' => date('Y-m-d H:i:s', strtotime('+7 days')),
+            'task_status' => 0,
+            'task_priority' => 1,
+            'task_percent_complete' => 0,
+            'task_description' => 'integration task',
+            'task_order' => 1,
+            'task_access' => 0,
+            'task_type' => 0,
+        ]);
+
+        $this->assertNotFalse($id, 'Falha ao inserir tarefa de integraÃ§Ã£o');
         return (int) $id;
     }
 
@@ -506,6 +575,14 @@ class CriticalFlowsIntegrationTest extends TestCase
 
         $this->assertNotFalse($inserted, 'Falha ao criar company compatível para unidade');
         $this->createdCompanyIds[] = $unidadeId;
+    }
+
+    private function cleanupTasks(): void
+    {
+        foreach ($this->taskIds as $taskId) {
+            $this->db->delete('tasks', sprintf('task_id = %d', (int) $taskId));
+        }
+        $this->taskIds = [];
     }
 
     private function cleanupProjects(): void
