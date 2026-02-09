@@ -854,7 +854,7 @@ class AdminController extends BaseController
         return $parsed ?? $default;
     }
 
-    private function ensureUserStatusColumn(): bool
+    protected function ensureUserStatusColumn(): bool
     {
         $usersTable = $this->db->table('users');
         $exists = (int) ($this->db->fetchValue(
