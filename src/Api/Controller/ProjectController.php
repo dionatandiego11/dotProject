@@ -190,6 +190,7 @@ class ProjectController extends BaseController
             'project_short_name' => $shortName,
             'project_company' => $unidadeId,
             'project_status' => $body['status'] ?? 0,
+            'project_percent_complete' => $body['percent_complete'] ?? 0,
             'project_priority' => $body['priority'] ?? 0,
         ];
         $validation = $this->validation()->validateProject($validationData);
@@ -197,6 +198,8 @@ class ProjectController extends BaseController
         if ($validation->fails()) {
             return $this->response->validationError($validation->errors());
         }
+
+        $this->normalizeProjectStatusPercent($body, null, null);
 
         $unidadeExists = $this->db->fetchValue(sprintf(
             "SELECT unidade_id FROM dotp_unidades_organizacionais WHERE unidade_id = %d",
@@ -222,7 +225,7 @@ class ProjectController extends BaseController
             'project_end_date' => $body['end_date'] ?? null,
             'project_target_budget' => $body['budget'] ?? 0,
             'project_status' => $body['status'] ?? 0,
-            'project_percent_complete' => 0,
+            'project_percent_complete' => $body['percent_complete'] ?? 0,
             'project_color_identifier' => $body['color'] ?? '#4A90D9',
             'project_type' => $body['type'] ?? 0,
             'project_description' => $body['description'] ?? '',
@@ -287,6 +290,7 @@ class ProjectController extends BaseController
             'end_date' => 'project_end_date',
             'budget' => 'project_target_budget',
             'status' => 'project_status',
+            'percent_complete' => 'project_percent_complete',
             'color' => 'project_color_identifier',
             'type' => 'project_type',
             'description' => 'project_description',
@@ -306,16 +310,53 @@ class ProjectController extends BaseController
         if (array_key_exists('status', $body)) {
             $validationData['project_status'] = $body['status'];
         }
+        if (array_key_exists('percent_complete', $body)) {
+            $validationData['project_percent_complete'] = $body['percent_complete'];
+        }
         if (array_key_exists('priority', $body)) {
             $validationData['project_priority'] = $body['priority'];
         }
 
         if (!empty($validationData)) {
-            $validation = $this->validation()->validate($validationData)->validateProject($validationData);
+            $validation = $this->validation()->validate($validationData);
+
+            if (array_key_exists('project_name', $validationData)) {
+                $validation
+                    ->required('project_name', 'O nome do projeto é obrigatório.')
+                    ->minLength('project_name', 3, 'O nome do projeto deve ter pelo menos 3 caracteres.')
+                    ->maxLength('project_name', 255, 'O nome do projeto deve ter no máximo 255 caracteres.');
+            }
+
+            if (array_key_exists('project_short_name', $validationData) && $validationData['project_short_name'] !== null) {
+                $validation->maxLength('project_short_name', 10, 'O nome curto deve ter no máximo 10 caracteres.');
+            }
+
+            if (array_key_exists('project_company', $validationData)) {
+                $validation->integer('project_company', 'A empresa deve ser um valor numérico.');
+            }
+
+            if (array_key_exists('project_status', $validationData)) {
+                $validation->between('project_status', 0, 7, 'Status inválido.');
+            }
+
+            if (array_key_exists('project_percent_complete', $validationData)) {
+                $validation->between('project_percent_complete', 0, 100, 'Percentual inválido.');
+            }
+
+            if (array_key_exists('project_priority', $validationData)) {
+                $validation->between('project_priority', -1, 5, 'Prioridade inválida.');
+            }
+
             if ($validation->fails()) {
                 return $this->response->validationError($validation->errors());
             }
         }
+
+        $this->normalizeProjectStatusPercent(
+            $body,
+            (int) ($project->getAttribute('project_status') ?? 0),
+            (int) ($project->getAttribute('project_percent_complete') ?? 0)
+        );
 
         if ($hasUnidadeField) {
             if ($unidadeId === null) {
@@ -521,6 +562,42 @@ class ProjectController extends BaseController
             'duration' => (int) ($row['task_duration'] ?? 0),
             'owner_id' => $row['task_owner'] ? (int) $row['task_owner'] : null,
         ];
+    }
+
+    /**
+     * Keep project status/percent coherence for canonical workflow statuses.
+     *
+     * @param array<string, mixed> $payload
+     */
+    private function normalizeProjectStatusPercent(array &$payload, ?int $currentStatus, ?int $currentPercent): void
+    {
+        $hasStatus = array_key_exists('status', $payload)
+            && $payload['status'] !== null
+            && $payload['status'] !== '';
+        $hasPercent = array_key_exists('percent_complete', $payload)
+            && $payload['percent_complete'] !== null
+            && $payload['percent_complete'] !== '';
+
+        if (!$hasStatus && !$hasPercent) {
+            return;
+        }
+
+        $status = $hasStatus ? (int) $payload['status'] : (int) ($currentStatus ?? 0);
+        $percent = $hasPercent ? (int) $payload['percent_complete'] : (int) ($currentPercent ?? 0);
+        $percent = max(0, min(100, $percent));
+
+        if ($status === 5) {
+            $percent = 100;
+        } elseif ($status === 0) {
+            $percent = 0;
+        }
+
+        if ($hasStatus) {
+            $payload['status'] = $status;
+        }
+        if ($hasPercent || in_array($status, [0, 5], true)) {
+            $payload['percent_complete'] = $percent;
+        }
     }
 
     private function resolveUnidadeQueryParam(): ?int

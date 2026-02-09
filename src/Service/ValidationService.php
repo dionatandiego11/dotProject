@@ -314,6 +314,7 @@ class ValidationService
             ->maxLength('project_short_name', 10, 'O nome curto deve ter no máximo 10 caracteres.')
             ->numeric('project_company', 'A empresa deve ser um valor numérico.')
             ->between('project_status', 0, 7, 'Status inválido.')
+            ->between('project_percent_complete', 0, 100, 'Percentual inválido.')
             ->between('project_priority', -1, 5, 'Prioridade inválida.');
     }
 

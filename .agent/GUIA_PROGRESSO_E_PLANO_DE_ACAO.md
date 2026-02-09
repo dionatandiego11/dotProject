@@ -11,7 +11,7 @@ Consolidar o que foi estabilizado no sistema e definir o proximo plano de execuc
 ### Estado atual validado
 - API, regras de unidade e fluxo de kanban estabilizados em ambiente WSL + Docker.
 - Suite de testes passando no container `phpfpm`.
-- Resultado da ultima execucao: `OK (270 tests, 576 assertions)`.
+- Resultado da ultima execucao: `OK (274 tests, 601 assertions)`.
 
 ### Checkpoint 2026-02-09
 - Kanban padronizado para contrato canonico: `unidade_id` como campo oficial e `company_id` como compatibilidade.
@@ -49,6 +49,19 @@ Consolidar o que foi estabilizado no sistema e definir o proximo plano de execuc
 - `TaskController` atualizado para aceitar `assigned_to/assigned_to_id`, manter fallback para `owner_id` e operar com compatibilidade quando a coluna ainda nao existe.
 - `TaskRepository` endurecido para fallback automatico de assignee em bases nao migradas (`task_owner`) e uso canônico de `task_assigned_to` quando disponivel.
 - Cobertura de integracao ampliada para validar retorno de `assigned_to` com fallback para `owner`.
+
+### Checkpoint 2026-02-09 (integridade de progresso de tarefas)
+- Nova migracao `db/migrations/20260209_harden_tasks_progress_integrity.sql` para normalizar legado em `task_status`/`task_percent_complete` e adicionar indices compostos de consulta.
+- Script de verificacao `db/migrations/20260209_verify_tasks_progress_integrity.sql` adicionado e validado com resultado esperado (todos checks de consistencia em `0` e indices em `1`).
+- `TaskController` passou a sincronizar automaticamente `percent_complete` quando o `status` e alterado sem percentual explicito (ex.: `status=3 -> percent=100`, `status=0 -> percent=0`).
+- Cobertura de integracao ampliada para criacao/edicao de tarefa garantindo coerencia de status/progresso sem depender do frontend.
+
+### Checkpoint 2026-02-09 (integridade de progresso de projetos)
+- Nova migracao `db/migrations/20260209_harden_projects_progress_integrity.sql` para normalizar legado em `project_status`/`project_percent_complete` e adicionar indices compostos de listagem/analytics.
+- Script de verificacao `db/migrations/20260209_verify_projects_progress_integrity.sql` adicionado e validado com resultado esperado (todos checks de consistencia em `0` e indices em `1`).
+- `ProjectController` passou a sincronizar automaticamente percentual com status canonico em criacao/edicao (`status=5 -> percent=100`, `status=0 -> percent=0`), e a aceitar `percent_complete` em `update`.
+- Validacao de `ProjectController::update` foi corrigida para modo parcial (evitando regressao de exigir campos de criacao em updates parciais).
+- Cobertura de integracao ampliada para criacao/edicao de projeto garantindo coerencia de status/progresso no backend.
 
 ### Status de iteracoes (2026-02-09)
 - Iteracao 1 (`unidade` x `company`): concluida no escopo P0 critico.

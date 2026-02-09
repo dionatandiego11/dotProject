@@ -432,6 +432,125 @@ class CriticalFlowsIntegrationTest extends TestCase
         $this->assertSame(1, (int) ($body['assigned_to'] ?? 0));
     }
 
+    public function testTaskStoreStatusDoneDefaultsPercentToHundred(): void
+    {
+        $unidade = $this->pickAnyUnidade();
+        if ($unidade === null) {
+            $this->markTestSkipped('Base sem unidade para teste de consistencia status/percent na criacao.');
+        }
+
+        $unidadeId = (int) $unidade['id'];
+        $this->ensureCompanyExistsForUnidade($unidadeId, (string) $unidade['nome']);
+
+        $projectId = $this->insertProject($unidadeId, 'it_task_store_done_' . bin2hex(random_bytes(4)));
+        $this->projectIds[] = $projectId;
+
+        $request = $this->createMock(Request::class);
+        $request->method('getBody')->willReturn([
+            'name' => 'Task store done ' . bin2hex(random_bytes(3)),
+            'project_id' => $projectId,
+            'status' => 3,
+        ]);
+        $request->method('getParam')
+            ->willReturnCallback(fn(string $key, mixed $default = null) => $key === '_user_id' ? 1 : $default);
+
+        $response = new Response();
+        $controller = new IntegrationTaskController($request, $response);
+        $result = $controller->store();
+        $body = $this->responseBody($result);
+
+        $taskId = (int) ($body['id'] ?? 0);
+        $this->assertGreaterThan(0, $taskId);
+        $this->taskIds[] = $taskId;
+
+        $row = $this->db->fetchOne(
+            sprintf(
+                "SELECT task_status, task_percent_complete FROM `%s` WHERE task_id = %d LIMIT 1",
+                $this->db->table('tasks'),
+                $taskId
+            )
+        );
+
+        $this->assertNotNull($row);
+        $this->assertSame(3, (int) ($row['task_status'] ?? -1));
+        $this->assertSame(100, (int) ($row['task_percent_complete'] ?? -1));
+    }
+
+    public function testTaskUpdateStatusOnlyKeepsPercentCoherent(): void
+    {
+        $unidade = $this->pickAnyUnidade();
+        if ($unidade === null) {
+            $this->markTestSkipped('Base sem unidade para teste de consistencia status/percent na edicao.');
+        }
+
+        $unidadeId = (int) $unidade['id'];
+        $this->ensureCompanyExistsForUnidade($unidadeId, (string) $unidade['nome']);
+
+        $projectId = $this->insertProject($unidadeId, 'it_task_update_done_' . bin2hex(random_bytes(4)));
+        $this->projectIds[] = $projectId;
+
+        $taskId = $this->insertTask($projectId, 'Task update done ' . bin2hex(random_bytes(3)));
+        $this->taskIds[] = $taskId;
+
+        $updated = $this->db->update('tasks', [
+            'task_status' => 2,
+            'task_percent_complete' => 40,
+        ], sprintf('task_id = %d', $taskId));
+        $this->assertTrue($updated);
+
+        $requestDone = $this->createMock(Request::class);
+        $requestDone->method('getBody')->willReturn(['status' => 3]);
+        $requestDone->method('getParam')
+            ->willReturnCallback(function (string $key, mixed $default = null) use ($taskId) {
+                return match ($key) {
+                    'id' => $taskId,
+                    '_user_id' => 1,
+                    default => $default,
+                };
+            });
+
+        $responseDone = new Response();
+        $controllerDone = new IntegrationTaskController($requestDone, $responseDone);
+        $controllerDone->update();
+
+        $rowDone = $this->db->fetchOne(
+            sprintf(
+                "SELECT task_status, task_percent_complete FROM `%s` WHERE task_id = %d LIMIT 1",
+                $this->db->table('tasks'),
+                $taskId
+            )
+        );
+        $this->assertNotNull($rowDone);
+        $this->assertSame(3, (int) ($rowDone['task_status'] ?? -1));
+        $this->assertSame(100, (int) ($rowDone['task_percent_complete'] ?? -1));
+
+        $requestBacklog = $this->createMock(Request::class);
+        $requestBacklog->method('getBody')->willReturn(['status' => 0]);
+        $requestBacklog->method('getParam')
+            ->willReturnCallback(function (string $key, mixed $default = null) use ($taskId) {
+                return match ($key) {
+                    'id' => $taskId,
+                    '_user_id' => 1,
+                    default => $default,
+                };
+            });
+
+        $responseBacklog = new Response();
+        $controllerBacklog = new IntegrationTaskController($requestBacklog, $responseBacklog);
+        $controllerBacklog->update();
+
+        $rowBacklog = $this->db->fetchOne(
+            sprintf(
+                "SELECT task_status, task_percent_complete FROM `%s` WHERE task_id = %d LIMIT 1",
+                $this->db->table('tasks'),
+                $taskId
+            )
+        );
+        $this->assertNotNull($rowBacklog);
+        $this->assertSame(0, (int) ($rowBacklog['task_status'] ?? -1));
+        $this->assertSame(0, (int) ($rowBacklog['task_percent_complete'] ?? -1));
+    }
+
     public function testKanbanBoardReturnsProjectTasksWithLegacyTaskSchema(): void
     {
         $unidade = $this->pickAnyUnidade();
@@ -468,6 +587,116 @@ class CriticalFlowsIntegrationTest extends TestCase
             $taskTotal += count($column['tasks'] ?? []);
         }
         $this->assertGreaterThanOrEqual(1, $taskTotal);
+    }
+
+    public function testProjectStoreStatusDoneDefaultsPercentToHundred(): void
+    {
+        $unidade = $this->pickAnyUnidade();
+        if ($unidade === null) {
+            $this->markTestSkipped('Base sem unidade para teste de consistencia de progresso em projeto.');
+        }
+
+        $unidadeId = (int) $unidade['id'];
+        $this->ensureCompanyExistsForUnidade($unidadeId, (string) $unidade['nome']);
+
+        $request = $this->createMock(Request::class);
+        $request->method('getBody')->willReturn([
+            'name' => 'Project done store ' . bin2hex(random_bytes(3)),
+            'unidade_id' => $unidadeId,
+            'status' => 5,
+        ]);
+        $request->method('getParam')
+            ->willReturnCallback(fn(string $key, mixed $default = null) => $key === '_user_id' ? 1 : $default);
+
+        $response = new Response();
+        $controller = new IntegrationProjectController($request, $response);
+        $result = $controller->store();
+        $body = $this->responseBody($result);
+
+        $projectId = (int) ($body['id'] ?? 0);
+        $this->assertGreaterThan(0, $projectId);
+        $this->projectIds[] = $projectId;
+
+        $row = $this->db->fetchOne(
+            sprintf(
+                "SELECT project_status, project_percent_complete FROM `%s` WHERE project_id = %d LIMIT 1",
+                $this->db->table('projects'),
+                $projectId
+            )
+        );
+
+        $this->assertNotNull($row);
+        $this->assertSame(5, (int) ($row['project_status'] ?? -1));
+        $this->assertSame(100, (int) ($row['project_percent_complete'] ?? -1));
+    }
+
+    public function testProjectUpdateStatusAndPercentRemainCoherent(): void
+    {
+        $unidade = $this->pickAnyUnidade();
+        if ($unidade === null) {
+            $this->markTestSkipped('Base sem unidade para teste de consistencia de progresso em projeto.');
+        }
+
+        $unidadeId = (int) $unidade['id'];
+        $this->ensureCompanyExistsForUnidade($unidadeId, (string) $unidade['nome']);
+
+        $projectId = $this->insertProject($unidadeId, 'it_project_progress_' . bin2hex(random_bytes(4)));
+        $this->projectIds[] = $projectId;
+
+        $requestDone = $this->createMock(Request::class);
+        $requestDone->method('getBody')->willReturn(['status' => 5]);
+        $requestDone->method('getParam')
+            ->willReturnCallback(function (string $key, mixed $default = null) use ($projectId) {
+                return match ($key) {
+                    'id' => $projectId,
+                    '_user_id' => 1,
+                    default => $default,
+                };
+            });
+
+        $responseDone = new Response();
+        $controllerDone = new IntegrationProjectController($requestDone, $responseDone);
+        $controllerDone->update();
+
+        $afterDone = $this->db->fetchOne(
+            sprintf(
+                "SELECT project_status, project_percent_complete FROM `%s` WHERE project_id = %d LIMIT 1",
+                $this->db->table('projects'),
+                $projectId
+            )
+        );
+        $this->assertNotNull($afterDone);
+        $this->assertSame(5, (int) ($afterDone['project_status'] ?? -1));
+        $this->assertSame(100, (int) ($afterDone['project_percent_complete'] ?? -1));
+
+        $requestProgress = $this->createMock(Request::class);
+        $requestProgress->method('getBody')->willReturn([
+            'status' => 3,
+            'percent_complete' => 65,
+        ]);
+        $requestProgress->method('getParam')
+            ->willReturnCallback(function (string $key, mixed $default = null) use ($projectId) {
+                return match ($key) {
+                    'id' => $projectId,
+                    '_user_id' => 1,
+                    default => $default,
+                };
+            });
+
+        $responseProgress = new Response();
+        $controllerProgress = new IntegrationProjectController($requestProgress, $responseProgress);
+        $controllerProgress->update();
+
+        $afterProgress = $this->db->fetchOne(
+            sprintf(
+                "SELECT project_status, project_percent_complete FROM `%s` WHERE project_id = %d LIMIT 1",
+                $this->db->table('projects'),
+                $projectId
+            )
+        );
+        $this->assertNotNull($afterProgress);
+        $this->assertSame(3, (int) ($afterProgress['project_status'] ?? -1));
+        $this->assertSame(65, (int) ($afterProgress['project_percent_complete'] ?? -1));
     }
 
     public function testAdminGetArvoreReturnsNodeWhenRaizIdIsNotGlobalRoot(): void
