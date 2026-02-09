@@ -11,7 +11,13 @@ Consolidar o que foi estabilizado no sistema e definir o proximo plano de execuc
 ### Estado atual validado
 - API, regras de unidade e fluxo de kanban estabilizados em ambiente WSL + Docker.
 - Suite de testes passando no container `phpfpm`.
-- Resultado da ultima execucao: `OK (259 tests, 470 assertions)`.
+- Resultado da ultima execucao: `OK (260 tests, 483 assertions)`.
+
+### Checkpoint 2026-02-09
+- Kanban padronizado para contrato canonico: `unidade_id` como campo oficial e `company_id` como compatibilidade.
+- Validacoes de escopo no Kanban passaram a expor erros em ambos os campos (`unidade_id` e `company_id`).
+- Cobertura de integracao reforcada para garantir payload canonico em criacao e leitura de boards.
+- Matriz de contrato documentada em `docs/api/unidade_company_contract.md`.
 
 ### Entregas recentes (mais relevantes)
 - `530c9756` sincronizacao de `companies` com `unidades` + script de verificacao.

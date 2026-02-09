@@ -138,6 +138,8 @@ class CriticalFlowsIntegrationTest extends TestCase
         $this->assertIsArray($capturedPayload);
         $this->assertTrue((bool) ($capturedPayload['success'] ?? false));
         $this->assertSame($unidadeId, (int) ($capturedPayload['data']['company_id'] ?? 0));
+        $this->assertSame($unidadeId, (int) ($capturedPayload['data']['unidade_id'] ?? 0));
+        $this->assertSame($unidadeId, (int) ($capturedPayload['data']['unidade']['id'] ?? 0));
 
         $boardId = (int) ($capturedPayload['data']['id'] ?? 0);
         $this->assertGreaterThan(0, $boardId);
@@ -211,6 +213,8 @@ class CriticalFlowsIntegrationTest extends TestCase
             $this->assertIsArray($capturedPayload);
             $this->assertTrue((bool) ($capturedPayload['success'] ?? false));
             $this->assertSame($expectedUnidade, (int) ($capturedPayload['data']['company_id'] ?? 0));
+            $this->assertSame($expectedUnidade, (int) ($capturedPayload['data']['unidade_id'] ?? 0));
+            $this->assertSame($expectedUnidade, (int) ($capturedPayload['data']['unidade']['id'] ?? 0));
 
             $boardId = (int) ($capturedPayload['data']['id'] ?? 0);
             $this->assertGreaterThan(0, $boardId);
@@ -224,6 +228,89 @@ class CriticalFlowsIntegrationTest extends TestCase
         } finally {
             $this->db->update('users', ['user_company' => $originalCompany], sprintf('user_id = %d', $userId));
         }
+    }
+
+    public function testKanbanGetBoardReturnsCanonicalUnidadePayload(): void
+    {
+        $unidade = $this->pickAnyUnidade();
+        if ($unidade === null) {
+            $this->markTestSkipped('Base sem unidade para teste de leitura de board.');
+        }
+
+        $unidadeId = (int) $unidade['id'];
+        $this->ensureCompanyExistsForUnidade($unidadeId, (string) $unidade['nome']);
+
+        $createRequest = $this->createMock(Request::class);
+        $createRequest->method('getBody')->willReturn([
+            'name' => 'IT Kanban getBoard ' . bin2hex(random_bytes(4)),
+            'unidade_id' => $unidadeId,
+        ]);
+        $createRequest->method('getParam')
+            ->willReturnCallback(fn(string $key, mixed $default = null) => $key === '_user_id' ? 1 : $default);
+
+        $createPayload = null;
+        $createStatus = null;
+        $createResponse = $this->getMockBuilder(Response::class)
+            ->onlyMethods(['json', 'error', 'send'])
+            ->getMock();
+        $createResponse->method('json')
+            ->willReturnCallback(function (mixed $data, int $status = 200) use (&$createPayload, &$createStatus, $createResponse) {
+                $createPayload = $data;
+                $createStatus = $status;
+                return $createResponse;
+            });
+        $createResponse->method('error')
+            ->willReturnCallback(function (string $message, int $status = 400) use (&$createPayload, &$createStatus, $createResponse) {
+                $createPayload = ['error' => true, 'message' => $message];
+                $createStatus = $status;
+                return $createResponse;
+            });
+        $createResponse->method('send')->willReturnCallback(static function (): void {
+        });
+
+        $createController = new KanbanController($createRequest, $createResponse);
+        $createController->createBoard();
+
+        $this->assertSame(201, $createStatus);
+        $boardId = (int) ($createPayload['data']['id'] ?? 0);
+        $this->assertGreaterThan(0, $boardId);
+        $this->boardIds[] = $boardId;
+
+        $getRequest = $this->createMock(Request::class);
+        $getRequest->method('getParam')
+            ->willReturnCallback(fn(string $key, mixed $default = null) => $key === '_user_id' ? 1 : $default);
+
+        $getPayload = null;
+        $getStatus = null;
+        $getResponse = $this->getMockBuilder(Response::class)
+            ->onlyMethods(['json', 'error', 'send'])
+            ->getMock();
+        $getResponse->method('json')
+            ->willReturnCallback(function (mixed $data, int $status = 200) use (&$getPayload, &$getStatus, $getResponse) {
+                $getPayload = $data;
+                $getStatus = $status;
+                return $getResponse;
+            });
+        $getResponse->method('error')
+            ->willReturnCallback(function (string $message, int $status = 400) use (&$getPayload, &$getStatus, $getResponse) {
+                $getPayload = ['error' => true, 'message' => $message];
+                $getStatus = $status;
+                return $getResponse;
+            });
+        $getResponse->method('send')->willReturnCallback(static function (): void {
+        });
+
+        $controller = new KanbanController($getRequest, $getResponse);
+        $controller->getBoard($boardId);
+
+        $this->assertSame(200, $getStatus);
+        $this->assertIsArray($getPayload);
+        $this->assertTrue((bool) ($getPayload['success'] ?? false));
+        $boardData = $getPayload['data']['board'] ?? [];
+        $this->assertSame($unidadeId, (int) ($boardData['company_id'] ?? 0));
+        $this->assertSame($unidadeId, (int) ($boardData['unidade_id'] ?? 0));
+        $this->assertSame($unidadeId, (int) ($boardData['unidade']['id'] ?? 0));
+        $this->assertSame($unidadeId, (int) ($boardData['company']['id'] ?? 0));
     }
 
     public function testAdminGetArvoreReturnsNodeWhenRaizIdIsNotGlobalRoot(): void

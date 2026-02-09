@@ -50,9 +50,14 @@ class KanbanController extends BaseController
                 $projectId ? (int) $projectId : null,
                 $userId
             );
+
+            $boardsPayload = array_map(
+                fn($b) => $this->normalizeBoardPayload($b->toArray()),
+                $boards
+            );
             
             $response = ApiResponse::success([
-                'boards' => array_map(fn($b) => $b->toArray(), $boards),
+                'boards' => $boardsPayload,
             ]);
             
             $this->response->json($response->toArray())->send();
@@ -78,8 +83,10 @@ class KanbanController extends BaseController
                 $this->response->json($response->toArray(), 404)->send();
                 return;
             }
-            
-            $this->response->json(ApiResponse::success($board)->toArray())->send();
+
+            $this->response->json(
+                ApiResponse::success($this->normalizeBoardEnvelope($board))->toArray()
+            )->send();
         } catch (\Throwable $e) {
             $this->response->error($e->getMessage(), 500)->send();
         }
@@ -114,7 +121,7 @@ class KanbanController extends BaseController
             $companyId = isset($data['company_id']) ? (int) $data['company_id'] : 0;
             if ($companyId <= 0) {
                 $response = ApiResponse::validationError([
-                    'company_id' => 'Nao foi possivel identificar a unidade do usuario',
+                    ...$this->unidadeValidationError('Nao foi possivel identificar a unidade do usuario'),
                 ]);
                 $this->response->json($response->toArray(), 422)->send();
                 return;
@@ -122,7 +129,7 @@ class KanbanController extends BaseController
 
             if (!$this->unidadeExists($companyId)) {
                 $response = ApiResponse::validationError([
-                    'company_id' => 'Unidade informada e invalida',
+                    ...$this->unidadeValidationError('Unidade informada e invalida'),
                 ]);
                 $this->response->json($response->toArray(), 422)->send();
                 return;
@@ -133,7 +140,7 @@ class KanbanController extends BaseController
             $board = $this->kanbanService->createBoard($data, $userId);
             
             $this->response->json(ApiResponse::success(
-                $board->toArray(),
+                $this->normalizeBoardPayload($board->toArray()),
                 'Board created successfully'
             )->toArray(), 201)->send();
         } catch (\RuntimeException $e) {
@@ -256,6 +263,74 @@ class KanbanController extends BaseController
     // =====================================================
     // HELPERS
     // =====================================================
+
+    /**
+     * Keep unidade_id canonical while preserving company_id compatibility.
+     *
+     * @param array<string, mixed> $board
+     * @return array<string, mixed>
+     */
+    private function normalizeBoardPayload(array $board): array
+    {
+        $unidadeId = null;
+        if (array_key_exists('unidade_id', $board) && $board['unidade_id'] !== null && $board['unidade_id'] !== '') {
+            $unidadeId = (int) $board['unidade_id'];
+        } elseif (array_key_exists('company_id', $board) && $board['company_id'] !== null && $board['company_id'] !== '') {
+            $unidadeId = (int) $board['company_id'];
+        }
+
+        if ($unidadeId !== null && $unidadeId > 0) {
+            $board['unidade_id'] = $unidadeId;
+            $board['company_id'] = $unidadeId;
+
+            if (!isset($board['unidade']) || !is_array($board['unidade'])) {
+                $board['unidade'] = ['id' => $unidadeId];
+            } elseif (!array_key_exists('id', $board['unidade'])) {
+                $board['unidade']['id'] = $unidadeId;
+            }
+
+            if (!isset($board['company']) || !is_array($board['company'])) {
+                $board['company'] = ['id' => $unidadeId];
+            } elseif (!array_key_exists('id', $board['company'])) {
+                $board['company']['id'] = $unidadeId;
+            }
+        }
+
+        return $board;
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    private function normalizeBoardEnvelope(array $payload): array
+    {
+        if (isset($payload['board']) && is_array($payload['board'])) {
+            $payload['board'] = $this->normalizeBoardPayload($payload['board']);
+        } elseif (array_key_exists('id', $payload)) {
+            $payload = $this->normalizeBoardPayload($payload);
+        }
+
+        if (isset($payload['boards']) && is_array($payload['boards'])) {
+            $payload['boards'] = array_map(
+                fn($board) => is_array($board) ? $this->normalizeBoardPayload($board) : $board,
+                $payload['boards']
+            );
+        }
+
+        return $payload;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function unidadeValidationError(string $message): array
+    {
+        return [
+            'unidade_id' => $message,
+            'company_id' => $message,
+        ];
+    }
     
     private function getCurrentUserId(): ?int
     {
