@@ -13,6 +13,7 @@ const Projects = lazy(() => import('./pages/Projects'))
 const ProjectDetails = lazy(() => import('./pages/ProjectDetails'))
 const Kanban = lazy(() => import('./pages/Kanban'))
 const Login = lazy(() => import('./pages/Login'))
+const SetupWizard = lazy(() => import('./pages/SetupWizard'))
 
 // Admin pages
 const DashboardAdmin = lazy(() => import('./pages/admin/DashboardAdmin'))
@@ -60,6 +61,16 @@ function App() {
                     element={
                         <Suspense fallback={<Loading fullScreen />}>
                             <Login />
+                        </Suspense>
+                    }
+                />
+
+                {/* Setup Wizard - Public */}
+                <Route
+                    path="/setup"
+                    element={
+                        <Suspense fallback={<Loading fullScreen />}>
+                            <SetupWizard />
                         </Suspense>
                     }
                 />

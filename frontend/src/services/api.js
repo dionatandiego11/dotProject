@@ -648,6 +648,17 @@ export async function getAdminOnboardingReadiness() {
     return apiRequest('/admin/onboarding/readiness');
 }
 
+export async function getSetupTemplates() {
+    return apiRequest('/admin/setup/templates');
+}
+
+export async function setupPrefeitura(data) {
+    return apiRequest('/admin/setup', {
+        method: 'POST',
+        body: JSON.stringify(data),
+    });
+}
+
 export default {
     // Auth
     login,
@@ -735,5 +746,9 @@ export default {
     getMatrizPermissoes,
     updateMatrizPermissoes,
     getOrganograma,
-    getAdminOnboardingReadiness
+    getAdminOnboardingReadiness,
+
+    // Setup / Onboarding
+    getSetupTemplates,
+    setupPrefeitura
 };
