@@ -32,6 +32,7 @@ class KanbanService
     private Cache $cache;
     private KanbanColumnRepository $columnRepo;
     private KanbanTaskRepository $taskRepo;
+    private ProjectProgressSyncService $projectProgressSync;
     private bool $schemaChecked = false;
     private bool $schemaReady = false;
     /** @var array<string, bool> */
@@ -47,6 +48,7 @@ class KanbanService
         $this->cache = $cache ?? new Cache(null, 'kanban:');
         $this->columnRepo = new KanbanColumnRepository($this->db, $this->cache);
         $this->taskRepo = new KanbanTaskRepository($this->db, $this->cache);
+        $this->projectProgressSync = new ProjectProgressSyncService($this->db);
     }
     
     /**
@@ -592,6 +594,8 @@ class KanbanService
             'task_status' => $status,
             'task_percent_complete' => max(0, min(100, $percent)),
         ], 'task_id = ' . $taskId);
+
+        $this->projectProgressSync->syncByTaskId($taskId);
     }
 
     private function invalidateDashboardCaches(): void

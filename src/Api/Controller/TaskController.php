@@ -14,9 +14,11 @@ namespace DotProject\Api\Controller;
 
 use DotProject\Api\Request;
 use DotProject\Api\Response;
+use DotProject\Core\Logger;
 use DotProject\Entity\Task;
 use DotProject\Service\AuthorizationService;
 use DotProject\Service\PermissionService;
+use DotProject\Service\ProjectProgressSyncService;
 
 /**
  * Controller de tarefas
@@ -24,6 +26,7 @@ use DotProject\Service\PermissionService;
 class TaskController extends BaseController
 {
     private ?bool $hasTaskAssignedTo = null;
+    private ?ProjectProgressSyncService $projectProgressSync = null;
 
     /**
      * GET /v1/tasks
@@ -275,6 +278,8 @@ class TaskController extends BaseController
             return $this->error('Failed to create task');
         }
 
+        $this->syncProjectProgress((int) $body['project_id']);
+
         return $this->created([
             'id' => $task->getId(),
             'message' => 'Task created successfully',
@@ -390,6 +395,8 @@ class TaskController extends BaseController
             return $this->error('Failed to update task');
         }
 
+        $this->syncProjectProgress((int) ($task->getAttribute('task_project') ?? 0));
+
         return $this->json([
             'id' => $task->getId(),
             'message' => 'Task updated successfully',
@@ -432,6 +439,8 @@ class TaskController extends BaseController
         if (!$task->delete()) {
             return $this->error('Failed to delete task');
         }
+
+        $this->syncProjectProgress((int) ($task->getAttribute('task_project') ?? 0));
 
         return $this->response->noContent();
     }
@@ -545,6 +554,23 @@ class TaskController extends BaseController
         }
 
         return $this->hasTaskAssignedTo;
+    }
+
+    private function syncProjectProgress(int $projectId): void
+    {
+        if ($projectId <= 0) {
+            return;
+        }
+
+        try {
+            $this->projectProgressSync = $this->projectProgressSync ?? new ProjectProgressSyncService($this->db);
+            $this->projectProgressSync->syncProject($projectId);
+        } catch (\Throwable $e) {
+            Logger::warning('Failed to sync project progress after task mutation', [
+                'project_id' => $projectId,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**

@@ -133,8 +133,11 @@ class KanbanFlowIntegrationTest extends TestCase
         $this->assertNotNull($kanbanTask, 'Tarefa deveria ser sincronizada automaticamente ao abrir board.');
         $this->assertSame($backlogColumnId, (int) ($kanbanTask['column_id'] ?? 0));
         $taskState = $this->taskState((int) $taskId);
+        $projectState = $this->projectState((int) $projectId);
         $this->assertSame(0, (int) ($taskState['task_status'] ?? -1));
         $this->assertSame(0, (int) ($taskState['task_percent_complete'] ?? -1));
+        $this->assertSame(1, (int) ($projectState['project_status'] ?? -1));
+        $this->assertSame(0, (int) ($projectState['project_percent_complete'] ?? -1));
 
         $this->assertTrue($this->service->moveTask((int) $kanbanTask['id'], (int) $todoColumnId, 0, 1));
         $columns = ($this->service->getBoard((int) $this->boardId, 1)['columns'] ?? []);
@@ -142,8 +145,11 @@ class KanbanFlowIntegrationTest extends TestCase
         $this->assertNotNull($kanbanTask);
         $this->assertSame($todoColumnId, (int) ($kanbanTask['column_id'] ?? 0));
         $taskState = $this->taskState((int) $taskId);
+        $projectState = $this->projectState((int) $projectId);
         $this->assertSame(1, (int) ($taskState['task_status'] ?? -1));
         $this->assertSame(0, (int) ($taskState['task_percent_complete'] ?? -1));
+        $this->assertSame(3, (int) ($projectState['project_status'] ?? -1));
+        $this->assertSame(0, (int) ($projectState['project_percent_complete'] ?? -1));
 
         $this->assertTrue($this->service->moveTask((int) $kanbanTask['id'], (int) $inProgressColumnId, 0, 1));
         $columns = ($this->service->getBoard((int) $this->boardId, 1)['columns'] ?? []);
@@ -151,8 +157,11 @@ class KanbanFlowIntegrationTest extends TestCase
         $this->assertNotNull($kanbanTask);
         $this->assertSame($inProgressColumnId, (int) ($kanbanTask['column_id'] ?? 0));
         $taskState = $this->taskState((int) $taskId);
+        $projectState = $this->projectState((int) $projectId);
         $this->assertSame(2, (int) ($taskState['task_status'] ?? -1));
         $this->assertSame(50, (int) ($taskState['task_percent_complete'] ?? -1));
+        $this->assertSame(3, (int) ($projectState['project_status'] ?? -1));
+        $this->assertSame(50, (int) ($projectState['project_percent_complete'] ?? -1));
 
         $this->assertTrue($this->service->moveTask((int) $kanbanTask['id'], (int) $doneColumnId, 0, 1));
         $columns = ($this->service->getBoard((int) $this->boardId, 1)['columns'] ?? []);
@@ -160,8 +169,11 @@ class KanbanFlowIntegrationTest extends TestCase
         $this->assertNotNull($kanbanTask);
         $this->assertSame($doneColumnId, (int) ($kanbanTask['column_id'] ?? 0));
         $taskState = $this->taskState((int) $taskId);
+        $projectState = $this->projectState((int) $projectId);
         $this->assertSame(3, (int) ($taskState['task_status'] ?? -1));
         $this->assertSame(100, (int) ($taskState['task_percent_complete'] ?? -1));
+        $this->assertSame(3, (int) ($projectState['project_status'] ?? -1));
+        $this->assertSame(100, (int) ($projectState['project_percent_complete'] ?? -1));
     }
 
     public function testMoveToDoneInvalidatesAnalyticsDashboardCache(): void
@@ -324,6 +336,25 @@ class KanbanFlowIntegrationTest extends TestCase
                 $this->db->table('tasks')
             ),
             [$taskId]
+        );
+
+        return is_array($row) ? $row : [];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function projectState(int $projectId): array
+    {
+        $row = $this->db->fetchOne(
+            sprintf(
+                "SELECT project_status, project_percent_complete
+                 FROM `%s`
+                 WHERE project_id = ?
+                 LIMIT 1",
+                $this->db->table('projects')
+            ),
+            [$projectId]
         );
 
         return is_array($row) ? $row : [];
