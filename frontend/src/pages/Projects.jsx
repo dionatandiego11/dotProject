@@ -186,6 +186,8 @@ function Projects() {
         status: '1'
     })
     const [creating, setCreating] = useState(false)
+    const [quickStatusSelectionByProjectId, setQuickStatusSelectionByProjectId] = useState({})
+    const [quickStatusLoadingByProjectId, setQuickStatusLoadingByProjectId] = useState({})
     const createStatusOptions = useMemo(
         () => getAllowedProjectStatuses(null, { forCreate: true }),
         []
@@ -266,6 +268,92 @@ function Projects() {
         return value !== null && value !== undefined ? String(value) : ''
     }
 
+    function getNumericProjectStatus(project) {
+        const numeric = Number(project?.status)
+        return Number.isNaN(numeric) ? 0 : numeric
+    }
+
+    function isQuickStatusLoading(projectId) {
+        return Boolean(quickStatusLoadingByProjectId[String(projectId)])
+    }
+
+    function getQuickStatusSelection(projectId) {
+        return quickStatusSelectionByProjectId[String(projectId)] ?? ''
+    }
+
+    function confirmProjectStatusTransition(currentStatus, nextStatus) {
+        if (currentStatus === nextStatus) {
+            return true
+        }
+
+        if (nextStatus === 5) {
+            return confirm('Marcar este projeto como Completo? O progresso sera ajustado para 100%.')
+        }
+
+        if (nextStatus === 6) {
+            return confirm('Arquivar este projeto? Ele sera removido dos fluxos operacionais ativos.')
+        }
+
+        return true
+    }
+
+    async function handleApplyQuickStatus(project) {
+        const projectId = Number(project?.id)
+        if (!projectId) return
+
+        const selection = getQuickStatusSelection(projectId)
+        if (!selection) {
+            toast.error('Selecione um status para aplicar.')
+            return
+        }
+
+        const currentStatus = getNumericProjectStatus(project)
+        const nextStatus = parseInt(selection, 10)
+
+        if (Number.isNaN(nextStatus)) {
+            toast.error('Status selecionado invalido.')
+            return
+        }
+
+        if (!canTransitionProjectStatus(currentStatus, nextStatus)) {
+            toast.error(
+                `Transicao de status invalida: ${getStatusLabelById(currentStatus)} -> ${getStatusLabelById(nextStatus)}.`
+            )
+            return
+        }
+
+        if (!confirmProjectStatusTransition(currentStatus, nextStatus)) {
+            return
+        }
+
+        const projectKey = String(projectId)
+        setQuickStatusLoadingByProjectId((prev) => ({ ...prev, [projectKey]: true }))
+
+        try {
+            const payload = await updateProjectStatus(projectId, { status: nextStatus })
+            const updatedStatus = Number(payload?.status ?? nextStatus)
+            const updatedPercent = Number(
+                payload?.percent_complete
+                ?? (updatedStatus === 5 ? 100 : project?.percent_complete ?? 0)
+            )
+
+            setProjects((prevProjects) => prevProjects.map((item) => {
+                if (Number(item.id) !== projectId) return item
+                return {
+                    ...item,
+                    status: updatedStatus,
+                    percent_complete: Number.isNaN(updatedPercent) ? item.percent_complete : updatedPercent
+                }
+            }))
+            setQuickStatusSelectionByProjectId((prev) => ({ ...prev, [projectKey]: '' }))
+            toast.success(`Status atualizado para "${getStatusLabelById(updatedStatus)}".`)
+        } catch (err) {
+            toast.error('Erro ao atualizar status: ' + err.message)
+        } finally {
+            setQuickStatusLoadingByProjectId((prev) => ({ ...prev, [projectKey]: false }))
+        }
+    }
+
     async function handleCreateProject(e) {
         e.preventDefault()
         validation.clearErrors()
@@ -333,7 +421,7 @@ function Projects() {
             setCreating(true)
             const shortName = newProject.short_name.trim()
             const unidadeId = newProject.company_id ? parseInt(newProject.company_id, 10) : null
-            const currentStatus = Number.isNaN(Number(editingProject.status)) ? 0 : Number(editingProject.status)
+            const currentStatus = getNumericProjectStatus(editingProject)
             const nextStatus = newProject.status ? parseInt(newProject.status, 10) : currentStatus
 
             if (!canTransitionProjectStatus(currentStatus, nextStatus)) {
@@ -343,22 +431,8 @@ function Projects() {
                 return
             }
 
-            if (currentStatus !== nextStatus && nextStatus === 5) {
-                const confirmedComplete = confirm(
-                    'Marcar este projeto como Completo? O progresso sera ajustado para 100%.'
-                )
-                if (!confirmedComplete) {
-                    return
-                }
-            }
-
-            if (currentStatus !== nextStatus && nextStatus === 6) {
-                const confirmedArchive = confirm(
-                    'Arquivar este projeto? Ele sera removido dos fluxos operacionais ativos.'
-                )
-                if (!confirmedArchive) {
-                    return
-                }
+            if (!confirmProjectStatusTransition(currentStatus, nextStatus)) {
+                return
             }
 
             await updateProject(editingProject.id, {
@@ -409,7 +483,7 @@ function Projects() {
             return
         }
 
-        const currentStatus = Number.isNaN(Number(editingProject.status)) ? 0 : Number(editingProject.status)
+        const currentStatus = getNumericProjectStatus(editingProject)
         if (!canTransitionProjectStatus(currentStatus, nextStatus)) {
             toast.error(
                 `Transicao nao permitida: ${getStatusLabelById(currentStatus)} -> ${getStatusLabelById(nextStatus)}.`
@@ -482,91 +556,141 @@ function Projects() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {projects.map(project => (
-                                        <tr key={project.id}>
-                                            <td>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-3)' }}>
-                                                    <div
-                                                        style={{
-                                                            width: 8,
-                                                            height: 8,
-                                                            borderRadius: '50%',
-                                                            background: project.color || 'var(--color-primary-500)'
-                                                        }}
-                                                    />
-                                                    <div>
-                                                        <strong>{project.name}</strong>
-                                                        {project.short_name && (
-                                                            <div style={{ fontSize: '0.75rem', color: 'var(--color-gray-500)' }}>
-                                                                {project.short_name}
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            <td>{getProjectUnitName(project)}</td>
-                                            <td>
-                                                <span className={`badge badge-${getStatusBadgeById(project.status)}`}>
-                                                    {getStatusLabelById(project.status)}
-                                                </span>
-                                            </td>
-                                            <td>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-2)' }}>
-                                                    <div className="progress" style={{ width: 80 }}>
+                                    {projects.map((project) => {
+                                        const currentStatus = getNumericProjectStatus(project)
+                                        const quickStatusOptions = getAllowedProjectStatuses(currentStatus, { includeCurrent: false })
+                                        const quickStatusValue = getQuickStatusSelection(project.id)
+                                        const quickStatusLoading = isQuickStatusLoading(project.id)
+
+                                        return (
+                                            <tr key={project.id}>
+                                                <td>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-3)' }}>
                                                         <div
-                                                            className="progress-bar"
-                                                            style={{ width: `${project.percent_complete}%` }}
+                                                            style={{
+                                                                width: 8,
+                                                                height: 8,
+                                                                borderRadius: '50%',
+                                                                background: project.color || 'var(--color-primary-500)'
+                                                            }}
                                                         />
+                                                        <div>
+                                                            <strong>{project.name}</strong>
+                                                            {project.short_name && (
+                                                                <div style={{ fontSize: '0.75rem', color: 'var(--color-gray-500)' }}>
+                                                                    {project.short_name}
+                                                                </div>
+                                                            )}
+                                                        </div>
                                                     </div>
-                                                    <span style={{ fontSize: '0.75rem' }}>{project.percent_complete}%</span>
-                                                </div>
-                                            </td>
-                                            <td>
-                                                {project.end_date ? (
-                                                    <span>{new Date(project.end_date).toLocaleDateString('pt-BR')}</span>
-                                                ) : (
-                                                    <span style={{ color: 'var(--color-gray-400)' }}>-</span>
-                                                )}
-                                            </td>
-                                            <td>
-                                                <button
-                                                    className="btn btn-secondary"
-                                                    style={{ padding: 'var(--spacing-1) var(--spacing-2)' }}
-                                                    onClick={() => navigate(`/projects/${project.id}`)}
-                                                >
-                                                    Ver
-                                                </button>
-                                                <button
-                                                    className="btn btn-secondary"
-                                                    style={{ padding: 'var(--spacing-1) var(--spacing-2)', marginLeft: 'var(--spacing-2)' }}
-                                                    onClick={async () => {
-                                                        await loadUnidades()
-                                                        setEditingProject(project)
-                                                        setNewProject({
-                                                            name: project.name || '',
-                                                            short_name: project.short_name || '',
-                                                            description: project.description || '',
-                                                            start_date: normalizeDateValue(project.start_date),
-                                                            end_date: normalizeDateValue(project.end_date),
-                                                            company_id: getProjectUnitId(project),
-                                                            status: project.status != null ? String(project.status) : '1'
-                                                        })
-                                                        validation.clearErrors()
-                                                        setIsEditModalOpen(true)
-                                                    }}
-                                                >
-                                                    Editar
-                                                </button>
-                                                <button
-                                                    className="btn btn-secondary"
-                                                    style={{ padding: 'var(--spacing-1) var(--spacing-2)', marginLeft: 'var(--spacing-2)', color: 'var(--color-danger-600)' }}
-                                                    onClick={() => handleDeleteProject(project)}
-                                                >
-                                                    Apagar
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    ))}
+                                                </td>
+                                                <td>{getProjectUnitName(project)}</td>
+                                                <td>
+                                                    <span className={`badge badge-${getStatusBadgeById(project.status)}`}>
+                                                        {getStatusLabelById(project.status)}
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-2)' }}>
+                                                        <div className="progress" style={{ width: 80 }}>
+                                                            <div
+                                                                className="progress-bar"
+                                                                style={{ width: `${project.percent_complete}%` }}
+                                                            />
+                                                        </div>
+                                                        <span style={{ fontSize: '0.75rem' }}>{project.percent_complete}%</span>
+                                                    </div>
+                                                </td>
+                                                <td>
+                                                    {project.end_date ? (
+                                                        <span>{new Date(project.end_date).toLocaleDateString('pt-BR')}</span>
+                                                    ) : (
+                                                        <span style={{ color: 'var(--color-gray-400)' }}>-</span>
+                                                    )}
+                                                </td>
+                                                <td>
+                                                    <button
+                                                        type="button"
+                                                        className="btn btn-secondary"
+                                                        style={{ padding: 'var(--spacing-1) var(--spacing-2)' }}
+                                                        onClick={() => navigate(`/projects/${project.id}`)}
+                                                    >
+                                                        Ver
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="btn btn-secondary"
+                                                        style={{ padding: 'var(--spacing-1) var(--spacing-2)', marginLeft: 'var(--spacing-2)' }}
+                                                        onClick={async () => {
+                                                            await loadUnidades()
+                                                            setEditingProject(project)
+                                                            setNewProject({
+                                                                name: project.name || '',
+                                                                short_name: project.short_name || '',
+                                                                description: project.description || '',
+                                                                start_date: normalizeDateValue(project.start_date),
+                                                                end_date: normalizeDateValue(project.end_date),
+                                                                company_id: getProjectUnitId(project),
+                                                                status: project.status != null ? String(project.status) : '1'
+                                                            })
+                                                            validation.clearErrors()
+                                                            setIsEditModalOpen(true)
+                                                        }}
+                                                    >
+                                                        Editar
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="btn btn-secondary"
+                                                        style={{ padding: 'var(--spacing-1) var(--spacing-2)', marginLeft: 'var(--spacing-2)', color: 'var(--color-danger-600)' }}
+                                                        onClick={() => handleDeleteProject(project)}
+                                                    >
+                                                        Apagar
+                                                    </button>
+
+                                                    {quickStatusOptions.length > 0 && (
+                                                        <div style={{ display: 'flex', gap: 'var(--spacing-2)', marginTop: 'var(--spacing-2)' }}>
+                                                            <select
+                                                                value={quickStatusValue}
+                                                                onChange={(e) => {
+                                                                    const projectKey = String(project.id)
+                                                                    setQuickStatusSelectionByProjectId((prev) => ({
+                                                                        ...prev,
+                                                                        [projectKey]: e.target.value
+                                                                    }))
+                                                                }}
+                                                                disabled={quickStatusLoading}
+                                                                style={{
+                                                                    minWidth: 160,
+                                                                    padding: 'var(--spacing-1) var(--spacing-2)',
+                                                                    border: '1px solid var(--color-gray-300)',
+                                                                    borderRadius: 'var(--radius-md)',
+                                                                    fontSize: '0.75rem',
+                                                                    background: 'white'
+                                                                }}
+                                                            >
+                                                                <option value="">Status rapido...</option>
+                                                                {quickStatusOptions.map((status) => (
+                                                                    <option key={status} value={String(status)}>
+                                                                        {getStatusLabelById(status)}
+                                                                    </option>
+                                                                ))}
+                                                            </select>
+                                                            <button
+                                                                type="button"
+                                                                className="btn btn-secondary"
+                                                                style={{ padding: 'var(--spacing-1) var(--spacing-2)' }}
+                                                                disabled={!quickStatusValue || quickStatusLoading}
+                                                                onClick={() => handleApplyQuickStatus(project)}
+                                                            >
+                                                                {quickStatusLoading ? 'Aplicando...' : 'Aplicar'}
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        )
+                                    })}
                                 </tbody>
                             </table>
                         )}
