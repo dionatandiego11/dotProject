@@ -166,3 +166,15 @@ export async function getOrganograma() {
 export async function getAdminOnboardingReadiness() {
     return apiRequest('/admin/onboarding/readiness');
 }
+
+// Admin - setup wizard
+export async function getSetupTemplates() {
+    return apiRequest('/admin/setup/templates');
+}
+
+export async function setupPrefeitura(data) {
+    return apiRequest('/admin/setup', {
+        method: 'POST',
+        body: JSON.stringify(data),
+    });
+}
