@@ -412,11 +412,6 @@ $router->delete('/v1/files/{id}', function (Request $req, Response $res) {
 
 use DotProject\Api\Controller\AnalyticsController;
 
-$router->get('/v1/analytics/dashboard', function (Request $req, Response $res) {
-    $controller = new AnalyticsController($req, $res);
-    $controller->dashboard();
-});
-
 $router->get('/v1/analytics/productivity', function (Request $req, Response $res) {
     $controller = new AnalyticsController($req, $res);
     $controller->productivity();

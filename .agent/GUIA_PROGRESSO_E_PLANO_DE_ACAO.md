@@ -106,6 +106,11 @@ Consolidar o que foi estabilizado no sistema e definir o proximo plano de execuc
   - todos os contadores de orfaos em `0`;
   - todos os checks de FK em `1`.
 
+### Checkpoint 2026-02-10 (higiene de roteamento da API)
+- Removida duplicidade de registro de rota em `api.php` para `GET /v1/analytics/dashboard` (rota estava definida duas vezes no mesmo arquivo).
+- Adicionado teste de unidade `tests/Unit/Api/ApiRoutesUniquenessTest.php` para detectar e bloquear regressao de rotas duplicadas (`metodo + path`) no `api.php`.
+- Validado com `phpunit` dedicado do teste novo e suites de integracao criticas.
+
 ### Status de iteracoes (2026-02-09)
 - Iteracao 1 (`unidade` x `company`): concluida no escopo P0 critico.
 - Iteracao 2 (cache/invalidacao): concluida no escopo P0 critico.
