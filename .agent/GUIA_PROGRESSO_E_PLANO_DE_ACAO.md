@@ -91,6 +91,21 @@ Consolidar o que foi estabilizado no sistema e definir o proximo plano de execuc
   - `KanbanFlowIntegrationTest`: garante `project_status=5` no fim de `Backlog -> To Do -> In Progress -> Done`.
   - `CriticalFlowsIntegrationTest`: garante sincronizacao correta com tarefas `Cancelado/Arquivado` e valida regras de exclusao de projeto com/sem tarefas ativas.
 
+### Checkpoint 2026-02-10 (migracao incremental de integridade referencial de tarefas)
+- Novo pacote de migracao legado:
+  - `db/migrations/20260210_harden_task_reference_integrity.sql`
+  - `db/migrations/20260210_verify_task_reference_integrity.sql`
+- Migracao aplicada com limpeza de orfaos e fortalecimento de integridade referencial em tabelas auxiliares de tarefas:
+  - `dotp_task_log`
+  - `dotp_task_contacts`
+  - `dotp_task_departments`
+  - `dotp_user_tasks`
+  - `dotp_task_dependencies`
+- FKs com `ON DELETE CASCADE` adicionadas para evitar lixo legado apos exclusao de tarefas.
+- Verificacao executada com resultado esperado:
+  - todos os contadores de orfaos em `0`;
+  - todos os checks de FK em `1`.
+
 ### Status de iteracoes (2026-02-09)
 - Iteracao 1 (`unidade` x `company`): concluida no escopo P0 critico.
 - Iteracao 2 (cache/invalidacao): concluida no escopo P0 critico.
