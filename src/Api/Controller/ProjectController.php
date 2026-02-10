@@ -366,20 +366,7 @@ class ProjectController extends BaseController
             $targetStatus = (int) $body['status'];
 
             if (!$this->isAllowedProjectStatusTransition($currentStatus, $targetStatus)) {
-                $allowedTransitions = $this->getAllowedProjectStatusTransitions($currentStatus);
-                $allowedLabels = array_map(
-                    fn(int $status): string => $this->projectStatusLabel($status),
-                    $allowedTransitions
-                );
-
-                return $this->response->validationError([
-                    'status' => sprintf(
-                        'Transicao de status invalida de "%s" para "%s". Permitidos: %s.',
-                        $this->projectStatusLabel($currentStatus),
-                        $this->projectStatusLabel($targetStatus),
-                        empty($allowedLabels) ? 'nenhum' : implode(', ', $allowedLabels)
-                    ),
-                ]);
+                return $this->invalidProjectStatusTransitionResponse($currentStatus, $targetStatus);
             }
         }
 
@@ -420,6 +407,75 @@ class ProjectController extends BaseController
         return $this->json([
             'id' => $project->getId(),
             'message' => 'Project updated successfully',
+        ]);
+    }
+
+    /**
+     * PUT /v1/projects/{id}/status
+     *
+     * Atualiza somente o status macro do projeto.
+     */
+    public function updateStatus(): Response
+    {
+        $id = (int) $this->request->getParam('id');
+
+        if (!$this->checkPermission('projects', 'edit')) {
+            return $this->response->forbidden('Insufficient permissions');
+        }
+
+        if ($guard = $this->ensureProjectAccess($id)) {
+            return $guard;
+        }
+
+        $project = Project::find($id);
+        if ($project === null) {
+            return $this->notFound('Project not found');
+        }
+
+        $body = $this->request->getBody();
+        if (!array_key_exists('status', $body) || $body['status'] === '' || $body['status'] === null) {
+            return $this->response->validationError([
+                'status' => 'Status e obrigatorio.',
+            ]);
+        }
+
+        $targetStatus = (int) $body['status'];
+        if ($targetStatus < 0 || $targetStatus > 7) {
+            return $this->response->validationError([
+                'status' => 'Status invalido.',
+            ]);
+        }
+
+        $currentStatus = (int) ($project->getAttribute('project_status') ?? 0);
+        if (!$this->isAllowedProjectStatusTransition($currentStatus, $targetStatus)) {
+            return $this->invalidProjectStatusTransitionResponse($currentStatus, $targetStatus);
+        }
+
+        $payload = ['status' => $targetStatus];
+        if (array_key_exists('percent_complete', $body)) {
+            $payload['percent_complete'] = $body['percent_complete'];
+        }
+
+        $this->normalizeProjectStatusPercent(
+            $payload,
+            $currentStatus,
+            (int) ($project->getAttribute('project_percent_complete') ?? 0)
+        );
+
+        $project->setAttribute('project_status', (int) $payload['status']);
+        if (array_key_exists('percent_complete', $payload)) {
+            $project->setAttribute('project_percent_complete', (int) $payload['percent_complete']);
+        }
+
+        if (!$project->save()) {
+            return $this->error('Failed to update project status');
+        }
+
+        return $this->json([
+            'id' => $project->getId(),
+            'status' => (int) ($project->getAttribute('project_status') ?? 0),
+            'percent_complete' => (int) ($project->getAttribute('project_percent_complete') ?? 0),
+            'message' => 'Project status updated successfully',
         ]);
     }
 
@@ -670,6 +726,24 @@ class ProjectController extends BaseController
             6 => 'Arquivado',
             default => 'Desconhecido',
         };
+    }
+
+    private function invalidProjectStatusTransitionResponse(int $currentStatus, int $targetStatus): Response
+    {
+        $allowedTransitions = $this->getAllowedProjectStatusTransitions($currentStatus);
+        $allowedLabels = array_map(
+            fn(int $status): string => $this->projectStatusLabel($status),
+            $allowedTransitions
+        );
+
+        return $this->response->validationError([
+            'status' => sprintf(
+                'Transicao de status invalida de "%s" para "%s". Permitidos: %s.',
+                $this->projectStatusLabel($currentStatus),
+                $this->projectStatusLabel($targetStatus),
+                empty($allowedLabels) ? 'nenhum' : implode(', ', $allowedLabels)
+            ),
+        ]);
     }
 
     private function resolveUnidadeQueryParam(): ?int

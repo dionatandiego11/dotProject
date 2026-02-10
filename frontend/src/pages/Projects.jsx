@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getProjects, createProject, updateProject, deleteProject, getUnidades } from '../services/api'
+import { getProjects, createProject, updateProject, updateProjectStatus, deleteProject, getUnidades } from '../services/api'
 import Modal from '../components/ui/Modal'
 import Button from '../components/ui/Button'
 import Input from '../components/ui/Input'
@@ -368,9 +368,14 @@ function Projects() {
                 start_date: newProject.start_date || null,
                 end_date: newProject.end_date || null,
                 unidade_id: unidadeId,
-                company_id: unidadeId,
-                status: nextStatus
+                company_id: unidadeId
             })
+
+            if (currentStatus !== nextStatus) {
+                await updateProjectStatus(editingProject.id, {
+                    status: nextStatus
+                })
+            }
             toast.success('Projeto atualizado com sucesso!')
             setIsEditModalOpen(false)
             setEditingProject(null)

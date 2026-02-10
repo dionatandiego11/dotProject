@@ -111,6 +111,11 @@ $router->put('/v1/projects/{id}', function (Request $req, Response $res) {
     return $controller->update();
 });
 
+$router->put('/v1/projects/{id}/status', function (Request $req, Response $res) {
+    $controller = new ProjectController($req, $res);
+    return $controller->updateStatus();
+});
+
 $router->delete('/v1/projects/{id}', function (Request $req, Response $res) {
     $controller = new ProjectController($req, $res);
     return $controller->destroy();

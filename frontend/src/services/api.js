@@ -135,6 +135,13 @@ export async function updateProject(id, data) {
     });
 }
 
+export async function updateProjectStatus(id, data) {
+    return apiRequest(`/projects/${id}/status`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+    });
+}
+
 export async function deleteProject(id) {
     return apiRequest(`/projects/${id}`, {
         method: 'DELETE',
@@ -636,6 +643,7 @@ export default {
     getProject,
     createProject,
     updateProject,
+    updateProjectStatus,
     deleteProject,
     getProjectTasks,
 
