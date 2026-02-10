@@ -126,6 +126,11 @@ $router->get('/v1/projects/{id}/tasks', function (Request $req, Response $res) {
     return $controller->tasks();
 });
 
+$router->get('/v1/projects/{id}/status-history', function (Request $req, Response $res) {
+    $controller = new ProjectController($req, $res);
+    return $controller->statusHistory();
+});
+
 // ===========================================
 // ROTAS DE TAREFAS
 // ===========================================

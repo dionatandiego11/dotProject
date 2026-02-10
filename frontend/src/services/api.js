@@ -156,6 +156,14 @@ export async function getProjectTasks(projectId, params = {}) {
     return apiRequest(endpoint);
 }
 
+export async function getProjectStatusHistory(projectId, params = {}) {
+    const queryString = new URLSearchParams(params).toString();
+    const endpoint = queryString
+        ? `/projects/${projectId}/status-history?${queryString}`
+        : `/projects/${projectId}/status-history`;
+    return apiRequest(endpoint);
+}
+
 // ===========================================
 // TASKS ENDPOINTS
 // ===========================================
@@ -646,6 +654,7 @@ export default {
     updateProjectStatus,
     deleteProject,
     getProjectTasks,
+    getProjectStatusHistory,
 
     // Tasks
     getTasks,

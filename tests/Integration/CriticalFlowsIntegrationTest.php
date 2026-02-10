@@ -900,6 +900,71 @@ class CriticalFlowsIntegrationTest extends TestCase
         $this->assertSame(1, (int) ($row['project_status'] ?? -1));
     }
 
+    public function testProjectStatusHistoryEndpointReturnsLatestTransition(): void
+    {
+        if (!$this->hasProjectStatusHistoryTable()) {
+            $this->markTestSkipped(
+                'Tabela dotp_project_status_history ausente. Execute a migration 20260210_create_project_status_history.sql.'
+            );
+        }
+
+        $unidade = $this->pickAnyUnidade();
+        if ($unidade === null) {
+            $this->markTestSkipped('Base sem unidade para teste de historico de status.');
+        }
+
+        $unidadeId = (int) $unidade['id'];
+        $this->ensureCompanyExistsForUnidade($unidadeId, (string) $unidade['nome']);
+
+        $projectId = $this->insertProject($unidadeId, 'it_project_status_history_' . bin2hex(random_bytes(4)));
+        $this->projectIds[] = $projectId;
+
+        $updateRequest = $this->createMock(Request::class);
+        $updateRequest->method('getBody')->willReturn([
+            'status' => 3,
+            'status_change_source' => 'tests.status_endpoint',
+        ]);
+        $updateRequest->method('getParam')
+            ->willReturnCallback(function (string $key, mixed $default = null) use ($projectId) {
+                return match ($key) {
+                    'id' => $projectId,
+                    '_user_id' => 1,
+                    default => $default,
+                };
+            });
+
+        $updateResponse = new Response();
+        $updateController = new IntegrationProjectController($updateRequest, $updateResponse);
+        $updateController->updateStatus();
+
+        $historyRequest = $this->createMock(Request::class);
+        $historyRequest->method('getQueryParam')
+            ->willReturnCallback(fn(string $key, mixed $default = null) => $key === 'limit' ? 20 : $default);
+        $historyRequest->method('getParam')
+            ->willReturnCallback(function (string $key, mixed $default = null) use ($projectId) {
+                return match ($key) {
+                    'id' => $projectId,
+                    '_user_id' => 1,
+                    default => $default,
+                };
+            });
+
+        $historyResponse = new Response();
+        $historyController = new IntegrationProjectController($historyRequest, $historyResponse);
+        $result = $historyController->statusHistory();
+        $body = $this->responseBody($result);
+
+        $this->assertArrayHasKey('data', $body);
+        $this->assertNotEmpty($body['data']);
+
+        $latest = $body['data'][0];
+        $this->assertSame($projectId, (int) ($latest['project_id'] ?? 0));
+        $this->assertSame(1, (int) ($latest['from_status'] ?? -1));
+        $this->assertSame(3, (int) ($latest['to_status'] ?? -1));
+        $this->assertSame('tests.status_endpoint', (string) ($latest['source'] ?? ''));
+        $this->assertSame(1, (int) ($latest['changed_by_user_id'] ?? 0));
+    }
+
     public function testAdminGetArvoreReturnsNodeWhenRaizIdIsNotGlobalRoot(): void
     {
         $target = $this->db->fetchOne(
@@ -936,6 +1001,16 @@ class CriticalFlowsIntegrationTest extends TestCase
         $prop->setAccessible(true);
         $body = $prop->getValue($response);
         return is_array($body) ? $body : [];
+    }
+
+    private function hasProjectStatusHistoryTable(): bool
+    {
+        return (int) ($this->db->fetchValue(
+            "SELECT COUNT(*)
+             FROM information_schema.tables
+             WHERE table_schema = DATABASE()
+               AND table_name = 'dotp_project_status_history'"
+        ) ?? 0) > 0;
     }
 
     private function insertProject(int $unidadeId, string $name): int

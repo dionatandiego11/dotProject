@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getProject, getProjectTasks } from '../services/api'
+import { getProject, getProjectTasks, getProjectStatusHistory } from '../services/api'
 import Timeline from '../components/Timeline'
 import Loading from '../components/Loading'
 import Button from '../components/ui/Button'
@@ -17,6 +17,9 @@ function ProjectDetails() {
     const [tasks, setTasks] = useState([])
     const [tasksLoading, setTasksLoading] = useState(false)
     const [tasksError, setTasksError] = useState(null)
+    const [statusHistory, setStatusHistory] = useState([])
+    const [statusHistoryLoading, setStatusHistoryLoading] = useState(false)
+    const [statusHistoryError, setStatusHistoryError] = useState(null)
 
     useEffect(() => {
         loadProjectDetails()
@@ -46,7 +49,10 @@ function ProjectDetails() {
             }
 
             setProject(projectData)
-            await loadProjectTasks(projectData.id || id)
+            await Promise.all([
+                loadProjectTasks(projectData.id || id),
+                loadProjectStatusHistory(projectData.id || id),
+            ])
         } catch (err) {
             console.error(err)
             setError(err.message || 'Erro ao carregar projeto')
@@ -67,6 +73,20 @@ function ProjectDetails() {
             setTasksError('Erro ao carregar tarefas do projeto')
         } finally {
             setTasksLoading(false)
+        }
+    }
+
+    async function loadProjectStatusHistory(projectId) {
+        try {
+            setStatusHistoryLoading(true)
+            setStatusHistoryError(null)
+            const data = await getProjectStatusHistory(projectId, { limit: 30 })
+            setStatusHistory(data.data || [])
+        } catch (err) {
+            console.error(err)
+            setStatusHistoryError('Erro ao carregar historico de status')
+        } finally {
+            setStatusHistoryLoading(false)
         }
     }
 
@@ -154,6 +174,57 @@ function ProjectDetails() {
                         etapas={project.etapas}
                         title="Etapas do Ciclo de Vida"
                     />
+                </div>
+            </div>
+
+            {/* HISTORICO DE STATUS */}
+            <div className="card" style={{ marginBottom: 24 }}>
+                <div className="card-header">
+                    <h2 className="card-title">Historico de Status</h2>
+                </div>
+                <div className="card-body" style={{ padding: 0 }}>
+                    {statusHistoryLoading ? (
+                        <div style={{ padding: 'var(--spacing-6)', textAlign: 'center' }}>
+                            Carregando...
+                        </div>
+                    ) : statusHistoryError ? (
+                        <div style={{ padding: 'var(--spacing-6)', textAlign: 'center', color: 'var(--color-danger-500)' }}>
+                            {statusHistoryError}
+                        </div>
+                    ) : statusHistory.length === 0 ? (
+                        <div style={{ padding: 'var(--spacing-6)', textAlign: 'center', color: 'var(--color-gray-500)' }}>
+                            Nenhuma mudanca de status registrada.
+                        </div>
+                    ) : (
+                        <table className="table">
+                            <thead>
+                                <tr>
+                                    <th>Data</th>
+                                    <th>Transicao</th>
+                                    <th>Responsavel</th>
+                                    <th>Origem</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {statusHistory.map(item => (
+                                    <tr key={item.id}>
+                                        <td>{formatDateTime(item.changed_at)}</td>
+                                        <td>
+                                            <span className={`badge badge-${getStatusBadge(item.from_status)}`}>
+                                                {getStatusLabel(item.from_status)}
+                                            </span>{' '}
+                                            {'->'}{' '}
+                                            <span className={`badge badge-${getStatusBadge(item.to_status)}`}>
+                                                {getStatusLabel(item.to_status)}
+                                            </span>
+                                        </td>
+                                        <td>{item.changed_by_name || 'Sistema'}</td>
+                                        <td>{formatStatusChangeSource(item.source)}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    )}
                 </div>
             </div>
 
@@ -361,6 +432,20 @@ function formatCurrency(value) {
 function formatDate(dateString) {
     if (!dateString) return null
     return new Date(dateString).toLocaleDateString('pt-BR')
+}
+
+function formatDateTime(dateTimeString) {
+    if (!dateTimeString) return '-'
+    return new Date(dateTimeString).toLocaleString('pt-BR')
+}
+
+function formatStatusChangeSource(source) {
+    if (!source) return 'sistema'
+
+    const normalized = String(source).replace(/[._]/g, ' ').trim()
+    if (!normalized) return 'sistema'
+
+    return normalized
 }
 
 export default ProjectDetails

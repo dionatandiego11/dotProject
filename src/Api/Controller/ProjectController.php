@@ -17,12 +17,15 @@ use DotProject\Api\Response;
 use DotProject\Entity\Project;
 use DotProject\Service\AuthorizationService;
 use DotProject\Service\PermissionService;
+use DotProject\Service\ProjectStatusHistoryService;
 
 /**
  * Controller de projetos
  */
 class ProjectController extends BaseController
 {
+    private ?ProjectStatusHistoryService $statusHistoryService = null;
+
     /**
      * GET /v1/projects
      * 
@@ -355,16 +358,16 @@ class ProjectController extends BaseController
             }
         }
 
+        $currentStatus = (int) ($project->getAttribute('project_status') ?? 0);
         $this->normalizeProjectStatusPercent(
             $body,
-            (int) ($project->getAttribute('project_status') ?? 0),
+            $currentStatus,
             (int) ($project->getAttribute('project_percent_complete') ?? 0)
         );
 
+        $targetStatus = null;
         if (array_key_exists('status', $body)) {
-            $currentStatus = (int) ($project->getAttribute('project_status') ?? 0);
             $targetStatus = (int) $body['status'];
-
             if (!$this->isAllowedProjectStatusTransition($currentStatus, $targetStatus)) {
                 return $this->invalidProjectStatusTransitionResponse($currentStatus, $targetStatus);
             }
@@ -402,6 +405,16 @@ class ProjectController extends BaseController
 
         if (!$project->save()) {
             return $this->error('Failed to update project');
+        }
+
+        if ($targetStatus !== null && $targetStatus !== $currentStatus) {
+            $this->statusHistoryService()->recordStatusChange(
+                (int) ($project->getId() ?? 0),
+                $currentStatus,
+                $targetStatus,
+                $this->getUserId(),
+                $this->resolveStatusChangeSource($body, 'projects_update')
+            );
         }
 
         return $this->json([
@@ -469,6 +482,16 @@ class ProjectController extends BaseController
 
         if (!$project->save()) {
             return $this->error('Failed to update project status');
+        }
+
+        if ($currentStatus !== $targetStatus) {
+            $this->statusHistoryService()->recordStatusChange(
+                (int) ($project->getId() ?? 0),
+                $currentStatus,
+                $targetStatus,
+                $this->getUserId(),
+                $this->resolveStatusChangeSource($body, 'projects_status_endpoint')
+            );
         }
 
         return $this->json([
@@ -577,6 +600,40 @@ class ProjectController extends BaseController
             $pagination['page'],
             $pagination['per_page']
         );
+    }
+
+    /**
+     * GET /v1/projects/{id}/status-history
+     *
+     * Lista auditoria de transicoes de status do projeto.
+     */
+    public function statusHistory(): Response
+    {
+        $id = (int) $this->request->getParam('id');
+
+        if (!$this->checkPermission('projects', 'view')) {
+            return $this->response->forbidden('Insufficient permissions');
+        }
+
+        if ($guard = $this->ensureProjectAccess($id)) {
+            return $guard;
+        }
+
+        $exists = $this->db->fetchValue(sprintf(
+            "SELECT project_id FROM %s WHERE project_id = %d",
+            $this->db->table('projects'),
+            $id
+        ));
+        if ($exists === null) {
+            return $this->notFound('Project not found');
+        }
+
+        $limit = (int) ($this->request->getQueryParam('limit', 50) ?? 50);
+        $history = $this->statusHistoryService()->getByProjectId($id, $limit);
+
+        return $this->json([
+            'data' => $history,
+        ]);
     }
 
     /**
@@ -744,6 +801,42 @@ class ProjectController extends BaseController
                 empty($allowedLabels) ? 'nenhum' : implode(', ', $allowedLabels)
             ),
         ]);
+    }
+
+    private function statusHistoryService(): ProjectStatusHistoryService
+    {
+        if ($this->statusHistoryService === null) {
+            $this->statusHistoryService = new ProjectStatusHistoryService($this->db);
+        }
+
+        return $this->statusHistoryService;
+    }
+
+    /**
+     * @param array<string, mixed> $body
+     */
+    private function resolveStatusChangeSource(array $body, string $defaultSource): string
+    {
+        $source = $defaultSource;
+
+        if (isset($body['status_change_source']) && is_string($body['status_change_source'])) {
+            $source = $body['status_change_source'];
+        } elseif (isset($body['source']) && is_string($body['source'])) {
+            $source = $body['source'];
+        }
+
+        $source = trim($source);
+        if ($source === '') {
+            return 'system';
+        }
+
+        $source = preg_replace('/[^a-zA-Z0-9._-]/', '_', $source) ?? 'system';
+        $source = trim($source, '._-');
+        if ($source === '') {
+            return 'system';
+        }
+
+        return mb_substr($source, 0, 64);
     }
 
     private function resolveUnidadeQueryParam(): ?int
