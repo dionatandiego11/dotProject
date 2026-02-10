@@ -54,6 +54,7 @@ Temporary Items
 # Node / Vite
 frontend/node_modules/
 frontend/dist/
+frontend/coverage/
 frontend/.vite/
 frontend/.cache/
 **/node_modules/
@@ -72,3 +73,6 @@ pnpm-debug.log*
 
 # Local agent workspace (non-versioned)
 .agent/
+
+# Local backup artifacts
+backups/

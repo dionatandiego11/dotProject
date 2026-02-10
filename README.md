@@ -47,6 +47,7 @@ Foco: estrutura organizacional, projetos, tarefas e dashboards por perfil.
 - `docs/API.md`
 - `docs/api/dashboards.md`
 - `docs/TROUBLESHOOTING.md`
+- `docs/operations/backup_restore.md`
 
 ## Licenca
 GPL v2.0 (ver `COPYING`)

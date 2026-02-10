@@ -106,3 +106,20 @@ A API REST está disponível em `/api.php/v1/`:
 | `GET /analytics/dashboard` | KPIs do dashboard |
 
 Veja todos os 33 endpoints na [documentação da API](./docs/API.md).
+
+---
+
+## Backup e Restore (Banco)
+
+```bash
+# Gerar backup
+bash scripts/ops/backup_db.sh
+
+# Verificar restore em base temporaria (nao destrutivo)
+bash scripts/ops/verify_backup_restore.sh
+
+# Restore real (destrutivo)
+bash scripts/ops/restore_db.sh --file ./backups/db_dotproject_YYYYMMDDTHHMMSSZ.sql.gz
+```
+
+Runbook completo: `docs/operations/backup_restore.md`
