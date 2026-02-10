@@ -699,32 +699,6 @@ class CriticalFlowsIntegrationTest extends TestCase
         $projectId = $this->insertProject($unidadeId, 'it_project_progress_' . bin2hex(random_bytes(4)));
         $this->projectIds[] = $projectId;
 
-        $requestDone = $this->createMock(Request::class);
-        $requestDone->method('getBody')->willReturn(['status' => 5]);
-        $requestDone->method('getParam')
-            ->willReturnCallback(function (string $key, mixed $default = null) use ($projectId) {
-                return match ($key) {
-                    'id' => $projectId,
-                    '_user_id' => 1,
-                    default => $default,
-                };
-            });
-
-        $responseDone = new Response();
-        $controllerDone = new IntegrationProjectController($requestDone, $responseDone);
-        $controllerDone->update();
-
-        $afterDone = $this->db->fetchOne(
-            sprintf(
-                "SELECT project_status, project_percent_complete FROM `%s` WHERE project_id = %d LIMIT 1",
-                $this->db->table('projects'),
-                $projectId
-            )
-        );
-        $this->assertNotNull($afterDone);
-        $this->assertSame(5, (int) ($afterDone['project_status'] ?? -1));
-        $this->assertSame(100, (int) ($afterDone['project_percent_complete'] ?? -1));
-
         $requestProgress = $this->createMock(Request::class);
         $requestProgress->method('getBody')->willReturn([
             'status' => 3,
@@ -753,6 +727,78 @@ class CriticalFlowsIntegrationTest extends TestCase
         $this->assertNotNull($afterProgress);
         $this->assertSame(3, (int) ($afterProgress['project_status'] ?? -1));
         $this->assertSame(65, (int) ($afterProgress['project_percent_complete'] ?? -1));
+
+        $requestDone = $this->createMock(Request::class);
+        $requestDone->method('getBody')->willReturn(['status' => 5]);
+        $requestDone->method('getParam')
+            ->willReturnCallback(function (string $key, mixed $default = null) use ($projectId) {
+                return match ($key) {
+                    'id' => $projectId,
+                    '_user_id' => 1,
+                    default => $default,
+                };
+            });
+
+        $responseDone = new Response();
+        $controllerDone = new IntegrationProjectController($requestDone, $responseDone);
+        $controllerDone->update();
+
+        $afterDone = $this->db->fetchOne(
+            sprintf(
+                "SELECT project_status, project_percent_complete FROM `%s` WHERE project_id = %d LIMIT 1",
+                $this->db->table('projects'),
+                $projectId
+            )
+        );
+        $this->assertNotNull($afterDone);
+        $this->assertSame(5, (int) ($afterDone['project_status'] ?? -1));
+        $this->assertSame(100, (int) ($afterDone['project_percent_complete'] ?? -1));
+    }
+
+    public function testProjectUpdateRejectsInvalidStatusTransitionFromProposedToArchived(): void
+    {
+        $unidade = $this->pickAnyUnidade();
+        if ($unidade === null) {
+            $this->markTestSkipped('Base sem unidade para teste de transicao invalida de status.');
+        }
+
+        $unidadeId = (int) $unidade['id'];
+        $this->ensureCompanyExistsForUnidade($unidadeId, (string) $unidade['nome']);
+
+        $projectId = $this->insertProject($unidadeId, 'it_project_invalid_transition_' . bin2hex(random_bytes(4)));
+        $this->projectIds[] = $projectId;
+
+        $request = $this->createMock(Request::class);
+        $request->method('getBody')->willReturn([
+            'status' => 6,
+        ]);
+        $request->method('getParam')
+            ->willReturnCallback(function (string $key, mixed $default = null) use ($projectId) {
+                return match ($key) {
+                    'id' => $projectId,
+                    '_user_id' => 1,
+                    default => $default,
+                };
+            });
+
+        $response = new Response();
+        $controller = new IntegrationProjectController($request, $response);
+        $result = $controller->update();
+        $body = $this->responseBody($result);
+
+        $this->assertTrue((bool) ($body['error'] ?? false));
+        $this->assertSame('Validation failed', (string) ($body['message'] ?? ''));
+        $this->assertArrayHasKey('status', (array) ($body['errors'] ?? []));
+
+        $row = $this->db->fetchOne(
+            sprintf(
+                "SELECT project_status FROM `%s` WHERE project_id = %d LIMIT 1",
+                $this->db->table('projects'),
+                $projectId
+            )
+        );
+        $this->assertNotNull($row);
+        $this->assertSame(1, (int) ($row['project_status'] ?? -1));
     }
 
     public function testAdminGetArvoreReturnsNodeWhenRaizIdIsNotGlobalRoot(): void

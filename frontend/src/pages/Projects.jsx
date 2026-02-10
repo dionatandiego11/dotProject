@@ -7,6 +7,81 @@ import Input from '../components/ui/Input'
 import { useToast } from '../contexts/ToastContext'
 import { useValidation } from '../hooks/useValidation'
 
+const PROJECT_STATUS_LABELS = {
+    0: 'Nao definido',
+    1: 'Proposto',
+    2: 'Em planejamento',
+    3: 'Em progresso',
+    4: 'Em espera',
+    5: 'Completo',
+    6: 'Arquivado'
+}
+
+const PROJECT_STATUS_BADGES = {
+    0: 'info',
+    1: 'info',
+    2: 'warning',
+    3: 'success',
+    4: 'warning',
+    5: 'success',
+    6: 'info'
+}
+
+const CREATE_ALLOWED_PROJECT_STATUSES = [0, 1, 2, 3, 4]
+
+const PROJECT_STATUS_TRANSITIONS = {
+    0: [1, 2, 3, 4],
+    1: [0, 2, 3, 4],
+    2: [0, 1, 3, 4],
+    3: [4, 5],
+    4: [3, 5],
+    5: [3, 6],
+    6: []
+}
+
+function getStatusLabelById(status) {
+    return PROJECT_STATUS_LABELS[Number(status)] || 'Desconhecido'
+}
+
+function getStatusBadgeById(status) {
+    return PROJECT_STATUS_BADGES[Number(status)] || 'info'
+}
+
+function getAllowedProjectStatuses(currentStatus, options = {}) {
+    const includeCurrent = options.includeCurrent !== false
+    const forCreate = options.forCreate === true
+
+    if (forCreate) {
+        return [...CREATE_ALLOWED_PROJECT_STATUSES]
+    }
+
+    const numericCurrent = Number(currentStatus)
+    if (Number.isNaN(numericCurrent)) {
+        return [...CREATE_ALLOWED_PROJECT_STATUSES]
+    }
+
+    const transitions = PROJECT_STATUS_TRANSITIONS[numericCurrent] || []
+    const statuses = includeCurrent ? [numericCurrent, ...transitions] : [...transitions]
+
+    return Array.from(new Set(statuses)).sort((a, b) => a - b)
+}
+
+function canTransitionProjectStatus(currentStatus, targetStatus) {
+    const numericCurrent = Number(currentStatus)
+    const numericTarget = Number(targetStatus)
+
+    if (Number.isNaN(numericCurrent) || Number.isNaN(numericTarget)) {
+        return false
+    }
+
+    if (numericCurrent === numericTarget) {
+        return true
+    }
+
+    const transitions = PROJECT_STATUS_TRANSITIONS[numericCurrent] || []
+    return transitions.includes(numericTarget)
+}
+
 function buildUnidadeHierarchy(unidade, unidadeById) {
     const hierarchy = []
     const visited = new Set()
@@ -111,6 +186,28 @@ function Projects() {
         status: '1'
     })
     const [creating, setCreating] = useState(false)
+    const createStatusOptions = useMemo(
+        () => getAllowedProjectStatuses(null, { forCreate: true }),
+        []
+    )
+    const editCurrentStatus = useMemo(() => {
+        if (!editingProject) return null
+        const numeric = Number(editingProject.status)
+        return Number.isNaN(numeric) ? 0 : numeric
+    }, [editingProject])
+    const editStatusOptions = useMemo(
+        () => getAllowedProjectStatuses(editCurrentStatus),
+        [editCurrentStatus]
+    )
+    const editStatusHint = useMemo(() => {
+        if (editCurrentStatus === null) return ''
+        const transitions = getAllowedProjectStatuses(editCurrentStatus, { includeCurrent: false })
+        if (transitions.length === 0) {
+            return 'Este status nao permite novas transicoes.'
+        }
+
+        return `Transicoes permitidas: ${transitions.map(getStatusLabelById).join(', ')}.`
+    }, [editCurrentStatus])
 
     function normalizeDateValue(value) {
         if (!value) return ''
@@ -156,32 +253,6 @@ function Projects() {
         loadProjects({ search })
     }
 
-    function getStatusLabel(status) {
-        const labels = {
-            0: 'Não definido',
-            1: 'Proposto',
-            2: 'Em planejamento',
-            3: 'Em progresso',
-            4: 'Em espera',
-            5: 'Completo',
-            6: 'Arquivado'
-        }
-        return labels[status] || 'Desconhecido'
-    }
-
-    function getStatusBadge(status) {
-        const badges = {
-            0: 'info',
-            1: 'info',
-            2: 'warning',
-            3: 'success',
-            4: 'warning',
-            5: 'success',
-            6: 'info'
-        }
-        return badges[status] || 'info'
-    }
-
     function getProjectUnitName(project) {
         return project?.unidade?.nome || project?.company?.name || '-'
     }
@@ -214,6 +285,13 @@ function Projects() {
             setCreating(true)
             const shortName = newProject.short_name.trim()
             const unidadeId = newProject.company_id ? parseInt(newProject.company_id, 10) : null
+            const statusValue = newProject.status ? parseInt(newProject.status, 10) : 0
+
+            if (!CREATE_ALLOWED_PROJECT_STATUSES.includes(statusValue)) {
+                toast.error('Status inicial invalido para criacao de projeto.')
+                return
+            }
+
             await createProject({
                 name: newProject.name,
                 short_name: shortName,
@@ -222,7 +300,7 @@ function Projects() {
                 end_date: newProject.end_date || null,
                 unidade_id: unidadeId,
                 company_id: unidadeId,
-                status: newProject.status ? parseInt(newProject.status, 10) : 0
+                status: statusValue
             })
             toast.success('Projeto criado com sucesso!')
             setIsModalOpen(false)
@@ -255,6 +333,34 @@ function Projects() {
             setCreating(true)
             const shortName = newProject.short_name.trim()
             const unidadeId = newProject.company_id ? parseInt(newProject.company_id, 10) : null
+            const currentStatus = Number.isNaN(Number(editingProject.status)) ? 0 : Number(editingProject.status)
+            const nextStatus = newProject.status ? parseInt(newProject.status, 10) : currentStatus
+
+            if (!canTransitionProjectStatus(currentStatus, nextStatus)) {
+                toast.error(
+                    `Transicao de status invalida: ${getStatusLabelById(currentStatus)} -> ${getStatusLabelById(nextStatus)}.`
+                )
+                return
+            }
+
+            if (currentStatus !== nextStatus && nextStatus === 5) {
+                const confirmedComplete = confirm(
+                    'Marcar este projeto como Completo? O progresso sera ajustado para 100%.'
+                )
+                if (!confirmedComplete) {
+                    return
+                }
+            }
+
+            if (currentStatus !== nextStatus && nextStatus === 6) {
+                const confirmedArchive = confirm(
+                    'Arquivar este projeto? Ele sera removido dos fluxos operacionais ativos.'
+                )
+                if (!confirmedArchive) {
+                    return
+                }
+            }
+
             await updateProject(editingProject.id, {
                 name: newProject.name,
                 short_name: shortName,
@@ -263,7 +369,7 @@ function Projects() {
                 end_date: newProject.end_date || null,
                 unidade_id: unidadeId,
                 company_id: unidadeId,
-                status: newProject.status ? parseInt(newProject.status, 10) : 0
+                status: nextStatus
             })
             toast.success('Projeto atualizado com sucesso!')
             setIsEditModalOpen(false)
@@ -288,6 +394,25 @@ function Projects() {
         } catch (err) {
             toast.error('Erro ao apagar projeto: ' + err.message)
         }
+    }
+
+    function handleEditStatusSelection(nextStatusValue) {
+        const nextStatus = parseInt(nextStatusValue, 10)
+
+        if (!editingProject) {
+            setNewProject({ ...newProject, status: String(nextStatus) })
+            return
+        }
+
+        const currentStatus = Number.isNaN(Number(editingProject.status)) ? 0 : Number(editingProject.status)
+        if (!canTransitionProjectStatus(currentStatus, nextStatus)) {
+            toast.error(
+                `Transicao nao permitida: ${getStatusLabelById(currentStatus)} -> ${getStatusLabelById(nextStatus)}.`
+            )
+            return
+        }
+
+        setNewProject({ ...newProject, status: String(nextStatus) })
     }
 
     return (
@@ -376,8 +501,8 @@ function Projects() {
                                             </td>
                                             <td>{getProjectUnitName(project)}</td>
                                             <td>
-                                                <span className={`badge badge-${getStatusBadge(project.status)}`}>
-                                                    {getStatusLabel(project.status)}
+                                                <span className={`badge badge-${getStatusBadgeById(project.status)}`}>
+                                                    {getStatusLabelById(project.status)}
                                                 </span>
                                             </td>
                                             <td>
@@ -672,13 +797,11 @@ function Projects() {
                                     background: 'white'
                                 }}
                             >
-                                <option value="0">Não definido</option>
-                                <option value="1">Proposto</option>
-                                <option value="2">Em planejamento</option>
-                                <option value="3">Em progresso</option>
-                                <option value="4">Em espera</option>
-                                <option value="5">Completo</option>
-                                <option value="6">Arquivado</option>
+                                {createStatusOptions.map((status) => (
+                                    <option key={status} value={String(status)}>
+                                        {getStatusLabelById(status)}
+                                    </option>
+                                ))}
                             </select>
                         </div>
                     </div>
@@ -884,11 +1007,11 @@ function Projects() {
 
                         <div>
                             <label style={{ display: 'block', marginBottom: 'var(--spacing-2)', fontWeight: 500 }}>
-                                Status Inicial
+                                Status do Projeto
                             </label>
                             <select
                                 value={newProject.status}
-                                onChange={(e) => setNewProject({ ...newProject, status: e.target.value })}
+                                onChange={(e) => handleEditStatusSelection(e.target.value)}
                                 style={{
                                     width: '100%',
                                     padding: 'var(--spacing-2) var(--spacing-3)',
@@ -898,14 +1021,17 @@ function Projects() {
                                     background: 'white'
                                 }}
                             >
-                                <option value="0">Não definido</option>
-                                <option value="1">Proposto</option>
-                                <option value="2">Em planejamento</option>
-                                <option value="3">Em progresso</option>
-                                <option value="4">Em espera</option>
-                                <option value="5">Completo</option>
-                                <option value="6">Arquivado</option>
+                                {editStatusOptions.map((status) => (
+                                    <option key={status} value={String(status)}>
+                                        {getStatusLabelById(status)}
+                                    </option>
+                                ))}
                             </select>
+                            {editStatusHint && (
+                                <span style={{ color: 'var(--color-gray-500)', fontSize: '0.75rem', marginTop: 'var(--spacing-1)', display: 'block' }}>
+                                    {editStatusHint}
+                                </span>
+                            )}
                         </div>
                     </div>
                 </form>
@@ -915,5 +1041,3 @@ function Projects() {
 }
 
 export default Projects
-
-

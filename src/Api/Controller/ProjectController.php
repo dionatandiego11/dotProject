@@ -361,6 +361,28 @@ class ProjectController extends BaseController
             (int) ($project->getAttribute('project_percent_complete') ?? 0)
         );
 
+        if (array_key_exists('status', $body)) {
+            $currentStatus = (int) ($project->getAttribute('project_status') ?? 0);
+            $targetStatus = (int) $body['status'];
+
+            if (!$this->isAllowedProjectStatusTransition($currentStatus, $targetStatus)) {
+                $allowedTransitions = $this->getAllowedProjectStatusTransitions($currentStatus);
+                $allowedLabels = array_map(
+                    fn(int $status): string => $this->projectStatusLabel($status),
+                    $allowedTransitions
+                );
+
+                return $this->response->validationError([
+                    'status' => sprintf(
+                        'Transicao de status invalida de "%s" para "%s". Permitidos: %s.',
+                        $this->projectStatusLabel($currentStatus),
+                        $this->projectStatusLabel($targetStatus),
+                        empty($allowedLabels) ? 'nenhum' : implode(', ', $allowedLabels)
+                    ),
+                ]);
+            }
+        }
+
         if ($hasUnidadeField) {
             if ($unidadeId === null) {
                 return $this->response->validationError(
@@ -604,6 +626,50 @@ class ProjectController extends BaseController
         if ($hasPercent || in_array($status, [0, 5], true)) {
             $payload['percent_complete'] = $percent;
         }
+    }
+
+    /**
+     * Regras explicitas para transicao manual de macrostatus.
+     */
+    private function isAllowedProjectStatusTransition(int $currentStatus, int $targetStatus): bool
+    {
+        if ($currentStatus === $targetStatus) {
+            return true;
+        }
+
+        $allowed = $this->getAllowedProjectStatusTransitions($currentStatus);
+        return in_array($targetStatus, $allowed, true);
+    }
+
+    /**
+     * @return int[]
+     */
+    private function getAllowedProjectStatusTransitions(int $currentStatus): array
+    {
+        return match ($currentStatus) {
+            0 => [1, 2, 3, 4],
+            1 => [0, 2, 3, 4],
+            2 => [0, 1, 3, 4],
+            3 => [4, 5],
+            4 => [3, 5],
+            5 => [3, 6],
+            6 => [],
+            default => [0, 1, 2, 3, 4, 5, 6],
+        };
+    }
+
+    private function projectStatusLabel(int $status): string
+    {
+        return match ($status) {
+            0 => 'Nao definido',
+            1 => 'Proposto',
+            2 => 'Em planejamento',
+            3 => 'Em progresso',
+            4 => 'Em espera',
+            5 => 'Completo',
+            6 => 'Arquivado',
+            default => 'Desconhecido',
+        };
     }
 
     private function resolveUnidadeQueryParam(): ?int
