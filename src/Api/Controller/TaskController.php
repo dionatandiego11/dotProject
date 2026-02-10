@@ -564,7 +564,7 @@ class TaskController extends BaseController
 
         try {
             $this->projectProgressSync = $this->projectProgressSync ?? new ProjectProgressSyncService($this->db);
-            $this->projectProgressSync->syncProject($projectId);
+            $this->projectProgressSync->syncProject($projectId, $this->getUserId(), 'task_controller');
         } catch (\Throwable $e) {
             Logger::warning('Failed to sync project progress after task mutation', [
                 'project_id' => $projectId,

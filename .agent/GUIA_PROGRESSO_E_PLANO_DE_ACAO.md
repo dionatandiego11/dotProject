@@ -79,6 +79,18 @@ Consolidar o que foi estabilizado no sistema e definir o proximo plano de execuc
   - `CriticalFlowsIntegrationTest`: update parcial de tarefa sem regressao de validacao;
   - `AdminUserDeletionIntegrationTest`: garantia de retorno de `data.id` no create de usuario.
 
+### Checkpoint 2026-02-10 (macrostatus automatico e exclusao segura de projeto)
+- `ProjectProgressSyncService` passou a concluir automaticamente o projeto (`project_status=5`) quando todas as tarefas estiverem em estado terminal (`Done/Cancelado/Arquivado`) e a reabrir para `Em progresso` quando houver novas tarefas nao concluidas.
+- Sincronizacao de progresso passou a tratar tarefas terminais como `100%` no calculo de `project_percent_complete`, evitando projetos travados em `Em progresso` com tarefas canceladas/arquivadas.
+- Transicoes automaticas de macrostatus agora registram auditoria em `dotp_project_status_history` com origem (`kanban_move`, `task_controller` etc.).
+- Fluxo de exclusao de projeto endurecido:
+  - bloqueia exclusao apenas se existir tarefa ativa;
+  - permite exclusao quando restarem apenas tarefas terminais;
+  - executa purge transacional de artefatos legados de tarefas (`task_log`, `task_contacts`, `task_departments`, `user_tasks`, `task_dependencies`) antes de remover o projeto.
+- Cobertura de integracao ampliada:
+  - `KanbanFlowIntegrationTest`: garante `project_status=5` no fim de `Backlog -> To Do -> In Progress -> Done`.
+  - `CriticalFlowsIntegrationTest`: garante sincronizacao correta com tarefas `Cancelado/Arquivado` e valida regras de exclusao de projeto com/sem tarefas ativas.
+
 ### Status de iteracoes (2026-02-09)
 - Iteracao 1 (`unidade` x `company`): concluida no escopo P0 critico.
 - Iteracao 2 (cache/invalidacao): concluida no escopo P0 critico.

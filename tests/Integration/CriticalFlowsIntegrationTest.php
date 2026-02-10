@@ -16,6 +16,7 @@ use DotProject\Entity\Notification;
 use DotProject\Repository\NotificationRepository;
 use DotProject\Repository\ProjectRepository;
 use DotProject\Service\KanbanService;
+use DotProject\Service\ProjectProgressSyncService;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -898,6 +899,49 @@ class CriticalFlowsIntegrationTest extends TestCase
         );
         $this->assertNotNull($row);
         $this->assertSame(1, (int) ($row['project_status'] ?? -1));
+    }
+
+    public function testProjectProgressSyncTreatsCancelledAndArchivedTasksAsTerminalCompletion(): void
+    {
+        $unidade = $this->pickAnyUnidade();
+        if ($unidade === null) {
+            $this->markTestSkipped('Base sem unidade para teste de sincronizacao de status terminal.');
+        }
+
+        $unidadeId = (int) $unidade['id'];
+        $this->ensureCompanyExistsForUnidade($unidadeId, (string) $unidade['nome']);
+
+        $projectId = $this->insertProject($unidadeId, 'it_project_terminal_tasks_' . bin2hex(random_bytes(4)));
+        $this->projectIds[] = $projectId;
+
+        $cancelledTaskId = $this->insertTask($projectId, 'IT Cancelled Task ' . bin2hex(random_bytes(3)));
+        $archivedTaskId = $this->insertTask($projectId, 'IT Archived Task ' . bin2hex(random_bytes(3)));
+        $this->taskIds[] = $cancelledTaskId;
+        $this->taskIds[] = $archivedTaskId;
+
+        $this->db->update('tasks', [
+            'task_status' => 5,
+            'task_percent_complete' => 0,
+        ], sprintf('task_id = %d', $cancelledTaskId));
+        $this->db->update('tasks', [
+            'task_status' => 6,
+            'task_percent_complete' => 0,
+        ], sprintf('task_id = %d', $archivedTaskId));
+
+        $sync = new ProjectProgressSyncService($this->db, new Cache());
+        $sync->syncProject($projectId, 1, 'tests.terminal_tasks');
+
+        $row = $this->db->fetchOne(
+            sprintf(
+                "SELECT project_status, project_percent_complete FROM `%s` WHERE project_id = %d LIMIT 1",
+                $this->db->table('projects'),
+                $projectId
+            )
+        );
+
+        $this->assertNotNull($row);
+        $this->assertSame(5, (int) ($row['project_status'] ?? -1));
+        $this->assertSame(100, (int) ($row['project_percent_complete'] ?? -1));
     }
 
     public function testProjectDestroyRejectsWhenProjectHasActiveTasks(): void

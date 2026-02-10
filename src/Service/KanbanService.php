@@ -254,7 +254,7 @@ class KanbanService
             return false;
         }
 
-        $this->syncTaskProgressFromColumn($kanbanTaskId, $targetColumnId);
+        $this->syncTaskProgressFromColumn($kanbanTaskId, $targetColumnId, $userId);
         $this->invalidateDashboardCaches();
 
         return true;
@@ -509,7 +509,7 @@ class KanbanService
         return $this->columnPresenceCache[$cacheKey];
     }
 
-    private function syncTaskProgressFromColumn(int $kanbanTaskId, int $targetColumnId): void
+    private function syncTaskProgressFromColumn(int $kanbanTaskId, int $targetColumnId, ?int $movedByUserId = null): void
     {
         $taskRow = $this->db->fetchOne(
             "SELECT kanban_task_task_id
@@ -595,7 +595,7 @@ class KanbanService
             'task_percent_complete' => max(0, min(100, $percent)),
         ], 'task_id = ' . $taskId);
 
-        $this->projectProgressSync->syncByTaskId($taskId);
+        $this->projectProgressSync->syncByTaskId($taskId, $movedByUserId, 'kanban_move');
     }
 
     private function invalidateDashboardCaches(): void

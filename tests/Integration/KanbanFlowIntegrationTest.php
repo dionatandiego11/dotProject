@@ -172,7 +172,7 @@ class KanbanFlowIntegrationTest extends TestCase
         $projectState = $this->projectState((int) $projectId);
         $this->assertSame(3, (int) ($taskState['task_status'] ?? -1));
         $this->assertSame(100, (int) ($taskState['task_percent_complete'] ?? -1));
-        $this->assertSame(3, (int) ($projectState['project_status'] ?? -1));
+        $this->assertSame(5, (int) ($projectState['project_status'] ?? -1));
         $this->assertSame(100, (int) ($projectState['project_percent_complete'] ?? -1));
     }
 

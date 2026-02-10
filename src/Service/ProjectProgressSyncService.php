@@ -23,6 +23,7 @@ class ProjectProgressSyncService
 {
     private Database $db;
     private Cache $cache;
+    private ?ProjectStatusHistoryService $statusHistoryService = null;
 
     public function __construct(?Database $db = null, ?Cache $cache = null)
     {
@@ -30,7 +31,7 @@ class ProjectProgressSyncService
         $this->cache = $cache ?? new Cache();
     }
 
-    public function syncByTaskId(int $taskId): void
+    public function syncByTaskId(int $taskId, ?int $changedByUserId = null, string $source = 'tasks_progress_sync'): void
     {
         if ($taskId <= 0) {
             return;
@@ -51,10 +52,10 @@ class ProjectProgressSyncService
             return;
         }
 
-        $this->syncProject($projectId);
+        $this->syncProject($projectId, $changedByUserId, $source);
     }
 
-    public function syncProject(int $projectId): void
+    public function syncProject(int $projectId, ?int $changedByUserId = null, string $source = 'tasks_progress_sync'): void
     {
         if ($projectId <= 0) {
             return;
@@ -81,14 +82,14 @@ class ProjectProgressSyncService
                     COUNT(*) AS total_tasks,
                     SUM(
                         CASE
-                            WHEN COALESCE(task_status, 0) IN (1, 2, 3) OR COALESCE(task_percent_complete, 0) > 0
+                            WHEN COALESCE(task_status, 0) IN (1, 2, 3, 5, 6, 7) OR COALESCE(task_percent_complete, 0) > 0
                                 THEN 1
                             ELSE 0
                         END
                     ) AS started_tasks,
                     SUM(
                         CASE
-                            WHEN COALESCE(task_status, 0) = 3 OR COALESCE(task_percent_complete, 0) >= 100
+                            WHEN COALESCE(task_status, 0) IN (3, 5, 6) OR COALESCE(task_percent_complete, 0) >= 100
                                 THEN 1
                             ELSE 0
                         END
@@ -96,6 +97,7 @@ class ProjectProgressSyncService
                     ROUND(
                         AVG(
                             CASE
+                                WHEN COALESCE(task_status, 0) IN (3, 5, 6) THEN 100
                                 WHEN COALESCE(task_percent_complete, 0) < 0 THEN 0
                                 WHEN COALESCE(task_percent_complete, 0) > 100 THEN 100
                                 ELSE COALESCE(task_percent_complete, 0)
@@ -152,6 +154,16 @@ class ProjectProgressSyncService
             return;
         }
 
+        if ($nextStatus !== $currentStatus) {
+            $this->statusHistoryService()->recordStatusChange(
+                $projectId,
+                $currentStatus,
+                $nextStatus,
+                $changedByUserId,
+                $source
+            );
+        }
+
         $this->invalidateCaches();
     }
 
@@ -166,13 +178,19 @@ class ProjectProgressSyncService
             return 6;
         }
 
+        // Sem tarefas: preserva status existente (exceto ajuste visual de completo no percentual acima).
+        if ($totalTasks <= 0) {
+            return $currentStatus;
+        }
+
+        // Todas as tarefas terminais implicam projeto completo.
+        if ($completedTasks >= $totalTasks) {
+            return 5;
+        }
+
         // Completo reabre se surgirem tarefas nao concluidas.
         if ($currentStatus === 5) {
-            if ($totalTasks > 0 && $completedTasks < $totalTasks) {
-                return 3;
-            }
-
-            return 5;
+            return 3;
         }
 
         // Projeto entra em progresso quando a execucao das tarefas comeca.
@@ -203,5 +221,14 @@ class ProjectProgressSyncService
         $projectServiceCache = new Cache(prefix: 'project_service:');
         $projectServiceCache->invalidate('stats:*');
         $projectServiceCache->invalidate('dashboard:*');
+    }
+
+    private function statusHistoryService(): ProjectStatusHistoryService
+    {
+        if ($this->statusHistoryService === null) {
+            $this->statusHistoryService = new ProjectStatusHistoryService($this->db);
+        }
+
+        return $this->statusHistoryService;
     }
 }
