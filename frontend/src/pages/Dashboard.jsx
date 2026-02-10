@@ -1,5 +1,5 @@
-import { useState, useEffect, lazy, Suspense } from 'react'
-import { getCurrentUser, getDashboardByProfile } from '../services/api'
+import { lazy, Suspense } from 'react'
+import useCurrentUser from '../hooks/useCurrentUser'
 import Loading from '../components/Loading'
 
 // Lazy load dos dashboards específicos
@@ -11,31 +11,11 @@ const DashboardControlador = lazy(() => import('./dashboard/DashboardControlador
 const DashboardGeral = lazy(() => import('./DashboardGeral'))
 
 function Dashboard() {
-    const [user, setUser] = useState(null)
-    const [profile, setProfile] = useState(null)
-    const [loading, setLoading] = useState(true)
-
-    useEffect(() => {
-        loadUserProfile()
-    }, [])
-
-    async function loadUserProfile() {
-        try {
-            setLoading(true)
-            const userData = await getCurrentUser()
-            setUser(userData)
-            
-            // Detectar perfil do usuário
-            const userProfile = detectProfile(userData)
-            setProfile(userProfile)
-        } catch (error) {
-            console.error('Failed to load user profile:', error)
-        } finally {
-            setLoading(false)
-        }
-    }
+    const { user, loading } = useCurrentUser()
+    const profile = detectProfile(user)
 
     function detectProfile(userData) {
+        if (!userData) return 'usuario'
         // Prioridade: profile > role > cargo > nivel_acesso
         if (userData.profile) return userData.profile.toLowerCase()
         if (userData.role) return userData.role.toLowerCase()

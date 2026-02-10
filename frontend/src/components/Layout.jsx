@@ -1,32 +1,20 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
-import { useState, useEffect } from 'react'
-import { getCurrentUser, logout } from '../services/api'
+import { logout } from '../services/api'
+import useCurrentUser from '../hooks/useCurrentUser'
 import { NotificationBell } from './notifications'
 
 function Layout() {
-    const [user, setUser] = useState(null)
+    const { user, clear } = useCurrentUser()
     const navigate = useNavigate()
 
-    useEffect(() => {
-        loadUser()
-    }, [])
-
-    async function loadUser() {
-        try {
-            const data = await getCurrentUser()
-            setUser(data)
-        } catch (error) {
-            console.error('Failed to load user:', error)
-        }
-    }
-
-    function handleLogout() {
-        logout()
+    async function handleLogout() {
+        await logout()
+        clear()
         navigate('/login')
     }
 
     const handleNotificationClick = (notification) => {
-        // Navega para a entidade da notificação
+        // Navega para a entidade da notificacao
         if (notification.entity_type === 'task' && notification.entity_id) {
             navigate('/kanban')
         } else if (notification.entity_type === 'project' && notification.entity_id) {
@@ -72,7 +60,7 @@ function Layout() {
                     </div>
 
                     <div className="nav-section">
-                        <div className="nav-section-title">Administração</div>
+                        <div className="nav-section-title">Administracao</div>
                         <NavLink to="/admin" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                 <circle cx="12" cy="12" r="3" />
@@ -85,7 +73,7 @@ function Layout() {
                                 <circle cx="12" cy="7" r="4" />
                                 <path d="M5.5 21a6.5 6.5 0 0 1 13 0" />
                             </svg>
-                            Usu�rios
+                            Usuarios
                         </NavLink>
                         <NavLink to="/dashboard" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -150,7 +138,7 @@ function Layout() {
                     backgroundColor: 'white',
                 }}>
                     <div>
-                        {/* Breadcrumbs ou título da página podem ir aqui */}
+                        {/* Breadcrumbs ou titulo da pagina podem ir aqui */}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                         <NotificationBell onNotificationClick={handleNotificationClick} />

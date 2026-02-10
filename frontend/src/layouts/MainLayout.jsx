@@ -1,31 +1,18 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
-import { useState, useEffect } from 'react'
-import { getCurrentUser, logout } from '../services/api'
+import { logout } from '../services/api'
+import useCurrentUser from '../hooks/useCurrentUser'
 
 function MainLayout() {
-    const [user, setUser] = useState(null)
-    const [userProfile, setUserProfile] = useState(null)
+    const { user, clear } = useCurrentUser()
     const navigate = useNavigate()
 
-    useEffect(() => {
-        loadUser()
-    }, [])
-
-    async function loadUser() {
-        try {
-            const data = await getCurrentUser()
-            setUser(data)
-            // Detectar perfil do usuario
-            setUserProfile(data.profile || data.role || 'usuario')
-        } catch (error) {
-            console.error('Failed to load user:', error)
-        }
-    }
-
-    function handleLogout() {
-        logout()
+    async function handleLogout() {
+        await logout()
+        clear()
         navigate('/login')
     }
+
+    const userProfile = user?.profile || user?.role || 'usuario'
 
     // Verificar se usuario e admin (multiplas formas de deteccao)
     const isAdmin = (
