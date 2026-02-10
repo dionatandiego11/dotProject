@@ -28,10 +28,10 @@ class Router
     private Request $request;
     private Response $response;
 
-    public function __construct()
+    public function __construct(?Request $request = null, ?Response $response = null)
     {
-        $this->request = new Request();
-        $this->response = new Response();
+        $this->request = $request ?? new Request();
+        $this->response = $response ?? new Response();
     }
 
     /**
@@ -101,6 +101,22 @@ class Router
         $requestId = $_SERVER['HTTP_X_REQUEST_ID'] ?? bin2hex(random_bytes(8));
         $this->response->setHeader('X-Request-Id', $requestId);
         $start = microtime(true);
+        $hasLoggedRequest = false;
+        $logRequest = function (Response $response) use (&$hasLoggedRequest, $requestId, $method, $uri, $start): void {
+            if ($hasLoggedRequest) {
+                return;
+            }
+
+            $hasLoggedRequest = true;
+            Logger::log('info', 'API Request', [
+                'request_id' => $requestId,
+                'method' => $method,
+                'uri' => $uri,
+                'status_code' => $response->getStatusCode(),
+                'duration_ms' => (int) round((microtime(true) - $start) * 1000),
+            ]);
+        };
+        $this->response->onSend($logRequest);
 
         // Handle OPTIONS for CORS
         if ($method === 'OPTIONS') {
@@ -112,6 +128,7 @@ class Router
         foreach ($this->middleware as $middleware) {
             $result = $middleware($this->request, $this->response);
             if ($result === false) {
+                $logRequest($this->response);
                 return; // Middleware interrompeu a execução
             }
         }
@@ -142,6 +159,9 @@ class Router
 
             // Se o handler retornou um Response, envia
             if ($result instanceof Response) {
+                if ($result !== $this->response) {
+                    $result->onSend($logRequest);
+                }
                 $result->send();
             } elseif ($result !== null) {
                 // Se retornou dados, assume JSON
@@ -169,13 +189,7 @@ class Router
                 $this->response->serverError()->send();
             }
         }
-        // Log response time (info level)
-        Logger::log('info', 'API Request', [
-            'request_id' => $requestId,
-            'method' => $method,
-            'uri' => $uri,
-            'duration_ms' => (int) round((microtime(true) - $start) * 1000),
-        ]);
+        $logRequest($this->response);
     }
 
     /**

@@ -20,6 +20,9 @@ class Response
     private int $statusCode = 200;
     private array $headers = [];
     private mixed $body = null;
+    private bool $terminateOnSend = true;
+    /** @var array<callable(Response): void> */
+    private array $sendCallbacks = [];
 
     /**
      * Códigos de status HTTP comuns
@@ -65,6 +68,33 @@ class Response
     {
         $this->body = $body;
         return $this;
+    }
+
+    /**
+     * Register a callback executed when send() is called.
+     */
+    public function onSend(callable $callback): self
+    {
+        $this->sendCallbacks[] = $callback;
+        return $this;
+    }
+
+    /**
+     * Control process termination after send().
+     * Useful for tests and non-blocking execution contexts.
+     */
+    public function setTerminateOnSend(bool $terminate): self
+    {
+        $this->terminateOnSend = $terminate;
+        return $this;
+    }
+
+    /**
+     * Exposes status code for logging and assertions.
+     */
+    public function getStatusCode(): int
+    {
+        return $this->statusCode;
     }
 
     /**
@@ -156,8 +186,10 @@ class Response
     /**
      * Envia a resposta ao cliente
      */
-    public function send(): void
+    public function send(?bool $terminate = null): void
     {
+        $terminate = $terminate ?? $this->terminateOnSend;
+
         // Set status code
         http_response_code($this->statusCode);
 
@@ -191,7 +223,11 @@ class Response
             echo json_encode($this->body, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
         }
 
-        exit;
+        $this->fireSendCallbacks();
+
+        if ($terminate) {
+            exit;
+        }
     }
 
     /**
@@ -209,5 +245,19 @@ class Response
             ],
         ];
         return $this;
+    }
+
+    /**
+     * Dispatch callbacks registered via onSend().
+     */
+    protected function fireSendCallbacks(): void
+    {
+        foreach ($this->sendCallbacks as $callback) {
+            try {
+                $callback($this);
+            } catch (\Throwable $e) {
+                error_log('Response send callback failed: ' . $e->getMessage());
+            }
+        }
     }
 }
