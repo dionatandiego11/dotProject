@@ -72,7 +72,14 @@ async function apiRequest(endpoint, options = {}) {
             setToken(null);
             window.location.href = '/login';
         }
-        throw new Error((data && data.message) ? data.message : 'Request failed');
+        const message =
+            (data && typeof data.message === 'string' && data.message.trim() !== '')
+                ? data.message
+                : (data && typeof data.error === 'string' && data.error.trim() !== '')
+                    ? data.error
+                    : 'Request failed';
+
+        throw new Error(message);
     }
 
     return data;

@@ -84,6 +84,20 @@ describe('API Service', () => {
 
             await expect(login('admin', 'wrong')).rejects.toThrow('Invalid credentials');
         });
+
+        it('should fallback to error field when message is missing', async () => {
+            global.fetch = vi.fn(() =>
+                Promise.resolve({
+                    ok: false,
+                    status: 400,
+                    text: () => Promise.resolve(JSON.stringify({
+                        error: 'Erro ao carregar dashboard'
+                    }))
+                })
+            );
+
+            await expect(login('admin', 'wrong')).rejects.toThrow('Erro ao carregar dashboard');
+        });
     });
 
     describe('Logout', () => {

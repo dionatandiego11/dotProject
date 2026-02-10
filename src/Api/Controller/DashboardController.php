@@ -496,7 +496,7 @@ class DashboardController extends BaseController
             $escopo = $this->getPermissionService()->getEscopoDados($userId);
 
             if (!$escopo) {
-                return $this->json(['error' => 'Escopo não encontrado'], 403);
+                return $this->error('Escopo não encontrado', Response::HTTP_FORBIDDEN);
             }
 
             $unidadeId = $escopo['unidade_id'];
@@ -537,7 +537,7 @@ class DashboardController extends BaseController
                 'file' => $e->getFile(),
                 'line' => $e->getLine(),
             ]);
-            return $this->json(['error' => 'Erro ao carregar dashboard'], 500);
+            return $this->error('Erro ao carregar dashboard', Response::HTTP_INTERNAL_ERROR);
         }
     }
 
@@ -701,7 +701,7 @@ class DashboardController extends BaseController
         $escopo = $this->getPermissionService()->getEscopoDados($userId);
 
         if (!$escopo) {
-            return $this->json(['error' => 'Escopo não encontrado'], 403);
+            return $this->error('Escopo não encontrado', Response::HTTP_FORBIDDEN);
         }
 
         $unidadesEscopo = $escopo['unidades_escopo'];
@@ -1174,7 +1174,7 @@ class DashboardController extends BaseController
 
             $this->getAlertaRepo()->marcarComoLido($id);
         } catch (\Exception $e) {
-            return $this->json(['error' => 'Erro ao processar alerta'], 500);
+            return $this->error('Erro ao processar alerta', Response::HTTP_INTERNAL_ERROR);
         }
 
         return $this->json([
@@ -1193,7 +1193,7 @@ class DashboardController extends BaseController
         try {
             $this->getAlertaRepo()->marcarTodosComoLidos($userId);
         } catch (\Exception $e) {
-            return $this->json(['error' => 'Erro ao processar alertas'], 500);
+            return $this->error('Erro ao processar alertas', Response::HTTP_INTERNAL_ERROR);
         }
 
         return $this->json([
