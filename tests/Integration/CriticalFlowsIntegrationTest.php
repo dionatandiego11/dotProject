@@ -900,6 +900,154 @@ class CriticalFlowsIntegrationTest extends TestCase
         $this->assertSame(1, (int) ($row['project_status'] ?? -1));
     }
 
+    public function testProjectDestroyRejectsWhenProjectHasActiveTasks(): void
+    {
+        $unidade = $this->pickAnyUnidade();
+        if ($unidade === null) {
+            $this->markTestSkipped('Base sem unidade para teste de exclusao de projeto.');
+        }
+
+        $unidadeId = (int) $unidade['id'];
+        $this->ensureCompanyExistsForUnidade($unidadeId, (string) $unidade['nome']);
+
+        $projectId = $this->insertProject($unidadeId, 'it_project_delete_active_' . bin2hex(random_bytes(4)));
+        $this->projectIds[] = $projectId;
+
+        $taskId = $this->insertTask($projectId, 'IT Active Task ' . bin2hex(random_bytes(3)));
+        $this->taskIds[] = $taskId;
+        $this->db->update('tasks', ['task_status' => 2, 'task_percent_complete' => 50], sprintf('task_id = %d', $taskId));
+
+        $request = $this->createMock(Request::class);
+        $request->method('getParam')
+            ->willReturnCallback(function (string $key, mixed $default = null) use ($projectId) {
+                return match ($key) {
+                    'id' => $projectId,
+                    '_user_id' => 1,
+                    default => $default,
+                };
+            });
+
+        $response = new Response();
+        $controller = new IntegrationProjectController($request, $response);
+        $result = $controller->destroy();
+        $body = $this->responseBody($result);
+
+        $this->assertSame(422, $this->responseStatus($result));
+        $this->assertTrue((bool) ($body['error'] ?? false));
+        $this->assertStringContainsString('active tasks', (string) ($body['message'] ?? ''));
+
+        $projectRow = $this->db->fetchOne(
+            sprintf('SELECT project_id FROM `%s` WHERE project_id = %d', $this->db->table('projects'), $projectId)
+        );
+        $this->assertNotNull($projectRow);
+    }
+
+    public function testProjectDestroyDeletesTerminalTasksAndArtifacts(): void
+    {
+        $unidade = $this->pickAnyUnidade();
+        if ($unidade === null) {
+            $this->markTestSkipped('Base sem unidade para teste de exclusao de projeto com tarefas finais.');
+        }
+
+        $unidadeId = (int) $unidade['id'];
+        $this->ensureCompanyExistsForUnidade($unidadeId, (string) $unidade['nome']);
+
+        $projectId = $this->insertProject($unidadeId, 'it_project_delete_terminal_' . bin2hex(random_bytes(4)));
+        $this->projectIds[] = $projectId;
+
+        $doneTaskId = $this->insertTask($projectId, 'IT Done Task ' . bin2hex(random_bytes(3)));
+        $archivedTaskId = $this->insertTask($projectId, 'IT Archived Task ' . bin2hex(random_bytes(3)));
+        $this->taskIds[] = $doneTaskId;
+        $this->taskIds[] = $archivedTaskId;
+
+        $this->db->update('tasks', ['task_status' => 3, 'task_percent_complete' => 100], sprintf('task_id = %d', $doneTaskId));
+        $this->db->update('tasks', ['task_status' => 6, 'task_percent_complete' => 100], sprintf('task_id = %d', $archivedTaskId));
+
+        if ($this->hasTable('task_log')) {
+            $this->db->insert('task_log', [
+                'task_log_task' => $doneTaskId,
+                'task_log_name' => 'IT purge log',
+                'task_log_creator' => 1,
+                'task_log_hours' => 1,
+                'task_log_costcode' => 'IT',
+            ]);
+        }
+        if ($this->hasTable('task_contacts')) {
+            $this->db->insert('task_contacts', [
+                'task_id' => $doneTaskId,
+                'contact_id' => 1,
+            ]);
+        }
+        if ($this->hasTable('task_departments')) {
+            $this->db->insert('task_departments', [
+                'task_id' => $doneTaskId,
+                'department_id' => 0,
+            ]);
+        }
+        if ($this->hasTable('user_tasks')) {
+            $this->db->insert('user_tasks', [
+                'user_id' => 1,
+                'user_type' => 0,
+                'task_id' => $doneTaskId,
+                'perc_assignment' => 100,
+                'user_task_priority' => 0,
+            ]);
+        }
+        if ($this->hasTable('task_dependencies')) {
+            $this->db->insert('task_dependencies', [
+                'dependencies_task_id' => $doneTaskId,
+                'dependencies_req_task_id' => $archivedTaskId,
+            ]);
+        }
+
+        $request = $this->createMock(Request::class);
+        $request->method('getParam')
+            ->willReturnCallback(function (string $key, mixed $default = null) use ($projectId) {
+                return match ($key) {
+                    'id' => $projectId,
+                    '_user_id' => 1,
+                    default => $default,
+                };
+            });
+
+        $response = new Response();
+        $controller = new IntegrationProjectController($request, $response);
+        $result = $controller->destroy();
+
+        $this->assertSame(204, $this->responseStatus($result));
+        $this->assertSame([], $this->responseBody($result));
+
+        $projectRow = $this->db->fetchOne(
+            sprintf('SELECT project_id FROM `%s` WHERE project_id = %d', $this->db->table('projects'), $projectId)
+        );
+        $this->assertNull($projectRow);
+
+        $remainingTasks = (int) ($this->db->fetchValue(
+            sprintf('SELECT COUNT(*) FROM `%s` WHERE task_project = %d', $this->db->table('tasks'), $projectId)
+        ) ?? 0);
+        $this->assertSame(0, $remainingTasks);
+
+        if ($this->hasTable('task_log')) {
+            $remainingTaskLogs = (int) ($this->db->fetchValue(
+                sprintf('SELECT COUNT(*) FROM `%s` WHERE task_log_task = %d', $this->db->table('task_log'), $doneTaskId)
+            ) ?? 0);
+            $this->assertSame(0, $remainingTaskLogs);
+        }
+
+        if ($this->hasTable('user_tasks')) {
+            $remainingUserTasks = (int) ($this->db->fetchValue(
+                sprintf('SELECT COUNT(*) FROM `%s` WHERE task_id IN (%d, %d)', $this->db->table('user_tasks'), $doneTaskId, $archivedTaskId)
+            ) ?? 0);
+            $this->assertSame(0, $remainingUserTasks);
+        }
+
+        $this->projectIds = array_values(array_filter($this->projectIds, fn(int $pid): bool => $pid !== $projectId));
+        $this->taskIds = array_values(array_filter(
+            $this->taskIds,
+            fn(int $tid): bool => !in_array($tid, [$doneTaskId, $archivedTaskId], true)
+        ));
+    }
+
     public function testProjectStatusHistoryEndpointReturnsLatestTransition(): void
     {
         if (!$this->hasProjectStatusHistoryTable()) {
@@ -1003,6 +1151,13 @@ class CriticalFlowsIntegrationTest extends TestCase
         return is_array($body) ? $body : [];
     }
 
+    private function responseStatus(Response $response): int
+    {
+        $prop = new \ReflectionProperty(Response::class, 'statusCode');
+        $prop->setAccessible(true);
+        return (int) $prop->getValue($response);
+    }
+
     private function hasProjectStatusHistoryTable(): bool
     {
         return (int) ($this->db->fetchValue(
@@ -1010,6 +1165,17 @@ class CriticalFlowsIntegrationTest extends TestCase
              FROM information_schema.tables
              WHERE table_schema = DATABASE()
                AND table_name = 'dotp_project_status_history'"
+        ) ?? 0) > 0;
+    }
+
+    private function hasTable(string $table): bool
+    {
+        return (int) ($this->db->fetchValue(
+            "SELECT COUNT(*)
+             FROM information_schema.tables
+             WHERE table_schema = DATABASE()
+               AND table_name = ?",
+            [$this->db->table($table)]
         ) ?? 0) > 0;
     }
 

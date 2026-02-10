@@ -524,22 +524,37 @@ class ProjectController extends BaseController
             return $this->notFound('Project not found');
         }
 
-        // Verifica se há tarefas associadas
-        $taskCount = $this->db->fetchValue(sprintf(
-            "SELECT COUNT(*) FROM %s WHERE task_project = %d",
-            $this->db->table('tasks'),
-            $id
-        ));
-
-        if ($taskCount > 0) {
-            return $this->error('Cannot delete project with tasks. Delete tasks first.', Response::HTTP_UNPROCESSABLE_ENTITY);
+        // Permite exclusao apenas se nao houver tarefas ativas (limpa tarefas finais automaticamente).
+        $taskStats = $this->projectTaskDeletionStats($id);
+        if ($taskStats['active'] > 0) {
+            return $this->error(
+                sprintf(
+                    'Cannot delete project with active tasks (%d active of %d). Move all tasks to Done, Cancelled or Archived first.',
+                    $taskStats['active'],
+                    $taskStats['total']
+                ),
+                Response::HTTP_UNPROCESSABLE_ENTITY
+            );
         }
 
-        if (!$project->delete()) {
+        $this->db->beginTransaction();
+        try {
+            if ($taskStats['total'] > 0 && !$this->purgeProjectTasks($id)) {
+                $this->db->rollback();
+                return $this->error('Failed to purge project tasks before delete');
+            }
+
+            if (!$project->delete()) {
+                $this->db->rollback();
+                return $this->error('Failed to delete project');
+            }
+
+            $this->db->commit();
+            return $this->response->noContent();
+        } catch (\Throwable $e) {
+            $this->db->rollback();
             return $this->error('Failed to delete project');
         }
-
-        return $this->response->noContent();
     }
 
     /**
@@ -801,6 +816,104 @@ class ProjectController extends BaseController
                 empty($allowedLabels) ? 'nenhum' : implode(', ', $allowedLabels)
             ),
         ]);
+    }
+
+    /**
+     * @return array{total: int, terminal: int, active: int}
+     */
+    private function projectTaskDeletionStats(int $projectId): array
+    {
+        $row = $this->db->fetchOne(
+            sprintf(
+                "SELECT
+                    COUNT(*) AS total,
+                    SUM(CASE WHEN task_status IN (3, 5, 6) THEN 1 ELSE 0 END) AS terminal
+                 FROM %s
+                 WHERE task_project = ?",
+                $this->db->table('tasks')
+            ),
+            [$projectId]
+        );
+
+        $total = (int) ($row['total'] ?? 0);
+        $terminal = (int) ($row['terminal'] ?? 0);
+        $active = max(0, $total - $terminal);
+
+        return [
+            'total' => $total,
+            'terminal' => $terminal,
+            'active' => $active,
+        ];
+    }
+
+    private function purgeProjectTasks(int $projectId): bool
+    {
+        $tasksTable = $this->db->table('tasks');
+        $taskIdsSql = sprintf('SELECT task_id FROM %s WHERE task_project = ?', $tasksTable);
+
+        $cleanupSteps = [
+            [
+                'table' => 'task_log',
+                'sql' => sprintf('DELETE FROM %s WHERE task_log_task IN (%s)', $this->db->table('task_log'), $taskIdsSql),
+                'params' => [$projectId],
+            ],
+            [
+                'table' => 'task_contacts',
+                'sql' => sprintf('DELETE FROM %s WHERE task_id IN (%s)', $this->db->table('task_contacts'), $taskIdsSql),
+                'params' => [$projectId],
+            ],
+            [
+                'table' => 'task_departments',
+                'sql' => sprintf('DELETE FROM %s WHERE task_id IN (%s)', $this->db->table('task_departments'), $taskIdsSql),
+                'params' => [$projectId],
+            ],
+            [
+                'table' => 'user_tasks',
+                'sql' => sprintf('DELETE FROM %s WHERE task_id IN (%s)', $this->db->table('user_tasks'), $taskIdsSql),
+                'params' => [$projectId],
+            ],
+            [
+                'table' => 'task_dependencies',
+                'sql' => sprintf(
+                    'DELETE FROM %s WHERE dependencies_task_id IN (%s) OR dependencies_req_task_id IN (%s)',
+                    $this->db->table('task_dependencies'),
+                    $taskIdsSql,
+                    $taskIdsSql
+                ),
+                'params' => [$projectId, $projectId],
+            ],
+        ];
+
+        foreach ($cleanupSteps as $step) {
+            if (!$this->tableExists($step['table'])) {
+                continue;
+            }
+
+            $result = $this->db->execute($step['sql'], $step['params']);
+            if ($result === false) {
+                return false;
+            }
+        }
+
+        $deleted = $this->db->execute(
+            sprintf('DELETE FROM %s WHERE task_project = ?', $tasksTable),
+            [$projectId]
+        );
+
+        return $deleted !== false;
+    }
+
+    private function tableExists(string $table): bool
+    {
+        $exists = (int) ($this->db->fetchValue(
+            "SELECT COUNT(*)
+             FROM information_schema.tables
+             WHERE table_schema = DATABASE()
+               AND table_name = ?",
+            [$this->db->table($table)]
+        ) ?? 0);
+
+        return $exists > 0;
     }
 
     private function statusHistoryService(): ProjectStatusHistoryService
