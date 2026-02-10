@@ -23,6 +23,7 @@ use DotProject\Repository\NivelHierarquicoRepository;
 use DotProject\Repository\UnidadeOrganizacionalRepository;
 use DotProject\Repository\UsuarioUnidadeRepository;
 use DotProject\Repository\UserRepository;
+use DotProject\Service\OnboardingReadinessService;
 use DotProject\Service\UserService;
 use DotProject\Service\UnidadeCompanySyncService;
 
@@ -34,6 +35,7 @@ class OnboardingController extends BaseController
     private UserRepository $userRepo;
     private UserService $userService;
     private UnidadeCompanySyncService $unidadeCompanySync;
+    private OnboardingReadinessService $onboardingReadinessService;
 
     public function __construct(Request $request, Response $response)
     {
@@ -44,6 +46,13 @@ class OnboardingController extends BaseController
         $this->userRepo = new UserRepository();
         $this->userService = new UserService();
         $this->unidadeCompanySync = new UnidadeCompanySyncService($this->db);
+        $this->onboardingReadinessService = new OnboardingReadinessService(
+            $this->db,
+            $this->nivelRepo,
+            $this->unidadeRepo,
+            $this->vinculoRepo,
+            $this->userRepo
+        );
     }
 
     /**
@@ -109,6 +118,21 @@ class OnboardingController extends BaseController
     public function setup(): Response
     {
         $data = $this->request->getJsonBody();
+        $forceReconfigure = (bool) ($data['force_reconfigure'] ?? false);
+
+        $readiness = $this->onboardingReadinessService->buildChecklist();
+        $summary = is_array($readiness['summary'] ?? null) ? $readiness['summary'] : [];
+        $hasExistingStructure = $this->hasExistingStructure($summary);
+
+        if ($hasExistingStructure && !$forceReconfigure) {
+            return $this->json([
+                'error' => true,
+                'message' => 'Setup bloqueado: já existe estrutura ativa. Envie force_reconfigure=true para confirmar reexecução.',
+                'data' => [
+                    'summary' => $summary,
+                ],
+            ], 409);
+        }
 
         // --- Validação ---
         $errors = $this->validateSetupData($data);
@@ -233,6 +257,7 @@ class OnboardingController extends BaseController
                 'niveis_criados' => count($nivelIds),
                 'unidades_criadas' => count($created['unidades']),
                 'usuario_id' => $userId,
+                'forced_reconfigure' => $forceReconfigure,
             ]);
 
             return $this->json([
@@ -256,6 +281,20 @@ class OnboardingController extends BaseController
     // =========================================================================
     // Métodos privados auxiliares
     // =========================================================================
+
+    /**
+     * Detecta se já existe estrutura organizacional ativa no ambiente.
+     *
+     * @param array<string, mixed> $summary
+     */
+    private function hasExistingStructure(array $summary): bool
+    {
+        return (
+            (int) ($summary['niveis_ativos'] ?? 0) > 0 ||
+            (int) ($summary['unidades_ativas'] ?? 0) > 0 ||
+            (int) ($summary['vinculos_ativos'] ?? 0) > 0
+        );
+    }
 
     /**
      * Valida os dados de entrada do setup.

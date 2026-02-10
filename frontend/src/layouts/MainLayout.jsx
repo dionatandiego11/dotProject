@@ -1,10 +1,13 @@
+import { useEffect, useMemo, useState } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
-import { logout } from '../services/api'
+import { logout, getAdminOnboardingReadiness } from '../services/api'
 import useCurrentUser from '../hooks/useCurrentUser'
+import { isAdminUser } from '../utils/userAccess'
 
 function MainLayout() {
     const { user, clear } = useCurrentUser()
     const navigate = useNavigate()
+    const [showSetupEntry, setShowSetupEntry] = useState(true)
 
     async function handleLogout() {
         await logout()
@@ -14,23 +17,56 @@ function MainLayout() {
 
     const userProfile = user?.profile || user?.role || 'usuario'
 
-    // Verificar se usuario e admin (multiplas formas de deteccao)
-    const isAdmin = (
-        user?.role?.toLowerCase() === 'admin' ||
-        user?.role?.toLowerCase() === 'administrador' ||
-        user?.is_admin === true ||
-        user?.is_admin === 1 ||
-        user?.profile === 'admin' ||
-        user?.user_id === 1 ||
-        user?.id === 1 ||
-        user?.nivel_acesso === 1 ||
-        user?.user_type === 1
-    )
+    const isAdmin = isAdminUser(user)
 
-    const adminItems = [
-        { path: '/admin/unidades', label: 'Estrutura', icon: 'U' },
-        { path: '/admin/usuarios', label: 'Usuários', icon: 'U' },
-    ]
+    useEffect(() => {
+        let isActive = true
+
+        if (!isAdmin) {
+            setShowSetupEntry(false)
+            return () => {
+                isActive = false
+            }
+        }
+
+        async function loadReadiness() {
+            try {
+                const response = await getAdminOnboardingReadiness()
+                const progress = response?.data?.progress || {}
+                const completed = Number(progress.completed || 0)
+                const total = Number(progress.total || 0)
+                const pending = total > 0 && completed < total
+
+                if (isActive) {
+                    setShowSetupEntry(pending)
+                }
+            } catch (_) {
+                if (isActive) {
+                    // Mantém acesso ao setup caso a consulta de status falhe.
+                    setShowSetupEntry(true)
+                }
+            }
+        }
+
+        loadReadiness()
+
+        return () => {
+            isActive = false
+        }
+    }, [isAdmin])
+
+    const adminItems = useMemo(() => {
+        const items = [
+            { path: '/admin/unidades', label: 'Estrutura' },
+            { path: '/admin/usuarios', label: 'Usuários' },
+        ]
+
+        if (showSetupEntry) {
+            items.unshift({ path: '/admin/setup', label: 'Setup inicial' })
+        }
+
+        return items
+    }, [showSetupEntry])
 
     return (
         <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#f3f4f6' }}>

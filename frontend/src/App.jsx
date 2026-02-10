@@ -3,6 +3,8 @@ import { lazy, Suspense, useState, useEffect } from 'react'
 import Loading from './components/Loading'
 import { isAuthenticated } from './services/api'
 import { ToastProvider } from './contexts/ToastContext'
+import useCurrentUser from './hooks/useCurrentUser'
+import { isAdminUser } from './utils/userAccess'
 
 // Layouts
 import MainLayout from './layouts/MainLayout'
@@ -26,6 +28,20 @@ function PrivateRoute({ children }) {
     if (!isAuthenticated()) {
         return <Navigate to="/login" replace />
     }
+    return children
+}
+
+function AdminRoute({ children }) {
+    const { user, loading } = useCurrentUser()
+
+    if (loading) {
+        return <Loading fullScreen />
+    }
+
+    if (!isAdminUser(user)) {
+        return <Navigate to="/" replace />
+    }
+
     return children
 }
 
@@ -65,13 +81,13 @@ function App() {
                     }
                 />
 
-                {/* Setup Wizard - Public */}
+                {/* Setup antigo - compatibilidade */}
                 <Route
                     path="/setup"
                     element={
-                        <Suspense fallback={<Loading fullScreen />}>
-                            <SetupWizard />
-                        </Suspense>
+                        <PrivateRoute>
+                            <Navigate to="/admin/setup" replace />
+                        </PrivateRoute>
                     }
                 />
 
@@ -131,6 +147,13 @@ function App() {
                         <Suspense fallback={<Loading />}>
                             <Organograma />
                         </Suspense>
+                    } />
+                    <Route path="admin/setup" element={
+                        <AdminRoute>
+                            <Suspense fallback={<Loading />}>
+                                <SetupWizard />
+                            </Suspense>
+                        </AdminRoute>
                     } />
 
                     {/* Redirecionar /admin para /admin/unidades */}

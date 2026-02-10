@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getSetupTemplates, setupPrefeitura, login } from '../services/api'
+import { getSetupTemplates, getAdminOnboardingReadiness, setupPrefeitura } from '../services/api'
 import './SetupWizard.css'
 
 const STEP_LABELS = [
@@ -20,9 +20,14 @@ function SetupWizard() {
     const navigate = useNavigate()
     const [step, setStep] = useState(0)
     const [loading, setLoading] = useState(false)
+    const [loadingReadiness, setLoadingReadiness] = useState(true)
     const [error, setError] = useState(null)
     const [success, setSuccess] = useState(false)
     const [templates, setTemplates] = useState(null)
+    const [readinessSummary, setReadinessSummary] = useState(null)
+    const [readinessError, setReadinessError] = useState('')
+    const [allowReconfigure, setAllowReconfigure] = useState(false)
+    const [confirmReconfigure, setConfirmReconfigure] = useState(false)
 
     // Data for all steps
     const [prefeitura, setPrefeitura] = useState({ nome: '', cnpj: '', estado: '', cidade: '' })
@@ -35,10 +40,31 @@ function SetupWizard() {
     const [conviteInput, setConviteInput] = useState('')
     const [convites, setConvites] = useState([])
 
-    // Load templates on mount
+    // Load templates + readiness on mount
     useEffect(() => {
+        let isActive = true
+
+        async function loadReadiness() {
+            try {
+                const response = await getAdminOnboardingReadiness()
+                if (!isActive) return
+                setReadinessSummary(response?.data?.summary || null)
+                setReadinessError('')
+            } catch (_) {
+                if (!isActive) return
+                setReadinessError('Não foi possível validar o estado atual da estrutura.')
+            } finally {
+                if (isActive) {
+                    setLoadingReadiness(false)
+                }
+            }
+        }
+
+        loadReadiness()
+
         getSetupTemplates()
             .then(res => {
+                if (!isActive) return
                 const data = res?.data || res
                 setTemplates(data)
                 if (data?.padrao?.niveis) {
@@ -46,6 +72,7 @@ function SetupWizard() {
                 }
             })
             .catch(() => {
+                if (!isActive) return
                 // Fallback templates
                 const fallback = [
                     { ordem: 1, nome: 'Prefeitura', titulo_responsavel: 'Prefeito(a)', cor: '#1e3a8a' },
@@ -56,6 +83,10 @@ function SetupWizard() {
                 ]
                 setNiveis(fallback)
             })
+
+        return () => {
+            isActive = false
+        }
     }, [])
 
     // When template changes, update niveis
@@ -64,6 +95,13 @@ function SetupWizard() {
             setNiveis(templates[selectedTemplate].niveis || [])
         }
     }, [selectedTemplate, templates])
+
+    const hasExistingStructure = (
+        Number(readinessSummary?.niveis_ativos || 0) > 0 ||
+        Number(readinessSummary?.unidades_ativas || 0) > 0 ||
+        Number(readinessSummary?.vinculos_ativos || 0) > 0
+    )
+    const requiresExplicitUnlock = Boolean(readinessError) || hasExistingStructure
 
     // --- Step navigation ---
     function canAdvance() {
@@ -170,6 +208,11 @@ function SetupWizard() {
 
     // --- Submit ---
     async function handleSubmit() {
+        if (requiresExplicitUnlock && !allowReconfigure) {
+            setError('Confirme a reconfiguração antes de finalizar o setup.')
+            return
+        }
+
         setError(null)
         setLoading(true)
 
@@ -192,14 +235,11 @@ function SetupWizard() {
             departamentos: filteredDepartamentos,
             usuario,
             convites,
+            force_reconfigure: allowReconfigure,
         }
 
         try {
             await setupPrefeitura(payload)
-            // Auto-login with the created user
-            try {
-                await login(usuario.username, usuario.password)
-            } catch (_) { /* ignore login error, user can login manually */ }
             setSuccess(true)
         } catch (err) {
             setError(err.message || 'Erro ao configurar a prefeitura')
@@ -223,11 +263,100 @@ function SetupWizard() {
                             </p>
                             <button
                                 className="setup-wizard__btn setup-wizard__btn--primary"
-                                onClick={() => navigate('/')}
+                                onClick={() => navigate('/admin/unidades')}
                             >
-                                Acessar o Sistema →
+                                Ir para administração →
                             </button>
                         </div>
+                    </div>
+                </div>
+            </div>
+        )
+    }
+
+    if (loadingReadiness) {
+        return (
+            <div className="setup-wizard">
+                <div className="setup-wizard__container">
+                    <div className="setup-wizard__body" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <div style={{ textAlign: 'center' }}>
+                            <div style={{ fontSize: 32, marginBottom: 8 }}>⏳</div>
+                            <div style={{ color: '#4b5563' }}>Validando estado do ambiente...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        )
+    }
+
+    if (requiresExplicitUnlock && !allowReconfigure) {
+        return (
+            <div className="setup-wizard">
+                <div className="setup-wizard__container">
+                    <div className="setup-wizard__header">
+                        <h1>⚠️ Setup administrativo bloqueado</h1>
+                        <p>Este ambiente já possui estrutura cadastrada.</p>
+                    </div>
+
+                    <div className="setup-wizard__body">
+                        <div style={{
+                            border: '1px solid #fca5a5',
+                            backgroundColor: '#fef2f2',
+                            borderRadius: 10,
+                            padding: 16,
+                            marginBottom: 16,
+                            color: '#991b1b',
+                        }}>
+                            Reexecutar o setup pode duplicar níveis, unidades e vínculos. Só continue se for intencional.
+                        </div>
+
+                        {readinessError ? (
+                            <div className="setup-wizard__error">{readinessError}</div>
+                        ) : (
+                            <div style={{ display: 'grid', gap: 8, marginBottom: 16 }}>
+                                <div style={{ fontSize: 14, color: '#374151' }}>
+                                    Níveis ativos: <strong>{readinessSummary?.niveis_ativos || 0}</strong>
+                                </div>
+                                <div style={{ fontSize: 14, color: '#374151' }}>
+                                    Unidades ativas: <strong>{readinessSummary?.unidades_ativas || 0}</strong>
+                                </div>
+                                <div style={{ fontSize: 14, color: '#374151' }}>
+                                    Vínculos ativos: <strong>{readinessSummary?.vinculos_ativos || 0}</strong>
+                                </div>
+                            </div>
+                        )}
+
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: '#111827' }}>
+                            <input
+                                type="checkbox"
+                                checked={confirmReconfigure}
+                                onChange={(e) => setConfirmReconfigure(e.target.checked)}
+                            />
+                            Entendo os riscos e desejo liberar a reconfiguração.
+                        </label>
+                    </div>
+
+                    <div className="setup-wizard__footer">
+                        <button
+                            className="setup-wizard__btn setup-wizard__btn--secondary"
+                            onClick={() => navigate('/')}
+                        >
+                            ← Voltar ao dashboard
+                        </button>
+                        <button
+                            className="setup-wizard__btn setup-wizard__btn--success"
+                            onClick={() => {
+                                if (!confirmReconfigure) {
+                                    setError('Confirme o aceite para liberar a reconfiguração.')
+                                    return
+                                }
+                                setAllowReconfigure(true)
+                                setError(null)
+                            }}
+                            disabled={!confirmReconfigure}
+                        >
+                            Liberar reconfiguração
+                        </button>
                     </div>
                 </div>
             </div>
@@ -596,8 +725,8 @@ function SetupWizard() {
             <div className="setup-wizard__container">
                 {/* Header */}
                 <div className="setup-wizard__header">
-                    <h1>⚙️ Configuração Inicial</h1>
-                    <p>Configure sua prefeitura em poucos passos</p>
+                    <h1>⚙️ Setup Administrativo</h1>
+                    <p>Configure a estrutura da prefeitura em poucos passos</p>
                 </div>
 
                 {/* Progress Bar */}
