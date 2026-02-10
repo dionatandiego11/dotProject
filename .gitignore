@@ -69,3 +69,6 @@ pnpm-debug.log*
 .env
 .env.*
 !.env.example
+
+# Local agent workspace (non-versioned)
+.agent/
