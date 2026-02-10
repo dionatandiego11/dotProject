@@ -4,8 +4,7 @@ import {
     getNiveis,
     getOrganograma,
     getUsuarios,
-    deleteUnidade,
-    getAdminOnboardingReadiness
+    deleteUnidade
 } from '../../services/api'
 import UnidadeForm from './UnidadeForm'
 
@@ -19,46 +18,6 @@ const styles = {
     },
     title: { margin: 0, fontSize: 28, fontWeight: 700, color: '#111827' },
     subtitle: { margin: '8px 0 0 0', color: '#6b7280', fontSize: 16 },
-    onboardingCard: {
-        marginBottom: 20,
-        background: '#f8fafc',
-        border: '1px solid #e2e8f0',
-        borderRadius: 12,
-        padding: 16
-    },
-    onboardingHeader: {
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        gap: 12,
-        flexWrap: 'wrap'
-    },
-    onboardingTitle: { margin: 0, fontSize: 16, fontWeight: 700, color: '#0f172a' },
-    onboardingMeta: { margin: '6px 0 0 0', fontSize: 13, color: '#475569' },
-    onboardingBadge: (ready) => ({
-        padding: '6px 10px',
-        borderRadius: 999,
-        fontSize: 12,
-        fontWeight: 700,
-        color: ready ? '#065f46' : '#92400e',
-        background: ready ? '#d1fae5' : '#fef3c7'
-    }),
-    onboardingList: {
-        margin: '12px 0 0 0',
-        padding: 0,
-        listStyle: 'none',
-        display: 'grid',
-        gap: 8
-    },
-    onboardingItem: {
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        gap: 10,
-        fontSize: 13
-    },
-    onboardingDone: { color: '#065f46', fontWeight: 600 },
-    onboardingPending: { color: '#92400e', fontWeight: 600 },
     treeWrapper: {
         display: 'flex',
         flexDirection: 'column',
@@ -170,7 +129,6 @@ function UnidadesTree({ mode = 'gestao' }) {
     const [editingUnidade, setEditingUnidade] = useState(null)
     const [expanded, setExpanded] = useState({})
     const [search, setSearch] = useState('')
-    const [onboarding, setOnboarding] = useState(null)
 
     useEffect(() => {
         loadData()
@@ -206,18 +164,6 @@ function UnidadesTree({ mode = 'gestao' }) {
             setUnidadesFlat(unidadesData.data || [])
             setNiveis(niveisData.data || [])
             setUsuarios(usuariosData.data || [])
-
-            if (mode === 'gestao') {
-                try {
-                    const readiness = await getAdminOnboardingReadiness()
-                    setOnboarding(readiness?.data || null)
-                } catch (readinessError) {
-                    console.warn('Falha ao carregar onboarding:', readinessError)
-                    setOnboarding(null)
-                }
-            } else {
-                setOnboarding(null)
-            }
         } catch (err) {
             console.error('Erro:', err)
             setError(err?.message || 'Falha ao carregar organograma')
@@ -455,11 +401,6 @@ function UnidadesTree({ mode = 'gestao' }) {
         })
     }
 
-    const onboardingChecklist = Array.isArray(onboarding?.checklist) ? onboarding.checklist : []
-    const onboardingPending = onboardingChecklist.filter((item) => item?.status !== 'done')
-    const onboardingProgress = onboarding?.progress || { completed: 0, total: 0, percentage: 0 }
-    const onboardingReady = onboardingProgress.total > 0 && onboardingProgress.completed === onboardingProgress.total
-
     return (
         <div style={styles.container}>
             <div style={styles.header}>
@@ -493,42 +434,6 @@ function UnidadesTree({ mode = 'gestao' }) {
                     </div>
                 )}
             </div>
-
-            {mode === 'gestao' && onboarding && (
-                <div style={styles.onboardingCard}>
-                    <div style={styles.onboardingHeader}>
-                        <div>
-                            <h2 style={styles.onboardingTitle}>Prontidao de implantacao</h2>
-                            <p style={styles.onboardingMeta}>
-                                {onboardingProgress.completed}/{onboardingProgress.total} etapas concluidas
-                            </p>
-                        </div>
-                        <div style={styles.onboardingBadge(onboardingReady)}>
-                            {onboardingProgress.percentage}% concluido
-                        </div>
-                    </div>
-
-                    <ul style={styles.onboardingList}>
-                        {onboardingChecklist.map((item) => {
-                            const statusDone = item?.status === 'done'
-                            return (
-                                <li key={item.key} style={styles.onboardingItem}>
-                                    <span>{item.label}</span>
-                                    <span style={statusDone ? styles.onboardingDone : styles.onboardingPending}>
-                                        {statusDone ? 'Concluido' : 'Pendente'}
-                                    </span>
-                                </li>
-                            )
-                        })}
-                    </ul>
-
-                    {onboardingPending.length > 0 && (
-                        <p style={{ margin: '10px 0 0 0', fontSize: 12, color: '#92400e' }}>
-                            Proximo foco: {onboardingPending[0]?.hint || 'Concluir itens pendentes do checklist.'}
-                        </p>
-                    )}
-                </div>
-            )}
 
             {mode === 'gestao' ? (
                 <div style={styles.treeWrapper}>
