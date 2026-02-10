@@ -8,7 +8,8 @@ import {
     getToken, 
     isAuthenticated, 
     login, 
-    logout 
+    logout,
+    getAdminOnboardingReadiness
 } from './api';
 
 describe('API Service', () => {
@@ -109,6 +110,37 @@ describe('API Service', () => {
             
             expect(isAuthenticated()).toBe(false);
             expect(localStorage.getItem('dp_refresh_token')).toBeNull();
+        });
+    });
+
+    describe('Admin onboarding readiness', () => {
+        it('should request onboarding readiness endpoint', async () => {
+            setToken('token-admin');
+            global.fetch = vi.fn(() =>
+                Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    text: () => Promise.resolve(JSON.stringify({
+                        data: {
+                            progress: { completed: 1, total: 2, percentage: 50 },
+                            checklist: []
+                        }
+                    }))
+                })
+            );
+
+            const result = await getAdminOnboardingReadiness();
+
+            expect(fetch).toHaveBeenCalledWith(
+                '/api.php/v1/admin/onboarding/readiness',
+                expect.objectContaining({
+                    headers: expect.objectContaining({
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer token-admin'
+                    })
+                })
+            );
+            expect(result?.data?.progress?.percentage).toBe(50);
         });
     });
 });

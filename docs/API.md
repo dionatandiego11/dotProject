@@ -78,6 +78,9 @@ Docs detalhadas: `docs/api/dashboards.md`
 
 ## Admin - Estrutura Organizacional
 
+### GET /admin/onboarding/readiness
+Retorna checklist de prontidao de implantacao (niveis, unidades, usuarios, vinculos e fluxo piloto).
+
 ### GET /admin/niveis
 Lista niveis hierarquicos.
 

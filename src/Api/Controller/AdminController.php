@@ -24,6 +24,7 @@ use DotProject\Service\AuthorizationService;
 use DotProject\Service\PermissionService;
 use DotProject\Service\UserService;
 use DotProject\Service\UnidadeCompanySyncService;
+use DotProject\Service\OnboardingReadinessService;
 
 class AdminController extends BaseController
 {
@@ -34,6 +35,7 @@ class AdminController extends BaseController
     private UserRepository $userRepo;
     private UserService $userService;
     private UnidadeCompanySyncService $unidadeCompanySync;
+    private OnboardingReadinessService $onboardingReadinessService;
 
     public function __construct(Request $request, Response $response)
     {
@@ -45,6 +47,13 @@ class AdminController extends BaseController
         $this->userRepo = new UserRepository();
         $this->userService = new UserService();
         $this->unidadeCompanySync = new UnidadeCompanySyncService($this->db);
+        $this->onboardingReadinessService = new OnboardingReadinessService(
+            $this->db,
+            $this->nivelRepo,
+            $this->unidadeRepo,
+            $this->vinculoRepo,
+            $this->userRepo
+        );
         Logger::debug('AdminController inicializado');
     }
 
@@ -74,6 +83,24 @@ class AdminController extends BaseController
         $this->cache->set($cacheKey, $data, 300);
 
         return $this->json($data);
+    }
+
+    /**
+     * GET /api/v1/admin/onboarding/readiness
+     */
+    public function onboardingReadiness(): Response
+    {
+        try {
+            $data = $this->onboardingReadinessService->buildChecklist();
+            return $this->json(['data' => $data]);
+        } catch (\Throwable $e) {
+            Logger::error('Erro ao gerar checklist de onboarding', [
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+            return $this->error('Falha ao carregar checklist de onboarding', 500);
+        }
     }
 
     // ===========================================

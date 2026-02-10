@@ -644,6 +644,10 @@ export async function getOrganograma() {
     return apiRequest('/admin/organograma');
 }
 
+export async function getAdminOnboardingReadiness() {
+    return apiRequest('/admin/onboarding/readiness');
+}
+
 export default {
     // Auth
     login,
@@ -730,5 +734,6 @@ export default {
     // Admin - Permissões
     getMatrizPermissoes,
     updateMatrizPermissoes,
-    getOrganograma
+    getOrganograma,
+    getAdminOnboardingReadiness
 };

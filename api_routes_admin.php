@@ -33,6 +33,11 @@ $router->get("{$prefix}/dashboard", function() use ($request, $response) {
     return $controller->dashboard();
 });
 
+$router->get("{$prefix}/onboarding/readiness", function() use ($request, $response) {
+    $controller = new AdminController($request, $response);
+    return $controller->onboardingReadiness();
+});
+
 // ===========================================
 // NÍVEIS HIERÁRQUICOS
 // ===========================================
