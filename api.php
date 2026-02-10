@@ -42,6 +42,7 @@ use DotProject\Api\Middleware\AuthMiddleware;
 use DotProject\Api\Controller\AuthController;
 use DotProject\Api\Controller\ProjectController;
 use DotProject\Api\Controller\TaskController;
+use DotProject\Api\Controller\AnalyticsController;
 
 // Cria o roteador
 $router = new Router();
@@ -409,8 +410,6 @@ $router->delete('/v1/files/{id}', function (Request $req, Response $res) {
 // ===========================================
 // ROTAS DE ANALYTICS
 // ===========================================
-
-use DotProject\Api\Controller\AnalyticsController;
 
 $router->get('/v1/analytics/productivity', function (Request $req, Response $res) {
     $controller = new AnalyticsController($req, $res);
