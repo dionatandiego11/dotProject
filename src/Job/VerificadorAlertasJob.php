@@ -11,6 +11,7 @@ declare(strict_types=1);
 namespace DotProject\Job;
 
 use DotProject\Core\Database;
+use DotProject\Core\TenantContext;
 use DotProject\Entity\AlertaEntity;
 use DotProject\Repository\AlertaRepository;
 use DotProject\Repository\UsuarioUnidadeRepository;
@@ -23,6 +24,10 @@ class VerificadorAlertasJob
     private UsuarioUnidadeRepository $vinculoRepo;
     private ?string $unidadeNivelColumn = null;
     private ?string $unidadeStatusColumn = null;
+    /**
+     * @var array<string, bool>
+     */
+    private array $tableHasTenantColumn = [];
     
     public function __construct()
     {
@@ -87,6 +92,9 @@ class VerificadorAlertasJob
      */
     private function verificarConveniosVencer(): int
     {
+        $tenantProjectsAlias = $this->tenantAndCondition('dotp_projects', 'p');
+        $tenantUnidadesAlias = $this->tenantAndCondition('dotp_unidades_organizacionais', 'u');
+
         $sql = "SELECT 
                     p.project_id as id,
                     p.project_name as nome,
@@ -95,11 +103,12 @@ class VerificadorAlertasJob
                     u.unidade_responsavel_id as responsavel_id,
                     DATEDIFF(p.project_end_date, CURDATE()) as dias_restantes
                 FROM dotp_projects p
-                JOIN dotp_unidades_organizacionais u ON u.unidade_id = p.project_company
+                JOIN dotp_unidades_organizacionais u ON u.unidade_id = p.project_company{$tenantUnidadesAlias}
                 WHERE p.project_tipo = 'Convenio'
                 AND p.project_estado NOT IN ('Concluido', 'Cancelado')
                 AND p.project_end_date IS NOT NULL
-                AND DATEDIFF(p.project_end_date, CURDATE()) BETWEEN 0 AND 60";
+                AND DATEDIFF(p.project_end_date, CURDATE()) BETWEEN 0 AND 60
+                {$tenantProjectsAlias}";
         
         $convenios = $this->db->fetchAll($sql);
         $count = 0;
@@ -141,6 +150,8 @@ class VerificadorAlertasJob
      */
     private function verificarObrasParadas(): int
     {
+        $tenantProjectsAlias = $this->tenantAndCondition('dotp_projects', 'p');
+
         $sql = "SELECT 
                     p.project_id as id,
                     p.project_name as nome,
@@ -150,7 +161,8 @@ class VerificadorAlertasJob
                 FROM dotp_projects p
                 WHERE p.project_tipo = 'Obra'
                 AND p.project_estado = 'Execucao'
-                AND DATEDIFF(CURDATE(), p.project_updated_at) > 15";
+                AND DATEDIFF(CURDATE(), p.project_updated_at) > 15
+                {$tenantProjectsAlias}";
         
         $obras = $this->db->fetchAll($sql);
         $count = 0;
@@ -179,6 +191,8 @@ class VerificadorAlertasJob
      */
     private function verificarProjetosParados(): int
     {
+        $tenantProjectsAlias = $this->tenantAndCondition('dotp_projects', 'p');
+
         $sql = "SELECT 
                     p.project_id as id,
                     p.project_name as nome,
@@ -187,7 +201,8 @@ class VerificadorAlertasJob
                     DATEDIFF(CURDATE(), p.project_updated_at) as dias_parado
                 FROM dotp_projects p
                 WHERE p.project_estado NOT IN ('Concluido', 'Cancelado')
-                AND DATEDIFF(CURDATE(), p.project_updated_at) > 30";
+                AND DATEDIFF(CURDATE(), p.project_updated_at) > 30
+                {$tenantProjectsAlias}";
         
         $projetos = $this->db->fetchAll($sql);
         $count = 0;
@@ -216,6 +231,8 @@ class VerificadorAlertasJob
      */
     private function verificarRecursosNaoPagos(): int
     {
+        $tenantProjectsAlias = $this->tenantAndCondition('dotp_projects', 'p');
+
         // Esta verificação depende da integração com o sistema contábil
         // Simulação baseada na data de atualização
         $sql = "SELECT 
@@ -226,7 +243,8 @@ class VerificadorAlertasJob
                     p.project_coordenador_id as responsavel_id
                 FROM dotp_projects p
                 WHERE p.project_situacao_orcamentaria = 'empenhado'
-                AND DATEDIFF(CURDATE(), p.project_updated_at) > 90";
+                AND DATEDIFF(CURDATE(), p.project_updated_at) > 90
+                {$tenantProjectsAlias}";
         
         $projetos = $this->db->fetchAll($sql);
         $count = 0;
@@ -255,6 +273,8 @@ class VerificadorAlertasJob
      */
     private function verificarEmendasSemExecucao(): int
     {
+        $tenantProjectsAlias = $this->tenantAndCondition('dotp_projects', 'p');
+
         $sql = "SELECT 
                     p.project_id as id,
                     p.project_name as nome,
@@ -266,7 +286,8 @@ class VerificadorAlertasJob
                 WHERE p.project_tipo = 'Emenda'
                 AND p.project_estado NOT IN ('Concluido', 'Cancelado')
                 AND p.project_percent_execucao < 30
-                AND DATEDIFF(p.project_end_date, CURDATE()) BETWEEN 0 AND 120";
+                AND DATEDIFF(p.project_end_date, CURDATE()) BETWEEN 0 AND 120
+                {$tenantProjectsAlias}";
         
         $emendas = $this->db->fetchAll($sql);
         $count = 0;
@@ -305,6 +326,8 @@ class VerificadorAlertasJob
      */
     private function verificarPrazoEtapaProximo(): int
     {
+        $tenantProjectsAlias = $this->tenantAndCondition('dotp_projects', 'p');
+
         $sql = "SELECT 
                     et.id,
                     et.nome,
@@ -318,7 +341,8 @@ class VerificadorAlertasJob
                 JOIN dotp_projects p ON p.project_id = et.projeto_id
                 WHERE et.estado NOT IN ('Concluida', 'Concluida_Com_Atraso')
                 AND et.data_prevista_fim IS NOT NULL
-                AND DATEDIFF(et.data_prevista_fim, CURDATE()) BETWEEN 0 AND 7";
+                AND DATEDIFF(et.data_prevista_fim, CURDATE()) BETWEEN 0 AND 7
+                {$tenantProjectsAlias}";
         
         $etapas = $this->db->fetchAll($sql);
         $count = 0;
@@ -348,6 +372,8 @@ class VerificadorAlertasJob
      */
     private function verificarEtapasAtrasadas(): int
     {
+        $tenantProjectsAlias = $this->tenantAndCondition('dotp_projects', 'p');
+
         $sql = "SELECT 
                     et.id,
                     et.nome,
@@ -360,7 +386,8 @@ class VerificadorAlertasJob
                 FROM dotp_etapas et
                 JOIN dotp_projects p ON p.project_id = et.projeto_id
                 WHERE et.estado = 'Atrasada'
-                AND DATEDIFF(CURDATE(), et.data_prevista_fim) > 0";
+                AND DATEDIFF(CURDATE(), et.data_prevista_fim) > 0
+                {$tenantProjectsAlias}";
         
         $etapas = $this->db->fetchAll($sql);
         $count = 0;
@@ -391,15 +418,18 @@ class VerificadorAlertasJob
     private function buscarSecretario(int $unidadeId): ?int
     {
         $nivelColumn = $this->getUnidadeNivelColumn();
+        $tenantUnidades = $this->tenantAndCondition('dotp_unidades_organizacionais');
+        $tenantUnidadesAlias = $this->tenantAndCondition('dotp_unidades_organizacionais', 'u');
         // Sobe na hierarquia até encontrar a secretaria
         $sql = "WITH RECURSIVE hierarquia AS (
                     SELECT unidade_id, unidade_pai_id, {$nivelColumn} as nivel
                     FROM dotp_unidades_organizacionais
-                    WHERE unidade_id = ?
+                    WHERE unidade_id = ?{$tenantUnidades}
                     UNION ALL
                     SELECT u.unidade_id, u.unidade_pai_id, u.{$nivelColumn} as nivel
                     FROM dotp_unidades_organizacionais u
                     JOIN hierarquia h ON h.unidade_pai_id = u.unidade_id
+                    WHERE 1=1{$tenantUnidadesAlias}
                 )
                 SELECT unidade_id FROM hierarquia WHERE nivel = 2 LIMIT 1";
         
@@ -410,7 +440,7 @@ class VerificadorAlertasJob
         }
         
         // Busca o responsável (secretário)
-        $sql = "SELECT unidade_responsavel_id FROM dotp_unidades_organizacionais WHERE unidade_id = ?";
+        $sql = "SELECT unidade_responsavel_id FROM dotp_unidades_organizacionais WHERE unidade_id = ?{$tenantUnidades}";
         return $this->db->fetchColumn($sql, [$secretariaId]) ?: null;
     }
     
@@ -421,9 +451,10 @@ class VerificadorAlertasJob
     {
         $nivelColumn = $this->getUnidadeNivelColumn();
         $statusFilter = $this->getUnidadeStatusFilter();
+        $tenantUnidades = $this->tenantAndCondition('dotp_unidades_organizacionais');
         $sql = "SELECT unidade_responsavel_id 
                 FROM dotp_unidades_organizacionais 
-                WHERE {$nivelColumn} = 1 AND {$statusFilter}
+                WHERE {$nivelColumn} = 1 AND {$statusFilter}{$tenantUnidades}
                 LIMIT 1";
         
         return $this->db->fetchColumn($sql) ?: null;
@@ -477,5 +508,57 @@ class VerificadorAlertasJob
         }
 
         return '1=1';
+    }
+
+    private function tenantAndCondition(string $table, ?string $alias = null): string
+    {
+        $tenantId = $this->getTenantId();
+        if ($tenantId === null || !$this->tableHasTenantColumn($table)) {
+            return '';
+        }
+
+        $column = $alias !== null && $alias !== ''
+            ? $alias . '.tenant_id'
+            : 'tenant_id';
+
+        return " AND {$column} = {$tenantId}";
+    }
+
+    private function tableHasTenantColumn(string $table): bool
+    {
+        $table = trim($table, '`');
+        if (array_key_exists($table, $this->tableHasTenantColumn)) {
+            return $this->tableHasTenantColumn[$table];
+        }
+
+        try {
+            $exists = (int) ($this->db->fetchValue(
+                "SELECT COUNT(*)
+                 FROM information_schema.columns
+                 WHERE table_schema = DATABASE()
+                   AND table_name = ?
+                   AND column_name = 'tenant_id'",
+                [$table]
+            ) ?? 0);
+            $this->tableHasTenantColumn[$table] = $exists > 0;
+        } catch (\Throwable) {
+            $this->tableHasTenantColumn[$table] = false;
+        }
+
+        return $this->tableHasTenantColumn[$table];
+    }
+
+    private function getTenantId(): ?int
+    {
+        if (!TenantContext::isEnabled()) {
+            return null;
+        }
+
+        $tenantId = TenantContext::getTenantId();
+        if ($tenantId === null || $tenantId <= 0) {
+            return null;
+        }
+
+        return $tenantId;
     }
 }

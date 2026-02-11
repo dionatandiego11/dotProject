@@ -11,6 +11,7 @@ namespace DotProject\Service;
 
 use DotProject\Core\Database;
 use DotProject\Core\Cache;
+use DotProject\Core\TenantContext;
 
 class KpiCalculationService
 {
@@ -21,6 +22,10 @@ class KpiCalculationService
     private ?bool $hasTaskAssignedToColumn = null;
     private ?bool $hasTaskEstadoColumn = null;
     private ?bool $hasUserTasksTable = null;
+    /**
+     * @var array<string, bool>
+     */
+    private array $tableHasTenantColumn = [];
     
     public function __construct()
     {
@@ -34,6 +39,8 @@ class KpiCalculationService
     public function getDashboardExecutivo(int $ppaId): array
     {
         $cacheKey = "executivo:{$ppaId}";
+        $tenantProgramasAlias = $this->tenantAndCondition('dotp_programas', 'p');
+        $tenantProjectsAlias = $this->tenantAndCondition('dotp_projects', 'pr');
         
         if ($cached = $this->cache->get($cacheKey)) {
             return $cached;
@@ -50,7 +57,8 @@ class KpiCalculationService
             COUNT(DISTINCT CASE WHEN pr.project_estado = 'Atrasado' THEN pr.project_id END) as projetos_atrasados,
             AVG(p.percent_execucao) as percent_execucao_media
         FROM dotp_programas p
-        LEFT JOIN dotp_projects pr ON pr.project_programa_id = p.id";
+        LEFT JOIN dotp_projects pr ON pr.project_programa_id = p.id{$tenantProjectsAlias}
+        WHERE 1=1{$tenantProgramasAlias}";
         
         $result = $this->db->fetchOne($sql) ?? [];
         
@@ -79,6 +87,8 @@ class KpiCalculationService
     public function getDashboardSecretario(int $userId): array
     {
         $unidades = $this->getUserUnidades($userId);
+        $tenantProgramasAlias = $this->tenantAndCondition('dotp_programas', 'p');
+        $tenantProjectsAlias = $this->tenantAndCondition('dotp_projects', 'pr');
         
         if (empty($unidades)) {
             return [];
@@ -96,8 +106,9 @@ class KpiCalculationService
             COUNT(DISTINCT CASE WHEN pr.project_estado = 'Atrasado' THEN pr.project_id END) as atrasados,
             COUNT(DISTINCT CASE WHEN pr.project_estado IN ('Execucao', 'Em_Andamento') THEN pr.project_id END) as em_execucao
         FROM dotp_programas p
-        LEFT JOIN dotp_projects pr ON pr.project_programa_id = p.id
+        LEFT JOIN dotp_projects pr ON pr.project_programa_id = p.id{$tenantProjectsAlias}
         WHERE p.unidade_id IN ($placeholders)
+        {$tenantProgramasAlias}
         GROUP BY p.id
         ORDER BY p.percent_execucao DESC";
         
@@ -109,6 +120,9 @@ class KpiCalculationService
      */
     public function getDashboardCoordenador(int $userId): array
     {
+        $tenantProjectsAlias = $this->tenantAndCondition('dotp_projects', 'pr');
+        $tenantTasksAlias = $this->tenantAndCondition('dotp_tasks', 't');
+
         $sql = "SELECT 
             pr.project_id as id,
             pr.project_name as projeto,
@@ -123,8 +137,9 @@ class KpiCalculationService
         FROM dotp_projects pr
         JOIN dotp_etapas e ON e.projeto_id = pr.project_id AND e.numero = pr.project_etapa_atual
         LEFT JOIN dotp_tasks t ON t.task_project = pr.project_id 
-            AND COALESCE(t.task_percent_complete, 0) < 100
+            AND COALESCE(t.task_percent_complete, 0) < 100{$tenantTasksAlias}
         WHERE pr.project_coordenador_id = ?
+        {$tenantProjectsAlias}
         GROUP BY pr.project_id
         ORDER BY e.data_prevista_fim ASC";
         
@@ -136,6 +151,8 @@ class KpiCalculationService
      */
     public function getDashboardTecnico(int $userId): array
     {
+        $tenantTasksAlias = $this->tenantAndCondition('dotp_tasks', 't');
+        $tenantProjectsAlias = $this->tenantAndCondition('dotp_projects', 'p');
         $assignmentJoin = '';
         $assignmentWhere = 't.task_owner = ?';
         $params = [$userId];
@@ -143,7 +160,7 @@ class KpiCalculationService
         if ($this->hasTaskAssignedToColumn()) {
             $assignmentWhere = 't.task_assigned_to = ?';
         } elseif ($this->hasUserTasksTable()) {
-            $assignmentJoin = 'JOIN dotp_user_tasks ut ON ut.task_id = t.task_id';
+            $assignmentJoin = 'JOIN dotp_user_tasks ut ON ut.task_id = t.task_id' . $this->tenantAndCondition('dotp_user_tasks', 'ut');
             $assignmentWhere = 'ut.user_id = ?';
         }
 
@@ -168,10 +185,11 @@ class KpiCalculationService
                 ELSE DATEDIFF(DATE(t.task_end_date), CURDATE())
             END as dias_restantes
         FROM dotp_tasks t
-        JOIN dotp_projects p ON p.project_id = t.task_project
+        JOIN dotp_projects p ON p.project_id = t.task_project{$tenantProjectsAlias}
         LEFT JOIN dotp_etapas e ON e.projeto_id = p.project_id AND e.numero = p.project_etapa_atual
         {$assignmentJoin}
         WHERE {$assignmentWhere}
+        {$tenantTasksAlias}
         AND COALESCE(t.task_percent_complete, 0) < 100
         ORDER BY t.task_priority DESC, t.task_end_date ASC
         LIMIT 20";
@@ -185,6 +203,8 @@ class KpiCalculationService
     private function getRankingSecretarias(int $ppaId): array
     {
         $nivelColumn = $this->getUnidadeNivelColumn();
+        $tenantUnidadesAlias = $this->tenantAndCondition('dotp_unidades_organizacionais', 'u');
+        $tenantProgramasAlias = $this->tenantAndCondition('dotp_programas', 'p');
 
         $sql = "SELECT 
             u.unidade_id,
@@ -193,8 +213,9 @@ class KpiCalculationService
             AVG(p.percent_execucao) as media_execucao,
             COUNT(DISTINCT CASE WHEN p.estado = 'Concluido' THEN p.id END) as concluidos
         FROM dotp_unidades_organizacionais u
-        JOIN dotp_programas p ON p.unidade_id = u.unidade_id
+        JOIN dotp_programas p ON p.unidade_id = u.unidade_id{$tenantProgramasAlias}
         WHERE u.{$nivelColumn} = 2
+        {$tenantUnidadesAlias}
         GROUP BY u.unidade_id
         ORDER BY media_execucao DESC
         LIMIT 10";
@@ -207,6 +228,10 @@ class KpiCalculationService
      */
     public function getProjetosRisco(int $ppaId, int $limite = 10): array
     {
+        $tenantProjectsAlias = $this->tenantAndCondition('dotp_projects', 'pr');
+        $tenantProgramasAlias = $this->tenantAndCondition('dotp_programas', 'p');
+        $tenantUnidadesAlias = $this->tenantAndCondition('dotp_unidades_organizacionais', 'u');
+
         $sql = "SELECT 
             pr.project_id as id,
             pr.project_name as projeto,
@@ -216,10 +241,11 @@ class KpiCalculationService
             e.dias_atraso,
             e.justificativa_atraso
         FROM dotp_projects pr
-        JOIN dotp_programas p ON p.id = pr.project_programa_id
-        JOIN dotp_unidades_organizacionais u ON u.unidade_id = p.unidade_id
+        JOIN dotp_programas p ON p.id = pr.project_programa_id{$tenantProgramasAlias}
+        JOIN dotp_unidades_organizacionais u ON u.unidade_id = p.unidade_id{$tenantUnidadesAlias}
         JOIN dotp_etapas e ON e.projeto_id = pr.project_id AND e.numero = pr.project_etapa_atual
         WHERE (pr.project_estado = 'Atrasado' OR e.estado = 'Critica')
+        {$tenantProjectsAlias}
         ORDER BY e.dias_atraso DESC
         LIMIT ?";
         
@@ -231,6 +257,8 @@ class KpiCalculationService
      */
     public function getEstatisticasTarefas(int $projetoId): array
     {
+        $tenantTasks = $this->tenantAndCondition('dotp_tasks');
+
         if ($this->hasTaskEstadoColumn()) {
             $sql = "SELECT 
                 COUNT(*) as total,
@@ -239,7 +267,7 @@ class KpiCalculationService
                 COUNT(CASE WHEN estado = 'A_Fazer' THEN 1 END) as a_fazer,
                 COUNT(CASE WHEN estado = 'Bloqueada' THEN 1 END) as bloqueadas
             FROM dotp_tasks
-            WHERE task_project = ?";
+            WHERE task_project = ?{$tenantTasks}";
         } else {
             $sql = "SELECT
                 COUNT(*) as total,
@@ -248,7 +276,7 @@ class KpiCalculationService
                 COUNT(CASE WHEN COALESCE(task_percent_complete, 0) = 0 THEN 1 END) as a_fazer,
                 0 as bloqueadas
             FROM dotp_tasks
-            WHERE task_project = ?";
+            WHERE task_project = ?{$tenantTasks}";
         }
         
         return $this->db->fetchOne($sql, [$projetoId]) ?? [
@@ -269,10 +297,11 @@ class KpiCalculationService
     {
         $statusColumn = $this->resolveVinculoStatusColumn();
         $activeStatus = $this->vinculoStatusValueForSql(true, $statusColumn);
+        $tenantVinculos = $this->tenantAndCondition('dotp_usuario_unidades');
         $sql = "SELECT vinculo_unidade_id 
                 FROM dotp_usuario_unidades 
                 WHERE vinculo_user_id = ? 
-                AND {$statusColumn} = ?";
+                AND {$statusColumn} = ?{$tenantVinculos}";
         
         $results = $this->db->fetchAll($sql, [$userId, $activeStatus]);
         return array_column($results, 'vinculo_unidade_id');
@@ -369,5 +398,56 @@ class KpiCalculationService
 
         $this->hasUserTasksTable = $exists > 0;
         return $this->hasUserTasksTable;
+    }
+
+    private function tenantAndCondition(string $table, ?string $alias = null): string
+    {
+        $tenantId = $this->getTenantId();
+        if ($tenantId === null || !$this->tableHasTenantColumn($table)) {
+            return '';
+        }
+
+        $column = $alias !== null && $alias !== ''
+            ? $alias . '.tenant_id'
+            : 'tenant_id';
+
+        return " AND {$column} = {$tenantId}";
+    }
+
+    private function tableHasTenantColumn(string $table): bool
+    {
+        $table = trim($table, '`');
+        if (array_key_exists($table, $this->tableHasTenantColumn)) {
+            return $this->tableHasTenantColumn[$table];
+        }
+
+        try {
+            $exists = (int) ($this->db->fetchValue(
+                "SELECT COUNT(*) FROM information_schema.columns
+                 WHERE table_schema = DATABASE()
+                   AND table_name = ?
+                   AND column_name = 'tenant_id'",
+                [$table]
+            ) ?? 0);
+            $this->tableHasTenantColumn[$table] = $exists > 0;
+        } catch (\Throwable) {
+            $this->tableHasTenantColumn[$table] = false;
+        }
+
+        return $this->tableHasTenantColumn[$table];
+    }
+
+    private function getTenantId(): ?int
+    {
+        if (!TenantContext::isEnabled()) {
+            return null;
+        }
+
+        $tenantId = TenantContext::getTenantId();
+        if ($tenantId === null || $tenantId <= 0) {
+            return null;
+        }
+
+        return $tenantId;
     }
 }

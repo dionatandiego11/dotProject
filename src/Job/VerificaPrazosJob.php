@@ -12,6 +12,7 @@ namespace DotProject\Job;
 
 use DotProject\Core\Database;
 use DotProject\Core\Logger;
+use DotProject\Core\TenantContext;
 use DotProject\Repository\EtapaRepository;
 use DotProject\Repository\ProjetoRepository;
 
@@ -21,6 +22,10 @@ class VerificaPrazosJob
     private Logger $logger;
     private EtapaRepository $etapaRepo;
     private ProjetoRepository $projetoRepo;
+    /**
+     * @var array<string, bool>
+     */
+    private array $tableHasTenantColumn = [];
     
     public function __construct()
     {
@@ -72,11 +77,14 @@ class VerificaPrazosJob
         $this->logger->debug('Verificando etapas próximas do prazo...');
         
         $limite = date('Y-m-d', strtotime('+7 days'));
+        $tenantProjectsAlias = $this->tenantAndCondition('dotp_projects', 'p');
         
-        $sql = "SELECT * FROM dotp_etapas 
+        $sql = "SELECT et.* FROM dotp_etapas et
+                JOIN dotp_projects p ON p.project_id = et.projeto_id
                 WHERE estado IN ('Dentro_Prazo', 'Em_Andamento')
                 AND data_prevista_fim <= ?
-                AND data_prevista_fim >= CURDATE()";
+                AND data_prevista_fim >= CURDATE()
+                {$tenantProjectsAlias}";
         
         $etapas = $this->db->fetchAll($sql, [$limite]);
         $contador = 0;
@@ -106,10 +114,13 @@ class VerificaPrazosJob
         $this->logger->debug('Verificando etapas atrasadas...');
         
         $hoje = date('Y-m-d');
+        $tenantProjectsAlias = $this->tenantAndCondition('dotp_projects', 'p');
         
-        $sql = "SELECT * FROM dotp_etapas 
+        $sql = "SELECT et.* FROM dotp_etapas et
+                JOIN dotp_projects p ON p.project_id = et.projeto_id
                 WHERE estado NOT IN ('Concluida', 'Concluida_Com_Atraso', 'Atrasada', 'Critica')
-                AND data_prevista_fim < ?";
+                AND data_prevista_fim < ?
+                {$tenantProjectsAlias}";
         
         $etapas = $this->db->fetchAll($sql, [$hoje]);
         $atrasadas = 0;
@@ -149,10 +160,11 @@ class VerificaPrazosJob
     private function atualizarStatusProjetos(): void
     {
         $this->logger->debug('Atualizando status dos projetos...');
+        $tenantProjects = $this->tenantAndCondition('dotp_projects');
         
         // Busca projetos ativos
         $sql = "SELECT * FROM dotp_projects 
-                WHERE project_estado NOT IN ('Concluido', 'Cancelado')";
+                WHERE project_estado NOT IN ('Concluido', 'Cancelado'){$tenantProjects}";
         
         $projetos = $this->db->fetchAll($sql);
         $atualizados = 0;
@@ -182,20 +194,22 @@ class VerificaPrazosJob
     private function atualizarStatusProgramas(): void
     {
         $this->logger->debug('Atualizando status dos programas...');
+        $tenantProgramas = $this->tenantAndCondition('dotp_programas');
+        $tenantProjects = $this->tenantAndCondition('dotp_projects');
         
-        $sql = "SELECT * FROM dotp_programas WHERE estado != 'Concluido'";
+        $sql = "SELECT * FROM dotp_programas WHERE estado != 'Concluido'{$tenantProgramas}";
         $programas = $this->db->fetchAll($sql);
         
         foreach ($programas as $dados) {
             try {
                 // Recalcula percentual
-                $sql = "SELECT AVG(project_percent_execucao) as media FROM dotp_projects WHERE project_programa_id = ?";
+                $sql = "SELECT AVG(project_percent_execucao) as media FROM dotp_projects WHERE project_programa_id = ?{$tenantProjects}";
                 $result = $this->db->fetchOne($sql, [$dados['id']]);
                 $percent = round((float) ($result['media'] ?? 0), 2);
                 
                 // Atualiza programa
                 $this->db->execute(
-                    "UPDATE dotp_programas SET percent_execucao = ? WHERE id = ?",
+                    "UPDATE dotp_programas SET percent_execucao = ? WHERE id = ?{$tenantProgramas}",
                     [$percent, $dados['id']]
                 );
                 
@@ -215,5 +229,57 @@ class VerificaPrazosJob
         // Aqui limparíamos o cache específico de KPIs
         // Cache::invalidate('kpi:*');
         $this->logger->debug('Cache de KPIs invalidado');
+    }
+
+    private function tenantAndCondition(string $table, ?string $alias = null): string
+    {
+        $tenantId = $this->getTenantId();
+        if ($tenantId === null || !$this->tableHasTenantColumn($table)) {
+            return '';
+        }
+
+        $column = $alias !== null && $alias !== ''
+            ? $alias . '.tenant_id'
+            : 'tenant_id';
+
+        return " AND {$column} = {$tenantId}";
+    }
+
+    private function tableHasTenantColumn(string $table): bool
+    {
+        $table = trim($table, '`');
+        if (array_key_exists($table, $this->tableHasTenantColumn)) {
+            return $this->tableHasTenantColumn[$table];
+        }
+
+        try {
+            $exists = (int) ($this->db->fetchValue(
+                "SELECT COUNT(*)
+                 FROM information_schema.columns
+                 WHERE table_schema = DATABASE()
+                   AND table_name = ?
+                   AND column_name = 'tenant_id'",
+                [$table]
+            ) ?? 0);
+            $this->tableHasTenantColumn[$table] = $exists > 0;
+        } catch (\Throwable) {
+            $this->tableHasTenantColumn[$table] = false;
+        }
+
+        return $this->tableHasTenantColumn[$table];
+    }
+
+    private function getTenantId(): ?int
+    {
+        if (!TenantContext::isEnabled()) {
+            return null;
+        }
+
+        $tenantId = TenantContext::getTenantId();
+        if ($tenantId === null || $tenantId <= 0) {
+            return null;
+        }
+
+        return $tenantId;
     }
 }
