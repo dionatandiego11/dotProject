@@ -37,7 +37,7 @@ class KanbanService
     private bool $schemaReady = false;
     /** @var array<string, bool> */
     private array $columnPresenceCache = [];
-    
+
     public function __construct(
         ?Database $db = null,
         ?AuthorizationService $auth = null,
@@ -50,7 +50,7 @@ class KanbanService
         $this->taskRepo = new KanbanTaskRepository($this->db, $this->cache);
         $this->projectProgressSync = new ProjectProgressSyncService($this->db);
     }
-    
+
     /**
      * Lista boards acessiveis ao usuario
      */
@@ -60,11 +60,11 @@ class KanbanService
             return [];
         }
         $userId = $userId ?? $this->auth->getCurrentUser()?->getId();
-        
+
         if ($userId === null) {
             return [];
         }
-        
+
         if ($projectId !== null) {
             $sql = sprintf(
                 "SELECT * FROM `dotp_kanban_boards` 
@@ -82,17 +82,17 @@ class KanbanService
                 $companyId
             );
         }
-        
+
         $results = $this->db->fetchAll($sql);
         $boards = [];
-        
+
         foreach ($results as $data) {
             $boards[] = $this->hydrateBoard($data);
         }
-        
+
         return $boards;
     }
-    
+
     /**
      * Cria um novo board
      */
@@ -108,7 +108,7 @@ class KanbanService
         $board->setCompanyId($data['company_id']);
         $board->setCreatedBy($userId);
         $board->setStatus(0);
-        
+
         $insertData = [
             'board_name' => $board->getName(),
             'board_description' => $board->getDescription(),
@@ -117,26 +117,26 @@ class KanbanService
             'board_created_by' => $board->getCreatedBy(),
             'board_status' => $board->getStatus(),
         ];
-        
+
         $result = $this->db->insert('dotp_kanban_boards', $insertData);
-        
+
         if (!$result) {
             throw new \RuntimeException('Failed to create board');
         }
-        
+
         $board->setId((int) $this->db->lastInsertId());
-        
+
         // Cria colunas padrão
         $this->createDefaultColumns($board->getId());
-        
+
         Logger::info('Kanban board created', [
             'board_id' => $board->getId(),
             'user_id' => $userId,
         ]);
-        
+
         return $board;
     }
-    
+
     /**
      * Obtém board completo
      */
@@ -147,28 +147,28 @@ class KanbanService
         }
         $sql = sprintf("SELECT * FROM `dotp_kanban_boards` WHERE board_id = %d", $boardId);
         $data = $this->db->fetchOne($sql);
-        
+
         if (!$data) {
             return null;
         }
-        
+
         $board = $this->hydrateBoard($data);
         $boardArray = $board->toArray();
-        
+
         if ($board->getProjectId() !== null) {
             $this->ensureProjectTasksInBoard($boardId, $board->getProjectId(), $userId);
         }
-        
+
         $columns = $this->getColumns($boardId);
         $tasksByColumn = $this->getTasksByColumn($boardId);
         $columnsArray = [];
         $totalTasks = 0;
-        
+
         foreach ($columns as $column) {
             $tasks = $tasksByColumn[$column->getId() ?? 0] ?? [];
             $taskCount = count($tasks);
             $totalTasks += $taskCount;
-            
+
             $avgProgress = 0;
             if ($taskCount > 0) {
                 $sum = 0;
@@ -177,7 +177,7 @@ class KanbanService
                 }
                 $avgProgress = round($sum / $taskCount, 1);
             }
-            
+
             $columnsArray[] = [
                 'id' => $column->getId(),
                 'board_id' => $column->getBoardId(),
@@ -196,16 +196,16 @@ class KanbanService
                 'tasks' => $tasks,
             ];
         }
-        
+
         $boardArray['total_tasks'] = $totalTasks;
         $boardArray['columns'] = $columnsArray;
-        
+
         return [
             'board' => $boardArray,
             'columns' => $columnsArray,
         ];
     }
-    
+
     /**
      * Cria colunas padrão para um board
      */
@@ -217,7 +217,7 @@ class KanbanService
             ['name' => 'In Progress', 'order' => 3],
             ['name' => 'Done', 'order' => 4, 'is_done' => 1],
         ];
-        
+
         foreach ($defaults as $col) {
             $this->db->insert('dotp_kanban_columns', [
                 'column_board_id' => $boardId,
@@ -229,7 +229,7 @@ class KanbanService
             ]);
         }
     }
-    
+
     /**
      * Obtém colunas de um board
      */
@@ -240,7 +240,7 @@ class KanbanService
         }
         return $this->columnRepo->findByBoard($boardId);
     }
-    
+
     /**
      * Move tarefa entre colunas
      */
@@ -277,11 +277,11 @@ class KanbanService
         $column->setIsBacklog((bool) ($data['is_backlog'] ?? false));
         $column->setIsDone((bool) ($data['is_done'] ?? false));
         $column->setStatus(0);
-        
+
         if ($this->columnRepo->save($column) <= 0) {
             throw new \RuntimeException('Failed to create column');
         }
-        
+
         return $column;
     }
 
@@ -297,7 +297,7 @@ class KanbanService
         if (!$column) {
             return null;
         }
-        
+
         if (isset($data['name'])) {
             $column->setName($data['name']);
         }
@@ -316,11 +316,11 @@ class KanbanService
         if (array_key_exists('is_done', $data)) {
             $column->setIsDone((bool) $data['is_done']);
         }
-        
+
         if ($this->columnRepo->save($column) <= 0) {
             throw new \RuntimeException('Failed to update column');
         }
-        
+
         return $column;
     }
 
@@ -352,7 +352,7 @@ class KanbanService
         if ($backlogColumnId === null) {
             return;
         }
-        
+
         $taskRows = $this->db->fetchAll(sprintf(
             "SELECT task_id FROM `%s` WHERE task_project = %d",
             $this->db->table('tasks'),
@@ -361,7 +361,7 @@ class KanbanService
         if (empty($taskRows)) {
             return;
         }
-        
+
         $taskIds = array_map(fn($r) => (int) $r['task_id'], $taskRows);
         $existingRows = $this->db->fetchAll(sprintf(
             "SELECT kt.kanban_task_task_id
@@ -371,7 +371,7 @@ class KanbanService
             $boardId
         ));
         $existingIds = array_map(fn($r) => (int) $r['kanban_task_task_id'], $existingRows);
-        
+
         foreach ($taskIds as $taskId) {
             if (!in_array($taskId, $existingIds, true)) {
                 $this->taskRepo->addTaskToColumn($taskId, $backlogColumnId, $userId);
@@ -393,14 +393,14 @@ class KanbanService
         if ($row && isset($row['column_id'])) {
             return (int) $row['column_id'];
         }
-        
+
         $fallback = $this->db->fetchOne(sprintf(
             "SELECT column_id FROM `dotp_kanban_columns`
              WHERE column_board_id = %d AND column_status = 0
              ORDER BY column_order ASC LIMIT 1",
             $boardId
         ));
-        
+
         return $fallback ? (int) $fallback['column_id'] : null;
     }
 
@@ -453,10 +453,10 @@ class KanbanService
             $this->db->table('contacts'),
             $boardId
         );
-        
+
         $rows = $this->db->fetchAll($sql);
         $byColumn = [];
-        
+
         foreach ($rows as $row) {
             $columnId = (int) $row['kanban_task_column_id'];
             $byColumn[$columnId][] = [
@@ -485,7 +485,7 @@ class KanbanService
                 ],
             ];
         }
-        
+
         return $byColumn;
     }
 
@@ -602,7 +602,7 @@ class KanbanService
     {
         // Dashboard data is cached with default cache prefix (dp:), not kanban prefix.
         $globalCache = new Cache();
-        $globalCache->invalidate('*DashboardController*dashboard*');
+        $globalCache->invalidate('*Dashboard*');
         $globalCache->invalidate('dashboard:*');
 
         // Analytics endpoints use dedicated prefix and need explicit invalidation.
@@ -630,11 +630,11 @@ class KanbanService
         $first = $row['user_first_name'] ?? null;
         $last = $row['user_last_name'] ?? null;
         $username = $row['user_username'] ?? null;
-        
+
         if ($first || $last) {
             return trim(($first ?? '') . ' ' . ($last ?? ''));
         }
-        
+
         return $username ?: null;
     }
 
@@ -673,7 +673,7 @@ class KanbanService
         }
         return $count;
     }
-    
+
     /**
      * Hidrata dados do board
      */
@@ -687,17 +687,17 @@ class KanbanService
         $entity->setCompanyId((int) $data['board_company']);
         $entity->setCreatedBy($data['board_created_by'] ? (int) $data['board_created_by'] : null);
         $entity->setStatus((int) $data['board_status']);
-        
+
         if (!empty($data['board_created_at'])) {
             $entity->setCreatedAt(new DateTime($data['board_created_at']));
         }
         if (!empty($data['board_updated_at'])) {
             $entity->setUpdatedAt(new DateTime($data['board_updated_at']));
         }
-        
+
         return $entity;
     }
-    
+
     /**
      * Hidrata dados da coluna
      */
@@ -713,7 +713,7 @@ class KanbanService
         $entity->setIsDone((bool) $data['column_is_done']);
         $entity->setIsBacklog((bool) $data['column_is_backlog']);
         $entity->setStatus((int) $data['column_status']);
-        
+
         return $entity;
     }
 }

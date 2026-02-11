@@ -203,7 +203,7 @@ class ProjectProgressSyncService
 
     private function invalidateCaches(): void
     {
-        $this->cache->invalidate('*DashboardController*dashboard*');
+        $this->cache->invalidate('*Dashboard*');
         $this->cache->invalidate('dashboard:*');
         $this->cache->invalidate(
             sprintf(
