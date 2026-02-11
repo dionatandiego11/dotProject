@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useId, useMemo, useState } from 'react'
 import PropTypes from 'prop-types'
 
 function normalize(value) {
@@ -35,7 +35,9 @@ export default function DataTable({
     defaultPageSize = 10,
     pageSizeOptions = [10, 20, 50],
     emptyText = 'Nenhum registro encontrado',
+    tableAriaLabel = 'Tabela de dados',
 }) {
+    const tableId = useId()
     const [query, setQuery] = useState('')
     const [page, setPage] = useState(1)
     const [pageSize, setPageSize] = useState(defaultPageSize)
@@ -86,30 +88,56 @@ export default function DataTable({
 
     function renderSortIndicator(column) {
         if (column.sortable === false) return null
-        if (sortState.key !== column.key) return ' <->'
-        return sortState.direction === 'asc' ? ' ^' : ' v'
+        if (sortState.key !== column.key) return '↕'
+        return sortState.direction === 'asc' ? '↑' : '↓'
+    }
+
+    function getAriaSort(column) {
+        if (column.sortable === false || sortState.key !== column.key) return 'none'
+        return sortState.direction === 'asc' ? 'ascending' : 'descending'
     }
 
     return (
         <div style={{ display: 'grid', gap: '0.75rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
                 {searchable ? (
-                    <input
-                        type="text"
-                        className="kanban-filter"
-                        placeholder={searchPlaceholder}
-                        value={query}
-                        onChange={(event) => {
-                            setQuery(event.target.value)
-                            setPage(1)
-                        }}
-                        style={{ minWidth: 240 }}
-                    />
+                    <div style={{ flex: '1 1 260px', minWidth: 0 }}>
+                        <label
+                            htmlFor={`${tableId}-search`}
+                            style={{
+                                position: 'absolute',
+                                width: 1,
+                                height: 1,
+                                padding: 0,
+                                margin: -1,
+                                overflow: 'hidden',
+                                clip: 'rect(0, 0, 0, 0)',
+                                whiteSpace: 'nowrap',
+                                border: 0,
+                            }}
+                        >
+                            Buscar na tabela
+                        </label>
+                        <input
+                            id={`${tableId}-search`}
+                            type="text"
+                            className="kanban-filter"
+                            placeholder={searchPlaceholder}
+                            value={query}
+                            onChange={(event) => {
+                                setQuery(event.target.value)
+                                setPage(1)
+                            }}
+                            style={{ width: '100%', minWidth: 0 }}
+                        />
+                    </div>
                 ) : <span />}
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8125rem' }}>
                     <span>{sortedRows.length} registros</span>
+                    <label htmlFor={`${tableId}-page-size`}>Itens por pagina</label>
                     <select
+                        id={`${tableId}-page-size`}
                         value={pageSize}
                         onChange={(event) => {
                             setPageSize(Number(event.target.value))
@@ -121,6 +149,7 @@ export default function DataTable({
                             padding: '0.25rem 0.5rem',
                             background: 'var(--color-bg)',
                         }}
+                        aria-label="Itens por pagina"
                     >
                         {pageSizeOptions.map((size) => (
                             <option key={size} value={size}>{size}/pag</option>
@@ -130,20 +159,40 @@ export default function DataTable({
             </div>
 
             <div style={{ overflowX: 'auto' }}>
-                <table className="table">
+                <table className="table" aria-label={tableAriaLabel}>
                     <thead>
                         <tr>
                             {columns.map((column) => (
                                 <th
                                     key={column.key}
-                                    onClick={() => toggleSort(column)}
+                                    aria-sort={getAriaSort(column)}
                                     style={{
-                                        cursor: column.sortable === false ? 'default' : 'pointer',
                                         width: column.width || 'auto',
                                     }}
                                 >
-                                    {column.label}
-                                    {renderSortIndicator(column)}
+                                    {column.sortable === false ? (
+                                        column.label
+                                    ) : (
+                                        <button
+                                            type="button"
+                                            onClick={() => toggleSort(column)}
+                                            aria-label={`Ordenar por ${column.label}`}
+                                            style={{
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                gap: '0.25rem',
+                                                background: 'transparent',
+                                                border: 'none',
+                                                color: 'inherit',
+                                                padding: 0,
+                                                font: 'inherit',
+                                                cursor: 'pointer',
+                                            }}
+                                        >
+                                            <span>{column.label}</span>
+                                            <span aria-hidden="true">{renderSortIndicator(column)}</span>
+                                        </button>
+                                    )}
                                 </th>
                             ))}
                         </tr>
@@ -169,12 +218,13 @@ export default function DataTable({
                 </table>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '0.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }} aria-label="Paginacao da tabela">
                 <button
                     type="button"
                     className="btn btn-secondary"
                     onClick={() => setPage((prev) => Math.max(1, prev - 1))}
                     disabled={currentPage <= 1}
+                    aria-label="Pagina anterior"
                 >
                     Anterior
                 </button>
@@ -186,6 +236,7 @@ export default function DataTable({
                     className="btn btn-secondary"
                     onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
                     disabled={currentPage >= totalPages}
+                    aria-label="Proxima pagina"
                 >
                     Proxima
                 </button>
@@ -210,4 +261,5 @@ DataTable.propTypes = {
     defaultPageSize: PropTypes.number,
     pageSizeOptions: PropTypes.arrayOf(PropTypes.number),
     emptyText: PropTypes.string,
+    tableAriaLabel: PropTypes.string,
 }

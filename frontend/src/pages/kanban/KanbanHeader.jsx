@@ -36,9 +36,10 @@ export default function KanbanHeader({
                         <span className="kanban-subtitle">{subtitle}</span>
                     </div>
 
-                    <div style={{ minWidth: 260 }}>
+                    <div style={{ flex: '1 1 280px', minWidth: 'min(260px, 100%)', maxWidth: 420 }}>
                         <FormField
                             as="select"
+                            label="Projeto"
                             value={selectedProjectId}
                             onChange={(event) => onProjectChange(event.target.value)}
                             options={[
@@ -65,13 +66,15 @@ export default function KanbanHeader({
                     <FormField
                         as="input"
                         type="text"
+                        label="Buscar"
                         value={filterText}
                         onChange={(event) => onFilterTextChange(event.target.value)}
                         placeholder="Buscar tarefa..."
-                        style={{ minWidth: 220 }}
+                        style={{ flex: '1 1 220px', minWidth: 0 }}
                     />
                     <FormField
                         as="select"
+                        label="Responsavel"
                         value={filterOwner}
                         onChange={(event) => onFilterOwnerChange(event.target.value)}
                         options={[
@@ -82,10 +85,11 @@ export default function KanbanHeader({
                                 label: user.full_name || user.username,
                             })),
                         ]}
-                        style={{ minWidth: 220 }}
+                        style={{ flex: '1 1 220px', minWidth: 0 }}
                     />
                     <FormField
                         as="select"
+                        label="Prioridade"
                         value={filterPriority}
                         onChange={(event) => onFilterPriorityChange(event.target.value)}
                         options={[
@@ -95,7 +99,7 @@ export default function KanbanHeader({
                             { value: '2', label: 'Alta' },
                             { value: '3', label: 'Urgente' },
                         ]}
-                        style={{ minWidth: 180 }}
+                        style={{ flex: '1 1 180px', minWidth: 0 }}
                     />
                     <label className="kanban-toggle">
                         <input

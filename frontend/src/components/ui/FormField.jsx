@@ -1,4 +1,5 @@
 import PropTypes from 'prop-types'
+import { useId } from 'react'
 
 function resolveControlStyles(error, hasLeftAddon) {
     return {
@@ -25,10 +26,24 @@ export default function FormField({
     style,
     ...props
 }) {
+    const generatedId = useId()
+    const controlId = props.id || `field-${generatedId}`
+    const helperId = helper ? `${controlId}-helper` : undefined
+    const errorId = error ? `${controlId}-error` : undefined
+    const passedDescribedBy = props['aria-describedby']
+    const describedBy = [passedDescribedBy, errorId, helperId].filter(Boolean).join(' ') || undefined
     const controlStyle = resolveControlStyles(error, Boolean(leftAddon))
     const shared = {
+        id: controlId,
         ...props,
         style: { ...controlStyle, ...(props.style || {}) },
+    }
+
+    if (describedBy) {
+        shared['aria-describedby'] = describedBy
+    }
+    if (error) {
+        shared['aria-invalid'] = true
     }
 
     const renderControl = () => {
@@ -63,7 +78,10 @@ export default function FormField({
     return (
         <div style={{ display: 'grid', gap: '0.25rem', width: fullWidth ? '100%' : 'auto', ...style }}>
             {label && (
-                <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: error ? 'var(--color-danger-600)' : 'var(--color-gray-700)' }}>
+                <label
+                    htmlFor={controlId}
+                    style={{ fontSize: '0.8125rem', fontWeight: 600, color: error ? 'var(--color-danger-600)' : 'var(--color-gray-700)' }}
+                >
                     {label}{required ? ' *' : ''}
                 </label>
             )}
@@ -80,6 +98,7 @@ export default function FormField({
                             fontSize: '0.8125rem',
                             pointerEvents: 'none',
                         }}
+                        aria-hidden="true"
                     >
                         {leftAddon}
                     </span>
@@ -88,7 +107,10 @@ export default function FormField({
             </div>
 
             {(error || helper) && (
-                <span style={{ fontSize: '0.75rem', color: error ? 'var(--color-danger-600)' : 'var(--color-gray-500)' }}>
+                <span
+                    id={error ? errorId : helperId}
+                    style={{ fontSize: '0.75rem', color: error ? 'var(--color-danger-600)' : 'var(--color-gray-500)' }}
+                >
                     {error || helper}
                 </span>
             )}

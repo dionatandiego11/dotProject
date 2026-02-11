@@ -8,44 +8,60 @@ use PHPUnit\Framework\TestCase;
 
 class ApiRoutesUniquenessTest extends TestCase
 {
-    public function testApiPhpDoesNotRegisterDuplicateMethodPathRoutes(): void
+    public function testApiRouteFilesDoNotRegisterDuplicateMethodPathRoutes(): void
     {
         $apiPath = dirname(__DIR__, 3) . '/api.php';
-        $contents = file_get_contents($apiPath);
+        $apiContents = file_get_contents($apiPath);
 
-        $this->assertIsString($contents);
-        $this->assertNotSame('', $contents);
+        $this->assertIsString($apiContents);
+        $this->assertNotSame('', $apiContents);
 
         preg_match_all(
-            '/\$router->(get|post|put|delete)\(\s*[\'"]([^\'"]+)[\'"]\s*,/i',
-            $contents,
-            $matches,
-            PREG_SET_ORDER
+            '/[\'"](api_routes_[^\'"]+\.php)[\'"]/',
+            $apiContents,
+            $routeFileMatches
         );
 
-        $this->assertNotEmpty($matches, 'Nenhuma rota encontrada em api.php.');
+        $routeFiles = array_values(array_unique($routeFileMatches[1] ?? []));
+        $this->assertNotEmpty($routeFiles, 'Nenhum arquivo de rota encontrado em api.php.');
 
         $seen = [];
         $duplicates = [];
 
-        foreach ($matches as $match) {
-            $method = strtoupper((string) $match[1]);
-            $path = '/' . trim((string) $match[2], '/');
-            $key = $method . ' ' . $path;
+        foreach ($routeFiles as $routeFile) {
+            $routeFilePath = dirname($apiPath) . '/' . $routeFile;
+            $this->assertFileExists($routeFilePath, "Arquivo de rota ausente: {$routeFile}");
 
-            if (isset($seen[$key])) {
-                $duplicates[] = $key;
-                continue;
+            $contents = file_get_contents($routeFilePath);
+            $this->assertIsString($contents);
+
+            preg_match_all(
+                '/\$router->(get|post|put|delete)\(\s*([\'"])(.*?)\2\s*,/i',
+                $contents,
+                $matches,
+                PREG_SET_ORDER
+            );
+
+            foreach ($matches as $match) {
+                $method = strtoupper((string) $match[1]);
+                $path = '/' . trim((string) $match[3], '/');
+                $key = $method . ' ' . $path;
+
+                if (isset($seen[$key])) {
+                    $duplicates[] = $key;
+                    continue;
+                }
+
+                $seen[$key] = true;
             }
-
-            $seen[$key] = true;
         }
+
+        $this->assertNotEmpty($seen, 'Nenhuma rota encontrada nos arquivos api_routes_*.php.');
 
         $this->assertSame(
             [],
             $duplicates,
-            'Rotas duplicadas detectadas em api.php: ' . implode(', ', $duplicates)
+            'Rotas duplicadas detectadas nos arquivos de rota: ' . implode(', ', $duplicates)
         );
     }
 }
-

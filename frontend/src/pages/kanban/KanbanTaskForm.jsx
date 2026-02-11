@@ -9,6 +9,11 @@ export default function KanbanTaskForm({
     onSubmit,
 }) {
     const isEdit = mode === 'edit'
+    const responsiveGridStyle = {
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
+        gap: 'var(--spacing-4)',
+    }
 
     function updateField(field, value) {
         setTask((prev) => ({ ...prev, [field]: value }))
@@ -46,7 +51,7 @@ export default function KanbanTaskForm({
                 />
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--spacing-4)' }}>
+            <div style={responsiveGridStyle}>
                 <FormField
                     as="select"
                     label={isEdit ? 'Status' : 'Prioridade'}
@@ -99,7 +104,7 @@ export default function KanbanTaskForm({
             </div>
 
             {isEdit && (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--spacing-4)', marginTop: 'var(--spacing-4)' }}>
+                <div style={{ ...responsiveGridStyle, marginTop: 'var(--spacing-4)' }}>
                     <FormField
                         as="input"
                         type="date"

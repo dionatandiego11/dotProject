@@ -5,8 +5,7 @@
  */
 
 import PropTypes from 'prop-types'
-import { useEffect } from 'react'
-import Button from './Button'
+import { useEffect, useId, useRef } from 'react'
 
 function Modal({
   isOpen,
@@ -18,6 +17,11 @@ function Modal({
   closeOnOverlay = true,
   closeOnEscape = true,
 }) {
+  const titleId = useId()
+  const dialogRef = useRef(null)
+  const closeButtonRef = useRef(null)
+  const lastFocusedElementRef = useRef(null)
+
   const sizes = {
     sm: { maxWidth: '400px' },
     md: { maxWidth: '500px' },
@@ -28,11 +32,21 @@ function Modal({
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden'
+      if (document.activeElement instanceof HTMLElement) {
+        lastFocusedElementRef.current = document.activeElement
+      }
+
+      const focusTimer = window.setTimeout(() => {
+        closeButtonRef.current?.focus()
+      }, 0)
+
+      return () => {
+        window.clearTimeout(focusTimer)
+        document.body.style.overflow = ''
+      }
     } else {
       document.body.style.overflow = ''
-    }
-    return () => {
-      document.body.style.overflow = ''
+      lastFocusedElementRef.current?.focus()
     }
   }, [isOpen])
 
@@ -40,6 +54,24 @@ function Modal({
     const handleEscape = (e) => {
       if (e.key === 'Escape' && isOpen && closeOnEscape) {
         onClose()
+      }
+
+      if (e.key === 'Tab' && isOpen && dialogRef.current) {
+        const focusables = dialogRef.current.querySelectorAll(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        )
+        if (focusables.length === 0) return
+
+        const first = focusables[0]
+        const last = focusables[focusables.length - 1]
+
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault()
+          last.focus()
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault()
+          first.focus()
+        }
       }
     }
     document.addEventListener('keydown', handleEscape)
@@ -115,12 +147,21 @@ function Modal({
       style={overlayStyle}
       onClick={closeOnOverlay ? onClose : undefined}
     >
-      <div style={modalStyle} onClick={(e) => e.stopPropagation()}>
+      <div
+        ref={dialogRef}
+        style={modalStyle}
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={title ? titleId : undefined}
+      >
         <div style={headerStyle}>
-          {title && <h2 style={titleStyle}>{title}</h2>}
+          {title && <h2 id={titleId} style={titleStyle}>{title}</h2>}
           <button
+            ref={closeButtonRef}
             style={closeButtonStyle}
             onClick={onClose}
+            aria-label="Fechar modal"
             onMouseEnter={(e) => {
               e.target.style.color = 'var(--color-gray-600)'
               e.target.style.backgroundColor = 'var(--color-gray-100)'

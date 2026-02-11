@@ -2,7 +2,6 @@ import { useEffect, useState, useMemo } from 'react'
 import { getUsuarios, createUsuario, updateUsuario, deleteUsuario, getUnidades, getVinculos, createVinculo } from '../../services/api'
 import Modal from '../../components/ui/Modal'
 import Button from '../../components/ui/Button'
-import Input from '../../components/ui/Input'
 import Badge from '../../components/ui/Badge'
 import DataTable from '../../components/ui/DataTable'
 import FormField from '../../components/ui/FormField'
@@ -304,6 +303,7 @@ function UsuariosAdmin() {
                         className="btn btn-secondary"
                         style={{ padding: 'var(--spacing-1) var(--spacing-2)' }}
                         onClick={() => openEdit(user)}
+                        aria-label={`Editar usuário ${user.username}`}
                     >
                         Editar
                     </button>
@@ -311,6 +311,7 @@ function UsuariosAdmin() {
                         className="btn btn-secondary"
                         style={{ padding: 'var(--spacing-1) var(--spacing-2)', marginLeft: 8 }}
                         onClick={() => handleDelete(user)}
+                        aria-label={`Desativar usuário ${user.username}`}
                     >
                         Excluir
                     </button>
@@ -320,8 +321,8 @@ function UsuariosAdmin() {
     ]
 
     return (
-        <div style={{ padding: 24 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+        <div style={{ padding: 'clamp(12px, 2vw, 24px)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
                 <div>
                     <h1 style={{ margin: 0, fontSize: 24 }}>Usuários</h1>
                     <p style={{ margin: '4px 0 0', color: '#6b7280' }}>Cadastro completo para login e responsáveis</p>
@@ -329,15 +330,16 @@ function UsuariosAdmin() {
                 <Button variant="primary" onClick={openCreate}>+ Novo Usuário</Button>
             </div>
 
-            <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
-                <form onSubmit={handleSearch} style={{ display: 'flex', gap: 8, flex: 1 }}>
+            <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+                <form onSubmit={handleSearch} style={{ display: 'flex', gap: 8, flex: '1 1 320px', minWidth: 0, flexWrap: 'wrap' }}>
                     <FormField
                         as="input"
+                        label="Buscar"
                         type="text"
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
                         placeholder="Buscar por nome, email ou login..."
-                        style={{ flex: 1 }}
+                        style={{ flex: '1 1 240px', minWidth: 0 }}
                     />
                     <Button variant="secondary" type="submit">Buscar</Button>
                 </form>
@@ -489,11 +491,19 @@ function UserForm({ formData, setFormData, validation, requirePassword, onSubmit
         return ordered
     }, [unidades])
 
+    const responsiveColumnsStyle = {
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+        gap: 12,
+    }
+
     return (
         <form onSubmit={onSubmit}>
-            <div style={{ marginBottom: 16 }}>
-                <label style={{ display: 'block', marginBottom: 6, fontWeight: 500 }}>Login *</label>
-                <Input
+            <div style={{ display: 'grid', gap: 12 }}>
+                <FormField
+                    as="input"
+                    label="Login"
+                    required
                     value={formData.user_username}
                     onChange={(e) => {
                         setFormData({ ...formData, user_username: e.target.value })
@@ -501,86 +511,63 @@ function UserForm({ formData, setFormData, validation, requirePassword, onSubmit
                     }}
                     placeholder="usuario.login"
                     error={validation.errors.user_username}
-                    fullWidth
                 />
-                {validation.errors.user_username && (
-                    <span style={{ color: 'var(--color-danger-500)', fontSize: '0.75rem' }}>
-                        {validation.errors.user_username}
-                    </span>
-                )}
-            </div>
 
-            <div style={{ marginBottom: 16 }}>
-                <label style={{ display: 'block', marginBottom: 6, fontWeight: 500 }}>
-                    {requirePassword ? 'Senha inicial *' : 'Nova senha (opcional)'}
-                </label>
-                <Input
+                <FormField
+                    as="input"
                     type="password"
+                    label={requirePassword ? 'Senha inicial' : 'Nova senha (opcional)'}
+                    required={requirePassword}
                     value={formData.user_password}
                     onChange={(e) => {
                         setFormData({ ...formData, user_password: e.target.value })
                         validation.clearFieldError('user_password')
                     }}
                     placeholder={requirePassword ? 'Defina uma senha' : 'Deixe em branco para manter'}
-                    required={requirePassword}
                     error={validation.errors.user_password}
-                    fullWidth
                 />
-                {validation.errors.user_password && (
-                    <span style={{ color: 'var(--color-danger-500)', fontSize: '0.75rem' }}>
-                        {validation.errors.user_password}
-                    </span>
-                )}
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div style={{ marginBottom: 16 }}>
-                    <label style={{ display: 'block', marginBottom: 6, fontWeight: 500 }}>Nome</label>
-                    <Input
-                        value={formData.contact_first_name}
-                        onChange={(e) => setFormData({ ...formData, contact_first_name: e.target.value })}
-                        placeholder="Nome"
-                    />
-                </div>
-                <div style={{ marginBottom: 16 }}>
-                    <label style={{ display: 'block', marginBottom: 6, fontWeight: 500 }}>Sobrenome</label>
-                    <Input
-                        value={formData.contact_last_name}
-                        onChange={(e) => setFormData({ ...formData, contact_last_name: e.target.value })}
-                        placeholder="Sobrenome"
-                    />
-                </div>
+            <div style={{ ...responsiveColumnsStyle, marginTop: 12 }}>
+                <FormField
+                    as="input"
+                    label="Nome"
+                    value={formData.contact_first_name}
+                    onChange={(e) => setFormData({ ...formData, contact_first_name: e.target.value })}
+                    placeholder="Nome"
+                />
+                <FormField
+                    as="input"
+                    label="Sobrenome"
+                    value={formData.contact_last_name}
+                    onChange={(e) => setFormData({ ...formData, contact_last_name: e.target.value })}
+                    placeholder="Sobrenome"
+                />
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div style={{ marginBottom: 16 }}>
-                    <label style={{ display: 'block', marginBottom: 6, fontWeight: 500 }}>Email</label>
-                    <Input
-                        type="email"
-                        value={formData.contact_email}
-                        onChange={(e) => {
-                            setFormData({ ...formData, contact_email: e.target.value })
-                            validation.clearFieldError('contact_email')
-                        }}
-                        placeholder="nome@prefeitura.gov.br"
-                    />
-                    {validation.errors.contact_email && (
-                        <span style={{ color: 'var(--color-danger-500)', fontSize: '0.75rem' }}>
-                            {validation.errors.contact_email}
-                        </span>
-                    )}
-                </div>
-                <div style={{ marginBottom: 16 }}>
-                    <label style={{ display: 'block', marginBottom: 6, fontWeight: 500 }}>Telefone</label>
-                    <Input
-                        value={formData.contact_phone}
-                        onChange={(e) => setFormData({ ...formData, contact_phone: e.target.value })}
-                        placeholder="(00) 00000-0000"
-                    />
-                </div>
+            <div style={{ ...responsiveColumnsStyle, marginTop: 12 }}>
+                <FormField
+                    as="input"
+                    type="email"
+                    label="Email"
+                    value={formData.contact_email}
+                    onChange={(e) => {
+                        setFormData({ ...formData, contact_email: e.target.value })
+                        validation.clearFieldError('contact_email')
+                    }}
+                    placeholder="nome@prefeitura.gov.br"
+                    error={validation.errors.contact_email}
+                />
+                <FormField
+                    as="input"
+                    label="Telefone"
+                    value={formData.contact_phone}
+                    onChange={(e) => setFormData({ ...formData, contact_phone: e.target.value })}
+                    placeholder="(00) 00000-0000"
+                />
             </div>
 
-            <div style={{ marginBottom: 8 }}>
+            <div style={{ marginTop: 12 }}>
                 <FormField
                     as="select"
                     label="Status"
@@ -594,10 +581,11 @@ function UserForm({ formData, setFormData, validation, requirePassword, onSubmit
             </div>
 
             <div style={{ marginTop: 12 }}>
-                <label style={{ display: 'block', marginBottom: 6, fontWeight: 500 }}>
+                <label htmlFor="user-unidade-id" style={{ display: 'block', marginBottom: 6, fontWeight: 500 }}>
                     Departamento / Unidade
                 </label>
                 <select
+                    id="user-unidade-id"
                     value={formData.unidade_id}
                     onChange={(e) => {
                         const unidadeId = e.target.value
@@ -611,10 +599,12 @@ function UserForm({ formData, setFormData, validation, requirePassword, onSubmit
                     style={{
                         width: '100%',
                         padding: '10px 12px',
-                        border: '1px solid #d1d5db',
+                        border: `1px solid ${validation.errors.unidade_id ? 'var(--color-danger-500)' : '#d1d5db'}`,
                         borderRadius: 8
                     }}
                     disabled={loadingUnidades || loadingVinculo}
+                    aria-invalid={Boolean(validation.errors.unidade_id)}
+                    aria-describedby={validation.errors.unidade_id ? 'user-unidade-id-error' : undefined}
                 >
                     <option value="">{loadingUnidades ? 'Carregando unidades...' : 'Selecione a unidade'}</option>
                     {unidadesAgrupadas.map((grupo) => (
@@ -628,7 +618,7 @@ function UserForm({ formData, setFormData, validation, requirePassword, onSubmit
                     ))}
                 </select>
                 {validation.errors.unidade_id && (
-                    <span style={{ color: 'var(--color-danger-500)', fontSize: '0.75rem' }}>
+                    <span id="user-unidade-id-error" style={{ color: 'var(--color-danger-500)', fontSize: '0.75rem' }}>
                         {validation.errors.unidade_id}
                     </span>
                 )}
