@@ -8,7 +8,7 @@
   - ou `wsl docker logs dotproject_web -f`
 
 ## Frontend nao carrega dados
-- Confirme que a API esta acessivel em `http://localhost:8088/api.php/v1`.
+- Confirme que a API esta acessivel em `http://localhost:8088/api/v1`.
 - Verifique se o token JWT esta sendo enviado.
 - Veja o console do navegador para erros de CORS ou 401.
 

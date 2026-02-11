@@ -2,7 +2,7 @@
  * Shared API client utilities.
  */
 
-export const API_BASE = '/api.php/v1';
+export const API_BASE = '/api/v1';
 const SHOULD_LOG_API = import.meta.env.DEV && import.meta.env.VITE_DEBUG_API === 'true';
 
 /**

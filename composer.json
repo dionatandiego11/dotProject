@@ -19,8 +19,7 @@
             "DotProject\\": "src/"
         },
         "classmap": [
-            "classes/",
-            "modules/"
+            "classes/"
         ]
     },
     "autoload-dev": {

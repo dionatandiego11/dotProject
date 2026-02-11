@@ -61,7 +61,7 @@ describe('API Service', () => {
             const result = await login('admin', 'password');
 
             expect(fetch).toHaveBeenCalledWith(
-                '/api.php/v1/auth/login',
+                '/api/v1/auth/login',
                 expect.objectContaining({
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -132,7 +132,7 @@ describe('API Service', () => {
             const result = await getAdminOnboardingReadiness();
 
             expect(fetch).toHaveBeenCalledWith(
-                '/api.php/v1/admin/onboarding/readiness',
+                '/api/v1/admin/onboarding/readiness',
                 expect.objectContaining({
                     headers: expect.objectContaining({
                         'Content-Type': 'application/json',

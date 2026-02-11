@@ -25,7 +25,7 @@ Foco: estrutura organizacional, projetos, tarefas e dashboards por perfil.
 
 ## URLs (ambiente local)
 - Frontend: http://localhost:5173
-- API: http://localhost:8088/api.php/v1
+- API: http://localhost:8088/api/v1
 - phpMyAdmin: http://localhost:8081 (se habilitado)
 
 ## Quick Start (Windows + WSL)
@@ -38,7 +38,7 @@ Foco: estrutura organizacional, projetos, tarefas e dashboards por perfil.
 ## Estrutura (alto nivel)
 - `frontend/` React app
 - `src/` API moderna (controllers, services, repositories)
-- `modules/` legado (mantido)
+- `classes/` e `includes/` legado residual (compatibilidade)
 - `db/` scripts SQL e migrations
 - `docs/` documentacao (API e troubleshooting)
 - `.agent/` guias internos do time

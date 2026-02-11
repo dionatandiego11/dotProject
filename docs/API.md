@@ -1,6 +1,6 @@
 ﻿# API - dotProject Prefeituras
 
-Base URL (local): `http://localhost:8088/api.php/v1`
+Base URL (local): `http://localhost:8088/api/v1`
 
 ## Autenticacao
 
