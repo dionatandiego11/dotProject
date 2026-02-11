@@ -5,11 +5,10 @@
 import { useNavigate } from 'react-router-dom'
 import {
     getStatusLabelById,
-    getStatusBadgeById,
     getNumericProjectStatus,
     getAllowedProjectStatuses,
-    normalizeDateValue
 } from './projectStatusUtils'
+import ProjectStatusBadge from './ProjectStatusBadge'
 
 export default function ProjectTable({
     projects,
@@ -69,9 +68,7 @@ export default function ProjectTable({
                             </td>
                             <td>{getProjectUnitName(project)}</td>
                             <td>
-                                <span className={`badge badge-${getStatusBadgeById(project.status)}`}>
-                                    {getStatusLabelById(project.status)}
-                                </span>
+                                <ProjectStatusBadge status={project.status} />
                             </td>
                             <td>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-2)' }}>
