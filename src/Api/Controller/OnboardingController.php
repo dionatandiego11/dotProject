@@ -17,6 +17,7 @@ namespace DotProject\Api\Controller;
 use DotProject\Api\Request;
 use DotProject\Api\Response;
 use DotProject\Core\Logger;
+use DotProject\Core\TenantContext;
 use DotProject\Entity\NivelHierarquicoEntity;
 use DotProject\Entity\UnidadeOrganizacionalEntity;
 use DotProject\Repository\NivelHierarquicoRepository;
@@ -36,6 +37,8 @@ class OnboardingController extends BaseController
     private UserService $userService;
     private UnidadeCompanySyncService $unidadeCompanySync;
     private OnboardingReadinessService $onboardingReadinessService;
+    /** @var array<string, bool> */
+    private array $columnPresenceCache = [];
 
     public function __construct(Request $request, Response $response)
     {
@@ -395,15 +398,55 @@ class OnboardingController extends BaseController
     private function createVinculo(int $userId, int $unidadeId, bool $principal = false): int
     {
         $table = $this->db->table('usuario_unidades');
-
-        $this->db->insert('usuario_unidades', [
+        $insertData = [
             'vinculo_user_id' => $userId,
             'vinculo_unidade_id' => $unidadeId,
             'vinculo_cargo' => 'Prefeito(a)',
             'vinculo_is_principal' => $principal ? 1 : 0,
             'vinculo_ativo' => 1,
-        ]);
+        ];
+        $tenantId = $this->getTenantId();
+        if ($tenantId !== null && $this->hasTableColumn($table, 'tenant_id')) {
+            $insertData['tenant_id'] = $tenantId;
+        }
+
+        $this->db->insert('usuario_unidades', $insertData);
 
         return (int) $this->db->lastInsertId();
+    }
+
+    private function hasTableColumn(string $table, string $column): bool
+    {
+        $tableName = trim($table, '`');
+        $cacheKey = $tableName . ':' . $column;
+        if (array_key_exists($cacheKey, $this->columnPresenceCache)) {
+            return $this->columnPresenceCache[$cacheKey];
+        }
+
+        $exists = (int) ($this->db->fetchValue(
+            "SELECT COUNT(*)
+             FROM information_schema.columns
+             WHERE table_schema = DATABASE()
+               AND table_name = ?
+               AND column_name = ?",
+            [$tableName, $column]
+        ) ?? 0);
+
+        $this->columnPresenceCache[$cacheKey] = $exists > 0;
+        return $this->columnPresenceCache[$cacheKey];
+    }
+
+    private function getTenantId(): ?int
+    {
+        if (!TenantContext::isEnabled()) {
+            return null;
+        }
+
+        $tenantId = TenantContext::getTenantId();
+        if ($tenantId === null || $tenantId <= 0) {
+            return null;
+        }
+
+        return $tenantId;
     }
 }

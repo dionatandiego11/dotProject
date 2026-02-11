@@ -16,11 +16,14 @@ use DotProject\Entity\HistoricoMovimentacaoEntity;
 use DotProject\Repository\UsuarioUnidadeRepository;
 use DotProject\Repository\HistoricoMovimentacaoRepository;
 use DotProject\Core\Logger;
+use DotProject\Core\TenantContext;
 
 class VinculoPermissaoController extends BaseController
 {
     private UsuarioUnidadeRepository $vinculoRepo;
     private HistoricoMovimentacaoRepository $historicoRepo;
+    /** @var array<string, bool> */
+    private array $columnPresenceCache = [];
 
     public function __construct(Request $request, Response $response)
     {
@@ -188,7 +191,56 @@ class VinculoPermissaoController extends BaseController
         $this->db->update(
             'users',
             ['user_company' => $companyId],
-            sprintf('user_id = %d', $userId)
+            sprintf('user_id = %d', $userId) . $this->tenantAndCondition($this->db->table('users'))
         );
+    }
+
+    private function tenantAndCondition(string $table, ?string $alias = null): string
+    {
+        $tenantId = $this->getTenantId();
+        if ($tenantId === null || !$this->hasTableColumn($table, 'tenant_id')) {
+            return '';
+        }
+
+        $column = $alias !== null && $alias !== ''
+            ? $alias . '.tenant_id'
+            : 'tenant_id';
+
+        return " AND {$column} = {$tenantId}";
+    }
+
+    private function hasTableColumn(string $table, string $column): bool
+    {
+        $tableName = trim($table, '`');
+        $cacheKey = $tableName . ':' . $column;
+        if (array_key_exists($cacheKey, $this->columnPresenceCache)) {
+            return $this->columnPresenceCache[$cacheKey];
+        }
+
+        $exists = (int) ($this->db->fetchValue(
+            "SELECT COUNT(*)
+             FROM information_schema.columns
+             WHERE table_schema = DATABASE()
+               AND table_name = ?
+               AND column_name = ?",
+            [$tableName, $column]
+        ) ?? 0);
+
+        $this->columnPresenceCache[$cacheKey] = $exists > 0;
+        return $this->columnPresenceCache[$cacheKey];
+    }
+
+    private function getTenantId(): ?int
+    {
+        if (!TenantContext::isEnabled()) {
+            return null;
+        }
+
+        $tenantId = TenantContext::getTenantId();
+        if ($tenantId === null || $tenantId <= 0) {
+            return null;
+        }
+
+        return $tenantId;
     }
 }

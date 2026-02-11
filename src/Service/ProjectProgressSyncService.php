@@ -15,6 +15,7 @@ namespace DotProject\Service;
 use DotProject\Core\Cache;
 use DotProject\Core\Database;
 use DotProject\Core\Logger;
+use DotProject\Core\TenantContext;
 
 /**
  * Service para manter project_percent_complete coerente com tarefas.
@@ -24,6 +25,8 @@ class ProjectProgressSyncService
     private Database $db;
     private Cache $cache;
     private ?ProjectStatusHistoryService $statusHistoryService = null;
+    /** @var array<string, bool> */
+    private array $columnPresenceCache = [];
 
     public function __construct(?Database $db = null, ?Cache $cache = null)
     {
@@ -41,9 +44,10 @@ class ProjectProgressSyncService
             sprintf(
                 "SELECT task_project
                  FROM `%s`
-                 WHERE task_id = ?
+                 WHERE task_id = ?%s
                  LIMIT 1",
-                $this->db->table('tasks')
+                $this->db->table('tasks'),
+                $this->tenantAndCondition($this->db->table('tasks'))
             ),
             [$taskId]
         ) ?? 0);
@@ -65,9 +69,10 @@ class ProjectProgressSyncService
             sprintf(
                 "SELECT project_status, project_percent_complete
                  FROM `%s`
-                 WHERE project_id = ?
+                 WHERE project_id = ?%s
                  LIMIT 1",
-                $this->db->table('projects')
+                $this->db->table('projects'),
+                $this->tenantAndCondition($this->db->table('projects'))
             ),
             [$projectId]
         );
@@ -107,8 +112,9 @@ class ProjectProgressSyncService
                     ) AS avg_percent
                  FROM `%s`
                  WHERE task_project = ?
-                   AND COALESCE(task_status, 0) <> -1",
-                $this->db->table('tasks')
+                   AND COALESCE(task_status, 0) <> -1%s",
+                $this->db->table('tasks'),
+                $this->tenantAndCondition($this->db->table('tasks'))
             ),
             [$projectId]
         );
@@ -143,7 +149,7 @@ class ProjectProgressSyncService
         $updated = $this->db->update(
             'projects',
             $updateData,
-            sprintf('project_id = %d', $projectId)
+            sprintf('project_id = %d', $projectId) . $this->tenantAndCondition($this->db->table('projects'))
         );
 
         if (!$updated) {
@@ -230,5 +236,54 @@ class ProjectProgressSyncService
         }
 
         return $this->statusHistoryService;
+    }
+
+    private function tenantAndCondition(string $table, ?string $alias = null): string
+    {
+        $tenantId = $this->getTenantId();
+        if ($tenantId === null || !$this->hasTableColumn($table, 'tenant_id')) {
+            return '';
+        }
+
+        $column = $alias !== null && $alias !== ''
+            ? $alias . '.tenant_id'
+            : 'tenant_id';
+
+        return " AND {$column} = {$tenantId}";
+    }
+
+    private function hasTableColumn(string $table, string $column): bool
+    {
+        $tableName = trim($table, '`');
+        $cacheKey = $tableName . ':' . $column;
+        if (array_key_exists($cacheKey, $this->columnPresenceCache)) {
+            return $this->columnPresenceCache[$cacheKey];
+        }
+
+        $exists = (int) ($this->db->fetchValue(
+            "SELECT COUNT(*)
+             FROM information_schema.columns
+             WHERE table_schema = DATABASE()
+               AND table_name = ?
+               AND column_name = ?",
+            [$tableName, $column]
+        ) ?? 0);
+
+        $this->columnPresenceCache[$cacheKey] = $exists > 0;
+        return $this->columnPresenceCache[$cacheKey];
+    }
+
+    private function getTenantId(): ?int
+    {
+        if (!TenantContext::isEnabled()) {
+            return null;
+        }
+
+        $tenantId = TenantContext::getTenantId();
+        if ($tenantId === null || $tenantId <= 0) {
+            return null;
+        }
+
+        return $tenantId;
     }
 }

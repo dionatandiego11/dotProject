@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace DotProject\Service;
 
 use DotProject\Core\Database;
+use DotProject\Core\TenantContext;
 use DotProject\Repository\NivelHierarquicoRepository;
 use DotProject\Repository\UnidadeOrganizacionalRepository;
 use DotProject\Repository\UsuarioUnidadeRepository;
@@ -17,6 +18,8 @@ class OnboardingReadinessService
     private UnidadeOrganizacionalRepository $unidadeRepo;
     private UsuarioUnidadeRepository $vinculoRepo;
     private UserRepository $userRepo;
+    /** @var array<string, bool> */
+    private array $columnPresenceCache = [];
 
     public function __construct(
         Database $db,
@@ -174,7 +177,9 @@ class OnboardingReadinessService
         $hasUserStatus = $this->userRepo->supportsUserStatus();
         $filter = $hasUserStatus ? 'user_status = 0' : '1 = 1';
 
-        return (int) ($this->db->fetchValue("SELECT COUNT(*) FROM {$table} WHERE {$filter}") ?? 0);
+        return (int) ($this->db->fetchValue(
+            "SELECT COUNT(*) FROM {$table} WHERE {$filter}" . $this->tenantAndCondition($table)
+        ) ?? 0);
     }
 
     private function countPrincipalLinks(): int
@@ -189,7 +194,8 @@ class OnboardingReadinessService
         $statusValue = $statusColumn === 'vinculo_status' ? 'ativo' : 1;
 
         return (int) ($this->db->fetchValue(
-            "SELECT COUNT(*) FROM {$table} WHERE {$statusColumn} = ? AND vinculo_is_principal = 1",
+            "SELECT COUNT(*) FROM {$table} WHERE {$statusColumn} = ? AND vinculo_is_principal = 1" .
+            $this->tenantAndCondition($table),
             [$statusValue]
         ) ?? 0);
     }
@@ -198,7 +204,9 @@ class OnboardingReadinessService
     {
         $table = $this->db->table($tableWithoutPrefix);
         try {
-            return (int) ($this->db->fetchValue("SELECT COUNT(*) FROM {$table}") ?? 0);
+            return (int) ($this->db->fetchValue(
+                "SELECT COUNT(*) FROM {$table} WHERE 1=1" . $this->tenantAndCondition($table)
+            ) ?? 0);
         } catch (\Throwable $e) {
             return 0;
         }
@@ -206,15 +214,50 @@ class OnboardingReadinessService
 
     private function tableHasColumn(string $tableName, string $columnName): bool
     {
+        $table = trim($tableName, '`');
+        $cacheKey = $table . ':' . $columnName;
+        if (array_key_exists($cacheKey, $this->columnPresenceCache)) {
+            return $this->columnPresenceCache[$cacheKey];
+        }
+
         $count = (int) ($this->db->fetchValue(
             "SELECT COUNT(*)
              FROM information_schema.columns
              WHERE table_schema = DATABASE()
                AND table_name = ?
                AND column_name = ?",
-            [trim($tableName, '`'), $columnName]
+            [$table, $columnName]
         ) ?? 0);
 
-        return $count > 0;
+        $this->columnPresenceCache[$cacheKey] = $count > 0;
+        return $this->columnPresenceCache[$cacheKey];
+    }
+
+    private function tenantAndCondition(string $table, ?string $alias = null): string
+    {
+        $tenantId = $this->getTenantId();
+        if ($tenantId === null || !$this->tableHasColumn($table, 'tenant_id')) {
+            return '';
+        }
+
+        $column = $alias !== null && $alias !== ''
+            ? $alias . '.tenant_id'
+            : 'tenant_id';
+
+        return " AND {$column} = {$tenantId}";
+    }
+
+    private function getTenantId(): ?int
+    {
+        if (!TenantContext::isEnabled()) {
+            return null;
+        }
+
+        $tenantId = TenantContext::getTenantId();
+        if ($tenantId === null || $tenantId <= 0) {
+            return null;
+        }
+
+        return $tenantId;
     }
 }
