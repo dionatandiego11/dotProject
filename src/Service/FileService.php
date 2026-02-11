@@ -15,6 +15,7 @@ namespace DotProject\Service;
 use DotProject\Core\Database;
 use DotProject\Core\Cache;
 use DotProject\Core\Logger;
+use DotProject\Core\TenantContext;
 
 /**
  * Serviço de Arquivos
@@ -24,6 +25,8 @@ class FileService
     private Database $db;
     private AuthorizationService $auth;
     private string $uploadDir;
+    /** @var array<string, bool> */
+    private array $columnPresenceCache = [];
     
     public function __construct(
         ?Database $db = null,
@@ -44,7 +47,11 @@ class FileService
      */
     public function taskExists(int $taskId): bool
     {
-        $sql = sprintf("SELECT COUNT(*) FROM `dotp_tasks` WHERE task_id = %d", $taskId);
+        $sql = sprintf(
+            "SELECT COUNT(*) FROM `dotp_tasks` WHERE task_id = %d%s",
+            $taskId,
+            $this->tenantAndCondition('dotp_tasks')
+        );
         return (int) $this->db->fetchValue($sql) > 0;
     }
     
@@ -61,9 +68,17 @@ class FileService
      */
     public function canDeleteFile(int $fileId, int $userId): bool
     {
+        $taskTenant = $this->tenantAndCondition('dotp_tasks', 't');
+        $fileTenant = $this->tenantAndCondition('dotp_task_files', 'f');
         $sql = sprintf(
-            "SELECT file_task_id, file_uploaded_by FROM `dotp_task_files` WHERE file_id = %d",
+            "SELECT f.file_task_id, f.file_uploaded_by
+             FROM `dotp_task_files` f
+             LEFT JOIN `dotp_tasks` t ON t.task_id = f.file_task_id
+             WHERE f.file_id = %d%s%s",
             $fileId
+            ,
+            $fileTenant,
+            $taskTenant
         );
         $file = $this->db->fetchOne($sql);
         
@@ -115,19 +130,22 @@ class FileService
         }
         
         // Salva no banco
-        $sql = sprintf(
-            "INSERT INTO `dotp_task_files` 
-             (file_task_id, file_name, file_path, file_size, file_mime_type, file_uploaded_by) 
-             VALUES (%d, '%s', '%s', %d, '%s', %d)",
-            $taskId,
-            $this->db->escape($originalName),
-            $this->db->escape($dateDir . '/' . $uniqueName),
-            $size,
-            $this->db->escape($mimeType),
-            $userId
-        );
-        
-        $this->db->query($sql);
+        $insertData = [
+            'file_task_id' => $taskId,
+            'file_name' => $originalName,
+            'file_path' => $dateDir . '/' . $uniqueName,
+            'file_size' => $size,
+            'file_mime_type' => $mimeType,
+            'file_uploaded_by' => $userId,
+        ];
+        $tenantId = $this->getTenantId();
+        if ($tenantId !== null && $this->hasTableColumn('dotp_task_files', 'tenant_id')) {
+            $insertData['tenant_id'] = $tenantId;
+        }
+
+        if (!$this->db->insert('dotp_task_files', $insertData)) {
+            throw new \RuntimeException('Falha ao registrar arquivo no banco');
+        }
         $fileId = (int) $this->db->lastInsertId();
         
         Logger::info('File uploaded', [
@@ -145,12 +163,19 @@ class FileService
      */
     public function getFile(int $fileId): ?array
     {
+        $fileTenant = $this->tenantAndCondition('dotp_task_files', 'f');
+        $taskTenant = $this->tenantAndCondition('dotp_tasks', 't');
+        $userTenant = $this->tenantAndCondition('dotp_users', 'u');
         $sql = sprintf(
             "SELECT f.*, u.user_username as uploaded_by_name 
              FROM `dotp_task_files` f
-             LEFT JOIN `dotp_users` u ON u.user_id = f.file_uploaded_by
-             WHERE f.file_id = %d",
-            $fileId
+             LEFT JOIN `dotp_users` u ON u.user_id = f.file_uploaded_by%s
+             LEFT JOIN `dotp_tasks` t ON t.task_id = f.file_task_id
+             WHERE f.file_id = %d%s%s",
+            $userTenant,
+            $fileId,
+            $fileTenant,
+            $taskTenant
         );
         
         $file = $this->db->fetchOne($sql);
@@ -170,13 +195,21 @@ class FileService
      */
     public function getTaskFiles(int $taskId): array
     {
+        $fileTenant = $this->tenantAndCondition('dotp_task_files', 'f');
+        $taskTenant = $this->tenantAndCondition('dotp_tasks', 't');
+        $userTenant = $this->tenantAndCondition('dotp_users', 'u');
         $sql = sprintf(
             "SELECT f.*, u.user_username as uploaded_by_name 
              FROM `dotp_task_files` f
-             LEFT JOIN `dotp_users` u ON u.user_id = f.file_uploaded_by
+             LEFT JOIN `dotp_users` u ON u.user_id = f.file_uploaded_by%s
+             LEFT JOIN `dotp_tasks` t ON t.task_id = f.file_task_id
              WHERE f.file_task_id = %d
+             %s%s
              ORDER BY f.file_created_at DESC",
-            $taskId
+            $userTenant,
+            $taskId,
+            $fileTenant,
+            $taskTenant
         );
         
         $files = $this->db->fetchAll($sql);
@@ -206,7 +239,12 @@ class FileService
         }
         
         // Remove do banco
-        $sql = sprintf("DELETE FROM `dotp_task_files` WHERE file_id = %d", $fileId);
+        $sql = sprintf(
+            "DELETE FROM `dotp_task_files` WHERE file_id = %d%s%s",
+            $fileId,
+            $this->tenantAndCondition('dotp_task_files'),
+            $this->taskTenantSubqueryCondition()
+        );
         $this->db->query($sql);
         
         Logger::info('File deleted', [
@@ -237,5 +275,64 @@ class FileService
         }
         
         return round($bytes, 2) . ' ' . $units[$unitIndex];
+    }
+
+    private function taskTenantSubqueryCondition(): string
+    {
+        $tenantId = $this->getTenantId();
+        if ($tenantId === null || !$this->hasTableColumn('dotp_tasks', 'tenant_id')) {
+            return '';
+        }
+
+        return " AND file_task_id IN (SELECT task_id FROM `dotp_tasks` WHERE tenant_id = {$tenantId})";
+    }
+
+    private function tenantAndCondition(string $table, ?string $alias = null): string
+    {
+        $tenantId = $this->getTenantId();
+        if ($tenantId === null || !$this->hasTableColumn($table, 'tenant_id')) {
+            return '';
+        }
+
+        $column = $alias !== null && $alias !== ''
+            ? $alias . '.tenant_id'
+            : 'tenant_id';
+
+        return " AND {$column} = {$tenantId}";
+    }
+
+    private function hasTableColumn(string $table, string $column): bool
+    {
+        $tableName = trim($table, '`');
+        $cacheKey = $tableName . ':' . $column;
+        if (array_key_exists($cacheKey, $this->columnPresenceCache)) {
+            return $this->columnPresenceCache[$cacheKey];
+        }
+
+        $count = (int) ($this->db->fetchValue(
+            "SELECT COUNT(*)
+             FROM information_schema.columns
+             WHERE table_schema = DATABASE()
+               AND table_name = ?
+               AND column_name = ?",
+            [$tableName, $column]
+        ) ?? 0);
+
+        $this->columnPresenceCache[$cacheKey] = $count > 0;
+        return $this->columnPresenceCache[$cacheKey];
+    }
+
+    private function getTenantId(): ?int
+    {
+        if (!TenantContext::isEnabled()) {
+            return null;
+        }
+
+        $tenantId = TenantContext::getTenantId();
+        if ($tenantId === null || $tenantId <= 0) {
+            return null;
+        }
+
+        return $tenantId;
     }
 }

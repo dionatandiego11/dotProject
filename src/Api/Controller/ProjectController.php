@@ -14,6 +14,7 @@ namespace DotProject\Api\Controller;
 
 use DotProject\Api\Request;
 use DotProject\Api\Response;
+use DotProject\Core\TenantContext;
 use DotProject\Entity\Project;
 use DotProject\Service\AuthorizationService;
 use DotProject\Service\PermissionService;
@@ -25,6 +26,8 @@ use DotProject\Service\ProjectStatusHistoryService;
 class ProjectController extends BaseController
 {
     private ?ProjectStatusHistoryService $statusHistoryService = null;
+    /** @var array<string, bool> */
+    private array $tableHasTenantColumn = [];
 
     /**
      * GET /v1/projects
@@ -85,11 +88,14 @@ class ProjectController extends BaseController
             $params[] = $like;
         }
 
+        $totalWhere = $where . $this->tenantAndCondition($this->db->table('projects'));
+        $listWhere = $where . $this->tenantAndCondition($this->db->table('projects'), 'p');
+
         // Conta total
         $totalSql = sprintf(
             "SELECT COUNT(*) as total FROM %s WHERE %s",
             $this->db->table('projects'),
-            $where
+            $totalWhere
         );
         $total = (int) ($this->db->fetchValueParams($totalSql, $params) ?? 0);
 
@@ -97,14 +103,16 @@ class ProjectController extends BaseController
         $sql = sprintf(
             "SELECT p.*, c.company_name, u.unidade_nome 
              FROM %s p 
-             LEFT JOIN %s c ON p.project_company = c.company_id
-             LEFT JOIN dotp_unidades_organizacionais u ON p.project_company = u.unidade_id
+             LEFT JOIN %s c ON p.project_company = c.company_id%s
+             LEFT JOIN dotp_unidades_organizacionais u ON p.project_company = u.unidade_id%s
              WHERE %s
              ORDER BY p.project_name ASC
              LIMIT ? OFFSET ?",
             $this->db->table('projects'),
             $this->db->table('companies'),
-            $where
+            $this->tenantAndCondition($this->db->table('companies'), 'c'),
+            $this->tenantAndCondition('dotp_unidades_organizacionais', 'u'),
+            $listWhere
         );
         $rows = $this->db->fetchAllParams($sql, array_merge($params, [
             $pagination['per_page'],
@@ -141,12 +149,15 @@ class ProjectController extends BaseController
         $sql = sprintf(
             "SELECT p.*, c.company_name, u.unidade_nome 
              FROM %s p 
-             LEFT JOIN %s c ON p.project_company = c.company_id
-             LEFT JOIN dotp_unidades_organizacionais u ON p.project_company = u.unidade_id
-             WHERE p.project_id = %d",
+             LEFT JOIN %s c ON p.project_company = c.company_id%s
+             LEFT JOIN dotp_unidades_organizacionais u ON p.project_company = u.unidade_id%s
+             WHERE p.project_id = %d%s",
             $this->db->table('projects'),
             $this->db->table('companies'),
-            $id
+            $this->tenantAndCondition($this->db->table('companies'), 'c'),
+            $this->tenantAndCondition('dotp_unidades_organizacionais', 'u'),
+            $id,
+            $this->tenantAndCondition($this->db->table('projects'), 'p')
         );
 
         $row = $this->db->fetchOne($sql);
@@ -205,8 +216,9 @@ class ProjectController extends BaseController
         $this->normalizeProjectStatusPercent($body, null, null);
 
         $unidadeExists = $this->db->fetchValue(sprintf(
-            "SELECT unidade_id FROM dotp_unidades_organizacionais WHERE unidade_id = %d",
-            $unidadeId
+            "SELECT unidade_id FROM dotp_unidades_organizacionais WHERE unidade_id = %d%s",
+            $unidadeId,
+            $this->tenantAndCondition('dotp_unidades_organizacionais')
         ));
         if ($unidadeExists === null) {
             return $this->response->validationError(
@@ -380,8 +392,9 @@ class ProjectController extends BaseController
                 );
             }
             $unidadeExists = $this->db->fetchValue(sprintf(
-                "SELECT unidade_id FROM dotp_unidades_organizacionais WHERE unidade_id = %d",
-                $unidadeId
+                "SELECT unidade_id FROM dotp_unidades_organizacionais WHERE unidade_id = %d%s",
+                $unidadeId,
+                $this->tenantAndCondition('dotp_unidades_organizacionais')
             ));
             if ($unidadeExists === null) {
                 return $this->response->validationError(
@@ -577,9 +590,10 @@ class ProjectController extends BaseController
 
         // Verifica se projeto existe
         $exists = $this->db->fetchValue(sprintf(
-            "SELECT project_id FROM %s WHERE project_id = %d",
+            "SELECT project_id FROM %s WHERE project_id = %d%s",
             $this->db->table('projects'),
-            $id
+            $id,
+            $this->tenantAndCondition($this->db->table('projects'))
         ));
 
         if ($exists === null) {
@@ -588,19 +602,21 @@ class ProjectController extends BaseController
 
         // Conta total de tarefas
         $total = (int) $this->db->fetchValue(sprintf(
-            "SELECT COUNT(*) FROM %s WHERE task_project = %d",
+            "SELECT COUNT(*) FROM %s WHERE task_project = %d%s",
             $this->db->table('tasks'),
-            $id
+            $id,
+            $this->tenantAndCondition($this->db->table('tasks'))
         ));
 
         // Busca tarefas
         $sql = sprintf(
-            "SELECT * FROM %s 
-             WHERE task_project = %d
+            "SELECT * FROM %s
+             WHERE task_project = %d%s
              ORDER BY task_order ASC, task_start_date ASC
              LIMIT %d OFFSET %d",
             $this->db->table('tasks'),
             $id,
+            $this->tenantAndCondition($this->db->table('tasks')),
             $pagination['per_page'],
             $pagination['offset']
         );
@@ -635,9 +651,10 @@ class ProjectController extends BaseController
         }
 
         $exists = $this->db->fetchValue(sprintf(
-            "SELECT project_id FROM %s WHERE project_id = %d",
+            "SELECT project_id FROM %s WHERE project_id = %d%s",
             $this->db->table('projects'),
-            $id
+            $id,
+            $this->tenantAndCondition($this->db->table('projects'))
         ));
         if ($exists === null) {
             return $this->notFound('Project not found');
@@ -823,14 +840,16 @@ class ProjectController extends BaseController
      */
     private function projectTaskDeletionStats(int $projectId): array
     {
+        $tasksTable = $this->db->table('tasks');
         $row = $this->db->fetchOne(
             sprintf(
                 "SELECT
                     COUNT(*) AS total,
                     SUM(CASE WHEN task_status IN (3, 5, 6) THEN 1 ELSE 0 END) AS terminal
                  FROM %s
-                 WHERE task_project = ?",
-                $this->db->table('tasks')
+                 WHERE task_project = ?%s",
+                $tasksTable,
+                $this->tenantAndCondition($tasksTable)
             ),
             [$projectId]
         );
@@ -849,7 +868,11 @@ class ProjectController extends BaseController
     private function purgeProjectTasks(int $projectId): bool
     {
         $tasksTable = $this->db->table('tasks');
-        $taskIdsSql = sprintf('SELECT task_id FROM %s WHERE task_project = ?', $tasksTable);
+        $taskIdsSql = sprintf(
+            'SELECT task_id FROM %s WHERE task_project = ?%s',
+            $tasksTable,
+            $this->tenantAndCondition($tasksTable)
+        );
 
         $cleanupSteps = [
             [
@@ -896,7 +919,11 @@ class ProjectController extends BaseController
         }
 
         $deleted = $this->db->execute(
-            sprintf('DELETE FROM %s WHERE task_project = ?', $tasksTable),
+            sprintf(
+                'DELETE FROM %s WHERE task_project = ?%s',
+                $tasksTable,
+                $this->tenantAndCondition($tasksTable)
+            ),
             [$projectId]
         );
 
@@ -1054,9 +1081,10 @@ class ProjectController extends BaseController
         $perm = new PermissionService();
 
         $row = $this->db->fetchOne(sprintf(
-            "SELECT project_owner, project_creator, project_company FROM %s WHERE project_id = %d",
+            "SELECT project_owner, project_creator, project_company FROM %s WHERE project_id = %d%s",
             $this->db->table('projects'),
-            $projectId
+            $projectId,
+            $this->tenantAndCondition($this->db->table('projects'))
         ));
 
         if ($row === null) {
@@ -1082,5 +1110,54 @@ class ProjectController extends BaseController
         }
 
         return $this->response->forbidden('Access denied');
+    }
+
+    private function tenantAndCondition(string $table, ?string $alias = null): string
+    {
+        $tenantId = $this->getTenantId();
+        if ($tenantId === null || !$this->tableHasColumn($table, 'tenant_id')) {
+            return '';
+        }
+
+        $column = $alias !== null && $alias !== ''
+            ? $alias . '.tenant_id'
+            : 'tenant_id';
+
+        return " AND {$column} = {$tenantId}";
+    }
+
+    private function tableHasColumn(string $table, string $column): bool
+    {
+        $tableName = trim($table, '`');
+        $cacheKey = $tableName . ':' . $column;
+        if (array_key_exists($cacheKey, $this->tableHasTenantColumn)) {
+            return $this->tableHasTenantColumn[$cacheKey];
+        }
+
+        $exists = (int) ($this->db->fetchValue(
+            "SELECT COUNT(*)
+             FROM information_schema.columns
+             WHERE table_schema = DATABASE()
+               AND table_name = ?
+               AND column_name = ?",
+            [$tableName, $column]
+        ) ?? 0);
+
+        $this->tableHasTenantColumn[$cacheKey] = $exists > 0;
+        return $this->tableHasTenantColumn[$cacheKey];
+    }
+
+    private function getTenantId(): ?int
+    {
+        if (!TenantContext::isEnabled()) {
+            return null;
+        }
+
+        $tenantId = TenantContext::getTenantId();
+        if ($tenantId === null || $tenantId <= 0) {
+            return null;
+        }
+
+        return $tenantId;
     }
 }

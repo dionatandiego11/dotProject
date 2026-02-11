@@ -15,6 +15,7 @@ namespace DotProject\Service;
 use DotProject\Core\Cache;
 use DotProject\Core\Database;
 use DotProject\Core\Logger;
+use DotProject\Core\TenantContext;
 use DotProject\Entity\KanbanBoard;
 use DotProject\Entity\KanbanColumn;
 use DotProject\Entity\KanbanTask;
@@ -59,6 +60,7 @@ class KanbanService
         if (!$this->ensureSchema()) {
             return [];
         }
+        $tenantBoards = $this->tenantAndCondition('dotp_kanban_boards');
         $userId = $userId ?? $this->auth->getCurrentUser()?->getId();
 
         if ($userId === null) {
@@ -70,16 +72,20 @@ class KanbanService
                 "SELECT * FROM `dotp_kanban_boards` 
                  WHERE board_company = %d AND board_status = 0 
                  AND (board_project = %d OR board_project IS NULL)
+                 %s
                  ORDER BY board_project IS NULL, board_created_at DESC",
                 $companyId,
-                $projectId
+                $projectId,
+                $tenantBoards
             );
         } else {
             $sql = sprintf(
                 "SELECT * FROM `dotp_kanban_boards` 
                  WHERE board_company = %d AND board_status = 0
+                 %s
                  ORDER BY board_created_at DESC",
-                $companyId
+                $companyId,
+                $tenantBoards
             );
         }
 
@@ -117,6 +123,10 @@ class KanbanService
             'board_created_by' => $board->getCreatedBy(),
             'board_status' => $board->getStatus(),
         ];
+        $tenantId = $this->getTenantId();
+        if ($tenantId !== null && $this->hasTableColumn('dotp_kanban_boards', 'tenant_id')) {
+            $insertData['tenant_id'] = $tenantId;
+        }
 
         $result = $this->db->insert('dotp_kanban_boards', $insertData);
 
@@ -145,7 +155,11 @@ class KanbanService
         if (!$this->ensureSchema()) {
             return null;
         }
-        $sql = sprintf("SELECT * FROM `dotp_kanban_boards` WHERE board_id = %d", $boardId);
+        $sql = sprintf(
+            "SELECT * FROM `dotp_kanban_boards` WHERE board_id = %d%s",
+            $boardId,
+            $this->tenantAndCondition('dotp_kanban_boards')
+        );
         $data = $this->db->fetchOne($sql);
 
         if (!$data) {
@@ -217,16 +231,22 @@ class KanbanService
             ['name' => 'In Progress', 'order' => 3],
             ['name' => 'Done', 'order' => 4, 'is_done' => 1],
         ];
+        $tenantId = $this->getTenantId();
+        $hasTenantColumn = $tenantId !== null && $this->hasTableColumn('dotp_kanban_columns', 'tenant_id');
 
         foreach ($defaults as $col) {
-            $this->db->insert('dotp_kanban_columns', [
+            $insertData = [
                 'column_board_id' => $boardId,
                 'column_name' => $col['name'],
                 'column_order' => $col['order'],
                 'column_is_backlog' => $col['is_backlog'] ?? 0,
                 'column_is_done' => $col['is_done'] ?? 0,
                 'column_status' => 0,
-            ]);
+            ];
+            if ($hasTenantColumn) {
+                $insertData['tenant_id'] = $tenantId;
+            }
+            $this->db->insert('dotp_kanban_columns', $insertData);
         }
     }
 
@@ -353,22 +373,29 @@ class KanbanService
             return;
         }
 
+        $tasksTable = $this->db->table('tasks');
+        $tenantTasks = $this->tenantAndCondition($tasksTable);
         $taskRows = $this->db->fetchAll(sprintf(
-            "SELECT task_id FROM `%s` WHERE task_project = %d",
-            $this->db->table('tasks'),
-            $projectId
+            "SELECT task_id FROM `%s` WHERE task_project = %d%s",
+            $tasksTable,
+            $projectId,
+            $tenantTasks
         ));
         if (empty($taskRows)) {
             return;
         }
 
         $taskIds = array_map(fn($r) => (int) $r['task_id'], $taskRows);
+        $tenantKanbanTasksAlias = $this->tenantAndCondition('dotp_kanban_tasks', 'kt');
+        $tenantColumnsAlias = $this->tenantAndCondition('dotp_kanban_columns', 'c');
         $existingRows = $this->db->fetchAll(sprintf(
             "SELECT kt.kanban_task_task_id
              FROM `dotp_kanban_tasks` kt
              JOIN `dotp_kanban_columns` c ON c.column_id = kt.kanban_task_column_id
-             WHERE c.column_board_id = %d",
-            $boardId
+             WHERE c.column_board_id = %d%s%s",
+            $boardId,
+            $tenantKanbanTasksAlias,
+            $tenantColumnsAlias
         ));
         $existingIds = array_map(fn($r) => (int) $r['kanban_task_task_id'], $existingRows);
 
@@ -384,11 +411,13 @@ class KanbanService
      */
     private function getBacklogColumnId(int $boardId): ?int
     {
+        $tenantColumns = $this->tenantAndCondition('dotp_kanban_columns');
         $row = $this->db->fetchOne(sprintf(
             "SELECT column_id FROM `dotp_kanban_columns`
-             WHERE column_board_id = %d AND column_is_backlog = 1 AND column_status = 0
+             WHERE column_board_id = %d AND column_is_backlog = 1 AND column_status = 0%s
              ORDER BY column_order ASC LIMIT 1",
-            $boardId
+            $boardId,
+            $tenantColumns
         ));
         if ($row && isset($row['column_id'])) {
             return (int) $row['column_id'];
@@ -396,9 +425,10 @@ class KanbanService
 
         $fallback = $this->db->fetchOne(sprintf(
             "SELECT column_id FROM `dotp_kanban_columns`
-             WHERE column_board_id = %d AND column_status = 0
+             WHERE column_board_id = %d AND column_status = 0%s
              ORDER BY column_order ASC LIMIT 1",
-            $boardId
+            $boardId,
+            $tenantColumns
         ));
 
         return $fallback ? (int) $fallback['column_id'] : null;
@@ -412,6 +442,10 @@ class KanbanService
         $tasksTable = $this->db->table('tasks');
         $usersTable = $this->db->table('users');
         $contactsTable = $this->db->table('contacts');
+        $tenantKanbanTasksAlias = $this->tenantAndCondition('dotp_kanban_tasks', 'kt');
+        $tenantColumnsAlias = $this->tenantAndCondition('dotp_kanban_columns', 'c');
+        $tenantTasksAlias = $this->tenantAndCondition($tasksTable, 't');
+        $tenantUsersAlias = $this->tenantAndCondition($usersTable, 'u');
         $hasAssignedTo = $this->hasTableColumn($tasksTable, 'task_assigned_to');
         $taskAssignedToSelect = $hasAssignedTo
             ? 't.task_assigned_to'
@@ -441,17 +475,21 @@ class KanbanService
                 u.user_username
             FROM `dotp_kanban_tasks` kt
             JOIN `dotp_kanban_columns` c ON c.column_id = kt.kanban_task_column_id
-            JOIN `%s` t ON t.task_id = kt.kanban_task_task_id
-            LEFT JOIN `%s` u ON u.user_id = %s
+            JOIN `%s` t ON t.task_id = kt.kanban_task_task_id%s
+            LEFT JOIN `%s` u ON u.user_id = %s%s
             LEFT JOIN `%s` ct ON ct.contact_id = u.user_contact
-            WHERE c.column_board_id = %d AND c.column_status = 0
+            WHERE c.column_board_id = %d AND c.column_status = 0%s%s
             ORDER BY c.column_order ASC, kt.kanban_task_order ASC",
             $taskAssignedToSelect,
             $this->db->table('tasks'),
+            $tenantTasksAlias,
             $this->db->table('users'),
             $assigneeJoinExpr,
+            $tenantUsersAlias,
             $this->db->table('contacts'),
-            $boardId
+            $boardId,
+            $tenantKanbanTasksAlias,
+            $tenantColumnsAlias
         );
 
         $rows = $this->db->fetchAll($sql);
@@ -491,7 +529,8 @@ class KanbanService
 
     private function hasTableColumn(string $table, string $column): bool
     {
-        $cacheKey = $table . ':' . $column;
+        $tableName = trim($table, '`');
+        $cacheKey = $tableName . ':' . $column;
         if (array_key_exists($cacheKey, $this->columnPresenceCache)) {
             return $this->columnPresenceCache[$cacheKey];
         }
@@ -502,7 +541,7 @@ class KanbanService
              WHERE table_schema = DATABASE()
                AND table_name = ?
                AND column_name = ?",
-            [$table, $column]
+            [$tableName, $column]
         ) ?? 0);
 
         $this->columnPresenceCache[$cacheKey] = $count > 0;
@@ -511,10 +550,14 @@ class KanbanService
 
     private function syncTaskProgressFromColumn(int $kanbanTaskId, int $targetColumnId, ?int $movedByUserId = null): void
     {
+        $tenantKanbanTasks = $this->tenantAndCondition('dotp_kanban_tasks');
+        $tenantKanbanColumns = $this->tenantAndCondition('dotp_kanban_columns');
+        $tenantTasks = $this->tenantAndCondition($this->db->table('tasks'));
         $taskRow = $this->db->fetchOne(
             "SELECT kanban_task_task_id
              FROM `dotp_kanban_tasks`
              WHERE kanban_task_id = ?
+             {$tenantKanbanTasks}
              LIMIT 1",
             [$kanbanTaskId]
         );
@@ -527,6 +570,7 @@ class KanbanService
             "SELECT column_board_id, column_order, column_is_backlog, column_is_done
              FROM `dotp_kanban_columns`
              WHERE column_id = ?
+             {$tenantKanbanColumns}
              LIMIT 1",
             [$targetColumnId]
         );
@@ -546,6 +590,7 @@ class KanbanService
                AND column_status = 0
                AND column_is_backlog = 0
                AND column_is_done = 0
+               {$tenantKanbanColumns}
              ORDER BY column_order ASC
              LIMIT 1",
             [$boardId]
@@ -560,8 +605,10 @@ class KanbanService
                 "SELECT task_status, task_percent_complete
                  FROM `%s`
                  WHERE task_id = ?
+                 %s
                  LIMIT 1",
-                $this->db->table('tasks')
+                $this->db->table('tasks'),
+                $tenantTasks
             ),
             [$taskId]
         );
@@ -593,9 +640,37 @@ class KanbanService
         $this->db->update('tasks', [
             'task_status' => $status,
             'task_percent_complete' => max(0, min(100, $percent)),
-        ], 'task_id = ' . $taskId);
+        ], 'task_id = ' . $taskId . $tenantTasks);
 
         $this->projectProgressSync->syncByTaskId($taskId, $movedByUserId, 'kanban_move');
+    }
+
+    private function tenantAndCondition(string $table, ?string $alias = null): string
+    {
+        $tenantId = $this->getTenantId();
+        if ($tenantId === null || !$this->hasTableColumn($table, 'tenant_id')) {
+            return '';
+        }
+
+        $column = $alias !== null && $alias !== ''
+            ? $alias . '.tenant_id'
+            : 'tenant_id';
+
+        return " AND {$column} = {$tenantId}";
+    }
+
+    private function getTenantId(): ?int
+    {
+        if (!TenantContext::isEnabled()) {
+            return null;
+        }
+
+        $tenantId = TenantContext::getTenantId();
+        if ($tenantId === null || $tenantId <= 0) {
+            return null;
+        }
+
+        return $tenantId;
     }
 
     private function invalidateDashboardCaches(): void

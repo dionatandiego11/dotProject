@@ -15,6 +15,7 @@ namespace DotProject\Api\Controller;
 use DotProject\Api\Request;
 use DotProject\Api\Response;
 use DotProject\Core\Logger;
+use DotProject\Core\TenantContext;
 use DotProject\Entity\Task;
 use DotProject\Service\AuthorizationService;
 use DotProject\Service\PermissionService;
@@ -27,6 +28,8 @@ class TaskController extends BaseController
 {
     private ?bool $hasTaskAssignedTo = null;
     private ?ProjectProgressSyncService $projectProgressSync = null;
+    /** @var array<string, bool> */
+    private array $tableHasTenantColumn = [];
 
     /**
      * GET /v1/tasks
@@ -55,6 +58,7 @@ class TaskController extends BaseController
         // Monta a query
         $where = '1=1';
         $params = [];
+        $where .= $this->tenantAndCondition($this->db->table('tasks'), 't');
 
         if ($userId !== null && !$auth->isAdmin($userId)) {
             $escopo = $perm->getEscopoDados($userId);
@@ -68,7 +72,8 @@ class TaskController extends BaseController
                 }
                 $placeholders = implode(',', array_fill(0, count($unidades), '?'));
                 $projectRows = $this->db->fetchAllParams(
-                    "SELECT project_id FROM {$this->db->table('projects')} WHERE project_company IN ({$placeholders})",
+                    "SELECT project_id FROM {$this->db->table('projects')} WHERE project_company IN ({$placeholders})" .
+                    $this->tenantAndCondition($this->db->table('projects')),
                     $unidades
                 );
                 $accessibleProjects = array_map(fn($row) => (int) $row['project_id'], $projectRows);
@@ -120,12 +125,13 @@ class TaskController extends BaseController
         $sql = sprintf(
             "SELECT t.*, p.project_name 
              FROM %s t 
-             LEFT JOIN %s p ON t.task_project = p.project_id
+             LEFT JOIN %s p ON t.task_project = p.project_id%s
              WHERE %s
              ORDER BY t.task_start_date ASC, t.task_order ASC
              LIMIT ? OFFSET ?",
             $this->db->table('tasks'),
             $this->db->table('projects'),
+            $this->tenantAndCondition($this->db->table('projects'), 'p'),
             $where
         );
         $rows = $this->db->fetchAllParams($sql, array_merge($params, [
@@ -163,11 +169,13 @@ class TaskController extends BaseController
         $sql = sprintf(
             "SELECT t.*, p.project_name 
              FROM %s t 
-             LEFT JOIN %s p ON t.task_project = p.project_id
-             WHERE t.task_id = %d",
+             LEFT JOIN %s p ON t.task_project = p.project_id%s
+             WHERE t.task_id = %d%s",
             $this->db->table('tasks'),
             $this->db->table('projects'),
-            $id
+            $this->tenantAndCondition($this->db->table('projects'), 'p'),
+            $id,
+            $this->tenantAndCondition($this->db->table('tasks'), 't')
         );
 
         $row = $this->db->fetchOne($sql);
@@ -218,9 +226,10 @@ class TaskController extends BaseController
 
         // Verifica se projeto existe
         $projectExists = $this->db->fetchValue(sprintf(
-            "SELECT project_id FROM %s WHERE project_id = %d",
+            "SELECT project_id FROM %s WHERE project_id = %d%s",
             $this->db->table('projects'),
-            (int) $body['project_id']
+            (int) $body['project_id'],
+            $this->tenantAndCondition($this->db->table('projects'))
         ));
 
         if ($projectExists === null) {
@@ -233,9 +242,10 @@ class TaskController extends BaseController
 
         // Calcula próxima ordem
         $maxOrder = $this->db->fetchValue(sprintf(
-            "SELECT MAX(task_order) FROM %s WHERE task_project = %d",
+            "SELECT MAX(task_order) FROM %s WHERE task_project = %d%s",
             $this->db->table('tasks'),
-            (int) $body['project_id']
+            (int) $body['project_id'],
+            $this->tenantAndCondition($this->db->table('tasks'))
         )) ?? 0;
 
         $ownerId = isset($body['owner_id']) ? (int) $body['owner_id'] : (int) ($this->getUserId() ?? 0);
@@ -427,9 +437,10 @@ class TaskController extends BaseController
 
         // Verifica se há subtarefas
         $childCount = $this->db->fetchValue(sprintf(
-            "SELECT COUNT(*) FROM %s WHERE task_parent = %d",
+            "SELECT COUNT(*) FROM %s WHERE task_parent = %d%s",
             $this->db->table('tasks'),
-            $id
+            $id,
+            $this->tenantAndCondition($this->db->table('tasks'))
         ));
 
         if ($childCount > 0) {
@@ -594,11 +605,13 @@ class TaskController extends BaseController
         $row = $this->db->fetchOne(sprintf(
             "SELECT t.task_owner, t.task_creator, p.project_owner, p.project_creator, p.project_company
              FROM %s t
-             LEFT JOIN %s p ON t.task_project = p.project_id
-             WHERE t.task_id = %d",
+             LEFT JOIN %s p ON t.task_project = p.project_id%s
+             WHERE t.task_id = %d%s",
             $this->db->table('tasks'),
             $this->db->table('projects'),
-            $taskId
+            $this->tenantAndCondition($this->db->table('projects'), 'p'),
+            $taskId,
+            $this->tenantAndCondition($this->db->table('tasks'), 't')
         ));
 
         if ($row === null) {
@@ -651,9 +664,10 @@ class TaskController extends BaseController
         $perm = new PermissionService();
 
         $row = $this->db->fetchOne(sprintf(
-            "SELECT project_owner, project_creator, project_company FROM %s WHERE project_id = %d",
+            "SELECT project_owner, project_creator, project_company FROM %s WHERE project_id = %d%s",
             $this->db->table('projects'),
-            $projectId
+            $projectId,
+            $this->tenantAndCondition($this->db->table('projects'))
         ));
 
         if ($row === null) {
@@ -679,5 +693,54 @@ class TaskController extends BaseController
         }
 
         return $this->response->forbidden('Access denied');
+    }
+
+    private function tenantAndCondition(string $table, ?string $alias = null): string
+    {
+        $tenantId = $this->getTenantId();
+        if ($tenantId === null || !$this->tableHasColumn($table, 'tenant_id')) {
+            return '';
+        }
+
+        $column = $alias !== null && $alias !== ''
+            ? $alias . '.tenant_id'
+            : 'tenant_id';
+
+        return " AND {$column} = {$tenantId}";
+    }
+
+    private function tableHasColumn(string $table, string $column): bool
+    {
+        $tableName = trim($table, '`');
+        $cacheKey = $tableName . ':' . $column;
+        if (array_key_exists($cacheKey, $this->tableHasTenantColumn)) {
+            return $this->tableHasTenantColumn[$cacheKey];
+        }
+
+        $exists = (int) ($this->db->fetchValue(
+            "SELECT COUNT(*)
+             FROM information_schema.columns
+             WHERE table_schema = DATABASE()
+               AND table_name = ?
+               AND column_name = ?",
+            [$tableName, $column]
+        ) ?? 0);
+
+        $this->tableHasTenantColumn[$cacheKey] = $exists > 0;
+        return $this->tableHasTenantColumn[$cacheKey];
+    }
+
+    private function getTenantId(): ?int
+    {
+        if (!TenantContext::isEnabled()) {
+            return null;
+        }
+
+        $tenantId = TenantContext::getTenantId();
+        if ($tenantId === null || $tenantId <= 0) {
+            return null;
+        }
+
+        return $tenantId;
     }
 }
