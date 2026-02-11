@@ -11,35 +11,39 @@ use DotProject\Api\Response;
 use DotProject\Api\Controller\ProjetoController;
 use DotProject\Api\Controller\ProgramaController;
 use DotProject\Api\Controller\PpaController;
-use DotProject\Api\Controller\DashboardController;
+use DotProject\Api\Controller\Dashboard\PrefeitoDashboardController;
+use DotProject\Api\Controller\Dashboard\SecretarioDashboardController;
+use DotProject\Api\Controller\Dashboard\CoordenadorDashboardController;
+use DotProject\Api\Controller\Dashboard\TecnicoDashboardController;
 
 // ===========================================
 // ROTAS DE DASHBOARD
 // ===========================================
 
 $router->get('/v1/dashboard/executivo', function (Request $req, Response $res) {
-    $controller = new DashboardController($req, $res);
-    $controller->executivo();
+    $controller = new PrefeitoDashboardController($req, $res);
+    return $controller->prefeito();
 });
 
 $router->get('/v1/dashboard/secretario', function (Request $req, Response $res) {
-    $controller = new DashboardController($req, $res);
-    $controller->secretario();
+    $controller = new SecretarioDashboardController($req, $res);
+    return $controller->secretario();
 });
 
 $router->get('/v1/dashboard/coordenador', function (Request $req, Response $res) {
-    $controller = new DashboardController($req, $res);
-    $controller->coordenador();
+    $controller = new CoordenadorDashboardController($req, $res);
+    return $controller->coordenador();
 });
 
 $router->get('/v1/dashboard/tecnico', function (Request $req, Response $res) {
-    $controller = new DashboardController($req, $res);
-    $controller->tecnico();
+    $controller = new TecnicoDashboardController($req, $res);
+    return $controller->tecnico();
 });
 
 $router->get('/v1/dashboard/projetos-risco', function (Request $req, Response $res) {
-    $controller = new DashboardController($req, $res);
-    $controller->projetosRisco();
+    // Compatibilidade: endpoint legado reaproveita payload executivo.
+    $controller = new PrefeitoDashboardController($req, $res);
+    return $controller->prefeito();
 });
 
 // ===========================================

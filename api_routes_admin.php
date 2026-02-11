@@ -16,8 +16,6 @@ use DotProject\Api\Controller\Admin\UsuarioController;
 use DotProject\Api\Controller\Admin\VinculoPermissaoController;
 use DotProject\Api\Controller\OnboardingController;
 
-error_log('DEBUG api_routes_admin.php - Arquivo carregado');
-
 $prefix = '/v1/admin';
 
 // Obter request e response do contexto global
@@ -95,7 +93,6 @@ $router->get("{$prefix}/unidades/{id}", function (Request $req, Response $res) {
 });
 
 $router->post("{$prefix}/unidades", function () use ($request, $response) {
-    error_log('DEBUG api_routes_admin.php - Rota POST /unidades chamada');
     $controller = new UnidadeController($request, $response);
     return $controller->createUnidade();
 });

@@ -2,7 +2,8 @@
 
 namespace DotProject\Tests\Integration;
 
-use DotProject\Api\Controller\DashboardController;
+use DotProject\Api\Controller\Dashboard\SecretarioDashboardController;
+use DotProject\Api\Controller\Dashboard\TecnicoDashboardController;
 use DotProject\Api\Request;
 use DotProject\Api\Response;
 use PHPUnit\Framework\TestCase;
@@ -36,7 +37,7 @@ class DashboardIntegrationTest extends TestCase
         $this->request->method('getUri')->willReturn('/api/v1/dashboard/secretario');
 
         // Instantiate Controller
-        $controller = new DashboardController($this->request, $this->response);
+        $controller = new SecretarioDashboardController($this->request, $this->response);
 
         // Attempt to call secretario method
         // We expect this to potentially fail if the bug exists
@@ -60,7 +61,7 @@ class DashboardIntegrationTest extends TestCase
 
         $this->request->method('getUri')->willReturn('/api/v1/dashboard/tecnico');
 
-        $controller = new DashboardController($this->request, $this->response);
+        $controller = new TecnicoDashboardController($this->request, $this->response);
 
         try {
             $controller->tecnico();

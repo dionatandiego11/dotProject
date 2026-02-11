@@ -3,6 +3,7 @@
  */
 
 export const API_BASE = '/api.php/v1';
+const SHOULD_LOG_API = import.meta.env.DEV && import.meta.env.VITE_DEBUG_API === 'true';
 
 /**
  * Set authentication token
@@ -34,7 +35,9 @@ export function isAuthenticated() {
  */
 export async function apiRequest(endpoint, options = {}) {
     const url = `${API_BASE}${endpoint}`;
-    console.log('API Request:', url, options.method || 'GET');
+    if (SHOULD_LOG_API) {
+        console.debug('API Request:', url, options.method || 'GET');
+    }
 
     const headers = {
         'Content-Type': 'application/json',
@@ -52,7 +55,9 @@ export async function apiRequest(endpoint, options = {}) {
     });
 
     const rawText = await response.text();
-    console.log('API Response:', url, response.status, rawText.substring(0, 200));
+    if (SHOULD_LOG_API) {
+        console.debug('API Response:', url, response.status);
+    }
 
     let data = null;
     if (rawText) {

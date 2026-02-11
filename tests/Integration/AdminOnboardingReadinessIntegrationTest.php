@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace DotProject\Tests\Integration;
 
-use DotProject\Api\Controller\AdminController;
+use DotProject\Api\Controller\Admin\AdminDashboardController;
 use DotProject\Api\Request;
 use DotProject\Api\Response;
 use PHPUnit\Framework\TestCase;
@@ -20,7 +20,7 @@ class AdminOnboardingReadinessIntegrationTest extends TestCase
             );
 
         $response = new Response();
-        $controller = new AdminController($request, $response);
+        $controller = new AdminDashboardController($request, $response);
 
         $result = $controller->onboardingReadiness();
         $body = $this->responseBody($result);

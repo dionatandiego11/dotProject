@@ -4,14 +4,14 @@ declare(strict_types=1);
 
 namespace DotProject\Tests\Integration;
 
-use DotProject\Api\Controller\AdminController;
+use DotProject\Api\Controller\Admin\UsuarioController;
 use DotProject\Api\Request;
 use DotProject\Api\Response;
 use DotProject\Core\Cache;
 use DotProject\Core\Database;
 use PHPUnit\Framework\TestCase;
 
-class LegacyFallbackAdminController extends AdminController
+class LegacyFallbackAdminController extends UsuarioController
 {
     protected function ensureUserStatusColumn(): bool
     {
@@ -68,7 +68,7 @@ class AdminUserDeletionIntegrationTest extends TestCase
 
         $request = $this->requestWithUserId(1);
         $response = new Response();
-        $controller = new AdminController($request, $response);
+        $controller = new UsuarioController($request, $response);
 
         $result = $controller->deleteUsuario($user['user_id']);
         $body = $this->responseBody($result);
@@ -95,7 +95,7 @@ class AdminUserDeletionIntegrationTest extends TestCase
 
         $request = $this->requestWithUserId($user['user_id']);
         $response = new Response();
-        $controller = new AdminController($request, $response);
+        $controller = new UsuarioController($request, $response);
 
         $result = $controller->deleteUsuario($user['user_id']);
         $body = $this->responseBody($result);
@@ -161,7 +161,7 @@ class AdminUserDeletionIntegrationTest extends TestCase
             );
 
         $response = new Response();
-        $controller = new AdminController($request, $response);
+        $controller = new UsuarioController($request, $response);
 
         $result = $controller->createUsuario();
         $body = $this->responseBody($result);

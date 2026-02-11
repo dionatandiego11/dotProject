@@ -17,6 +17,15 @@ use DotProject\Service\PermissionService;
 class CoordenadorDashboardController extends BaseController
 {
     use DashboardHelperTrait;
+    private ?PermissionService $permissionService = null;
+
+    private function getPermissionService(): PermissionService
+    {
+        if ($this->permissionService === null) {
+            $this->permissionService = new PermissionService();
+        }
+        return $this->permissionService;
+    }
 
     /**
      * GET /api/v1/dashboard/coordenador
@@ -24,8 +33,7 @@ class CoordenadorDashboardController extends BaseController
     public function coordenador(): Response
     {
         $userId = $this->getUserId();
-        $permService = new PermissionService();
-        $escopo = $permService->getEscopoDados($userId);
+        $escopo = $this->getPermissionService()->getEscopoDados($userId);
 
         if (!$escopo) {
             return $this->error('Escopo não encontrado', Response::HTTP_FORBIDDEN);

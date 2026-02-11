@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace DotProject\Tests\Integration;
 
-use DotProject\Api\Controller\AdminController;
+use DotProject\Api\Controller\Admin\UnidadeController;
 use DotProject\Api\Controller\KanbanController;
 use DotProject\Api\Controller\ProjectController;
 use DotProject\Api\Controller\TaskController;
@@ -1177,7 +1177,7 @@ class CriticalFlowsIntegrationTest extends TestCase
             ->willReturnCallback(fn(string $key, mixed $default = null) => $key === 'raiz_id' ? $raizId : $default);
 
         $response = new Response();
-        $controller = new AdminController($request, $response);
+        $controller = new UnidadeController($request, $response);
 
         $result = $controller->getArvore();
         $body = $this->responseBody($result);

@@ -43,6 +43,7 @@ use DotProject\Api\Controller\AuthController;
 use DotProject\Api\Controller\ProjectController;
 use DotProject\Api\Controller\TaskController;
 use DotProject\Api\Controller\AnalyticsController;
+use DotProject\Service\AuthorizationService;
 
 // Cria o roteador
 $router = new Router();
@@ -272,7 +273,24 @@ use DotProject\Core\Cache;
 use DotProject\Core\FeatureFlag;
 use DotProject\Core\LegacyAdapter;
 
-$router->get('/v1/cache/stats', function (Request $req, Response $res) {
+$ensureAdmin = static function (Request $req, Response $res): ?Response {
+    $userId = $req->getParam('_user_id');
+    if ($userId === null) {
+        return $res->unauthorized();
+    }
+
+    if (!AuthorizationService::getInstance()->isAdmin((int) $userId)) {
+        return $res->forbidden('Admin privileges required');
+    }
+
+    return null;
+};
+
+$router->get('/v1/cache/stats', function (Request $req, Response $res) use ($ensureAdmin) {
+    if ($guard = $ensureAdmin($req, $res)) {
+        return $guard;
+    }
+
     $cache = new Cache();
     return $res->json($cache->getStats());
 });
@@ -372,7 +390,11 @@ $router->post('/v1/notifications/mark-all-read', function (Request $req, Respons
     $controller->markAllAsRead();
 });
 
-$router->delete('/v1/cache/clear', function (Request $req, Response $res) {
+$router->delete('/v1/cache/clear', function (Request $req, Response $res) use ($ensureAdmin) {
+    if ($guard = $ensureAdmin($req, $res)) {
+        return $guard;
+    }
+
     $cache = new Cache();
     $result = $cache->clear();
     return $res->json([

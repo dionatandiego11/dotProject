@@ -665,7 +665,7 @@ class LegacyAdapter
             ],
             'admin' => [
                 'migrated' => true,
-                'modern_controller' => 'AdminController',
+                'modern_controller' => 'Admin/* controllers',
                 'legacy_module' => 'admin',
                 'repository' => [ModuleRepository::class, ConfigRepository::class, SysValRepository::class],
                 'entity' => [ModuleEntity::class, ConfigEntity::class, SysValEntity::class],

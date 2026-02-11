@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace DotProject\Tests\Unit\Api\Controllers;
 
-use DotProject\Api\Controller\DashboardController;
+use DotProject\Api\Controller\Dashboard\AlertaDashboardController;
+use DotProject\Api\Controller\Dashboard\CoordenadorDashboardController;
+use DotProject\Api\Controller\Dashboard\SecretarioDashboardController;
 use DotProject\Api\Request;
 use DotProject\Api\Response;
 use DotProject\Repository\AlertaRepository;
@@ -17,7 +19,7 @@ class DashboardControllerErrorContractTest extends TestCase
     {
         $request = $this->createRequestWithUserId(321);
         $response = new Response();
-        $controller = new DashboardController($request, $response);
+        $controller = new SecretarioDashboardController($request, $response);
 
         $permissionService = $this->createMock(PermissionService::class);
         $permissionService->method('getEscopoDados')->willReturn(null);
@@ -35,7 +37,7 @@ class DashboardControllerErrorContractTest extends TestCase
     {
         $request = $this->createRequestWithUserId(654);
         $response = new Response();
-        $controller = new DashboardController($request, $response);
+        $controller = new CoordenadorDashboardController($request, $response);
 
         $permissionService = $this->createMock(PermissionService::class);
         $permissionService->method('getEscopoDados')->willReturn(null);
@@ -53,7 +55,7 @@ class DashboardControllerErrorContractTest extends TestCase
     {
         $request = $this->createRequestWithUserId(777);
         $response = new Response();
-        $controller = new DashboardController($request, $response);
+        $controller = new AlertaDashboardController($request, $response);
 
         $alertaRepo = $this->createMock(AlertaRepository::class);
         $alertaRepo->method('find')->willThrowException(new \RuntimeException('DB unavailable'));
@@ -71,7 +73,7 @@ class DashboardControllerErrorContractTest extends TestCase
     {
         $request = $this->createRequestWithUserId(888);
         $response = new Response();
-        $controller = new DashboardController($request, $response);
+        $controller = new AlertaDashboardController($request, $response);
 
         $alertaRepo = $this->createMock(AlertaRepository::class);
         $alertaRepo->method('marcarTodosComoLidos')->willThrowException(new \RuntimeException('DB unavailable'));
