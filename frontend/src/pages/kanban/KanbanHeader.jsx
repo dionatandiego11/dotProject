@@ -1,4 +1,5 @@
 import Button from '../../components/ui/Button'
+import FormField from '../../components/ui/FormField'
 
 export default function KanbanHeader({
     selectedProjectId,
@@ -35,18 +36,17 @@ export default function KanbanHeader({
                         <span className="kanban-subtitle">{subtitle}</span>
                     </div>
 
-                    <select
-                        className="kanban-project-select"
-                        value={selectedProjectId}
-                        onChange={(event) => onProjectChange(event.target.value)}
-                    >
-                        <option value="">Selecione um projeto</option>
-                        {projects.map((project) => (
-                            <option key={project.id} value={project.id}>
-                                {project.name}
-                            </option>
-                        ))}
-                    </select>
+                    <div style={{ minWidth: 260 }}>
+                        <FormField
+                            as="select"
+                            value={selectedProjectId}
+                            onChange={(event) => onProjectChange(event.target.value)}
+                            options={[
+                                { value: '', label: 'Selecione um projeto' },
+                                ...projects.map((project) => ({ value: String(project.id), label: project.name })),
+                            ]}
+                        />
+                    </div>
                 </div>
 
                 <div className="kanban-header-actions">
@@ -62,39 +62,41 @@ export default function KanbanHeader({
 
             <div className="kanban-toolbar">
                 <div className="kanban-filters">
-                    <input
-                        className="kanban-filter"
+                    <FormField
+                        as="input"
                         type="text"
                         value={filterText}
                         onChange={(event) => onFilterTextChange(event.target.value)}
                         placeholder="Buscar tarefa..."
+                        style={{ minWidth: 220 }}
                     />
-                    <select
-                        className="kanban-filter"
+                    <FormField
+                        as="select"
                         value={filterOwner}
                         onChange={(event) => onFilterOwnerChange(event.target.value)}
-                    >
-                        <option value="all">Usuarios vinculados</option>
-                        {unitUsers.length === 0 && (
-                            <option value="" disabled>Nenhum usuario vinculado</option>
-                        )}
-                        {unitUsers.map((user) => (
-                            <option key={user.id} value={user.id}>
-                                {user.full_name || user.username}
-                            </option>
-                        ))}
-                    </select>
-                    <select
-                        className="kanban-filter"
+                        options={[
+                            { value: 'all', label: 'Usuarios vinculados' },
+                            ...(unitUsers.length === 0 ? [{ value: '', label: 'Nenhum usuario vinculado', disabled: true }] : []),
+                            ...unitUsers.map((user) => ({
+                                value: String(user.id),
+                                label: user.full_name || user.username,
+                            })),
+                        ]}
+                        style={{ minWidth: 220 }}
+                    />
+                    <FormField
+                        as="select"
                         value={filterPriority}
                         onChange={(event) => onFilterPriorityChange(event.target.value)}
-                    >
-                        <option value="all">Todas prioridades</option>
-                        <option value="0">Baixa</option>
-                        <option value="1">Normal</option>
-                        <option value="2">Alta</option>
-                        <option value="3">Urgente</option>
-                    </select>
+                        options={[
+                            { value: 'all', label: 'Todas prioridades' },
+                            { value: '0', label: 'Baixa' },
+                            { value: '1', label: 'Normal' },
+                            { value: '2', label: 'Alta' },
+                            { value: '3', label: 'Urgente' },
+                        ]}
+                        style={{ minWidth: 180 }}
+                    />
                     <label className="kanban-toggle">
                         <input
                             type="checkbox"

@@ -3,6 +3,10 @@ import { getUsuarios, createUsuario, updateUsuario, deleteUsuario, getUnidades, 
 import Modal from '../../components/ui/Modal'
 import Button from '../../components/ui/Button'
 import Input from '../../components/ui/Input'
+import Badge from '../../components/ui/Badge'
+import DataTable from '../../components/ui/DataTable'
+import FormField from '../../components/ui/FormField'
+import Skeleton from '../../components/ui/Skeleton'
 import { useToast } from '../../contexts/ToastContext'
 import { useValidation } from '../../hooks/useValidation'
 
@@ -264,6 +268,57 @@ function UsuariosAdmin() {
         }
     }
 
+    const userColumns = [
+        {
+            key: 'name',
+            label: 'Nome',
+            accessor: (user) => `${user.first_name || ''} ${user.last_name || ''}`.trim() || '-'
+        },
+        {
+            key: 'username',
+            label: 'Login',
+            accessor: 'username'
+        },
+        {
+            key: 'email',
+            label: 'Email',
+            accessor: (user) => user.email || '-'
+        },
+        {
+            key: 'status',
+            label: 'Status',
+            accessor: (user) => user.status,
+            render: (user) => (
+                <Badge variant={user.status === 0 ? 'success' : 'warning'} withDot>
+                    {user.status === 0 ? 'Ativo' : 'Inativo'}
+                </Badge>
+            )
+        },
+        {
+            key: 'actions',
+            label: 'Acoes',
+            sortable: false,
+            render: (user) => (
+                <>
+                    <button
+                        className="btn btn-secondary"
+                        style={{ padding: 'var(--spacing-1) var(--spacing-2)' }}
+                        onClick={() => openEdit(user)}
+                    >
+                        Editar
+                    </button>
+                    <button
+                        className="btn btn-secondary"
+                        style={{ padding: 'var(--spacing-1) var(--spacing-2)', marginLeft: 8 }}
+                        onClick={() => handleDelete(user)}
+                    >
+                        Excluir
+                    </button>
+                </>
+            )
+        }
+    ]
+
     return (
         <div style={{ padding: 24 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
@@ -276,17 +331,13 @@ function UsuariosAdmin() {
 
             <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
                 <form onSubmit={handleSearch} style={{ display: 'flex', gap: 8, flex: 1 }}>
-                    <input
+                    <FormField
+                        as="input"
                         type="text"
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
                         placeholder="Buscar por nome, email ou login..."
-                        style={{
-                            flex: 1,
-                            padding: '10px 12px',
-                            border: '1px solid #d1d5db',
-                            borderRadius: 8
-                        }}
+                        style={{ flex: 1 }}
                     />
                     <Button variant="secondary" type="submit">Buscar</Button>
                 </form>
@@ -309,51 +360,23 @@ function UsuariosAdmin() {
             <div className="card">
                 <div className="card-body" style={{ padding: 0 }}>
                     {loading ? (
-                        <div style={{ padding: 24, textAlign: 'center' }}>Carregando...</div>
+                        <div style={{ padding: 24 }}>
+                            <Skeleton lines={6} />
+                        </div>
                     ) : usuarios.length === 0 ? (
                         <div style={{ padding: 24, textAlign: 'center', color: '#6b7280' }}>Nenhum usuário encontrado</div>
                     ) : (
-                        <table className="table">
-                            <thead>
-                                <tr>
-                                    <th>Nome</th>
-                                    <th>Login</th>
-                                    <th>Email</th>
-                                    <th>Status</th>
-                                    <th>Ações</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {usuarios.map(user => (
-                                    <tr key={user.id}>
-                                        <td>{`${user.first_name || ''} ${user.last_name || ''}`.trim() || '-'}</td>
-                                        <td>{user.username}</td>
-                                        <td>{user.email || '-'}</td>
-                                        <td>
-                                            <span className={`badge badge-${user.status === 0 ? 'success' : 'warning'}`}>
-                                                {user.status === 0 ? 'Ativo' : 'Inativo'}
-                                            </span>
-                                        </td>
-                                        <td>
-                                            <button
-                                                className="btn btn-secondary"
-                                                style={{ padding: 'var(--spacing-1) var(--spacing-2)' }}
-                                                onClick={() => openEdit(user)}
-                                            >
-                                                Editar
-                                            </button>
-                                            <button
-                                                className="btn btn-secondary"
-                                                style={{ padding: 'var(--spacing-1) var(--spacing-2)', marginLeft: 8 }}
-                                                onClick={() => handleDelete(user)}
-                                            >
-                                                Excluir
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                        <div style={{ padding: 16 }}>
+                            <DataTable
+                                columns={userColumns}
+                                rows={usuarios}
+                                rowKey="id"
+                                searchable={false}
+                                defaultPageSize={10}
+                                pageSizeOptions={[10, 20, 50]}
+                                emptyText="Nenhum usuário encontrado"
+                            />
+                        </div>
                     )}
                 </div>
             </div>
@@ -558,20 +581,16 @@ function UserForm({ formData, setFormData, validation, requirePassword, onSubmit
             </div>
 
             <div style={{ marginBottom: 8 }}>
-                <label style={{ display: 'block', marginBottom: 6, fontWeight: 500 }}>Status</label>
-                <select
+                <FormField
+                    as="select"
+                    label="Status"
                     value={formData.user_status}
                     onChange={(e) => setFormData({ ...formData, user_status: e.target.value })}
-                    style={{
-                        width: '100%',
-                        padding: '10px 12px',
-                        border: '1px solid #d1d5db',
-                        borderRadius: 8
-                    }}
-                >
-                    <option value="0">Ativo</option>
-                    <option value="1">Inativo</option>
-                </select>
+                    options={[
+                        { value: '0', label: 'Ativo' },
+                        { value: '1', label: 'Inativo' }
+                    ]}
+                />
             </div>
 
             <div style={{ marginTop: 12 }}>
@@ -616,34 +635,24 @@ function UserForm({ formData, setFormData, validation, requirePassword, onSubmit
             </div>
 
             <div style={{ marginTop: 12 }}>
-                <label style={{ display: 'block', marginBottom: 6, fontWeight: 500 }}>
-                    Papel na unidade
-                </label>
-                <select
+                <FormField
+                    as="select"
+                    label="Papel na unidade"
                     value={formData.vinculo_role}
                     onChange={(e) => {
                         setFormData({ ...formData, vinculo_role: normalizeVinculoRole(e.target.value) })
                         validation.clearFieldError('vinculo_role')
                     }}
-                    style={{
-                        width: '100%',
-                        padding: '10px 12px',
-                        border: '1px solid #d1d5db',
-                        borderRadius: 8
-                    }}
                     disabled={!formData.unidade_id || loadingUnidades || loadingVinculo}
-                >
-                    <option value="">Selecione o papel</option>
-                    <option value="coordenador">Coordenador</option>
-                    <option value="gestor">Gestor</option>
-                    <option value="analista">Analista</option>
-                    <option value="tecnico">Tecnico</option>
-                </select>
-                {validation.errors.vinculo_role && (
-                    <span style={{ color: 'var(--color-danger-500)', fontSize: '0.75rem' }}>
-                        {validation.errors.vinculo_role}
-                    </span>
-                )}
+                    options={[
+                        { value: '', label: 'Selecione o papel' },
+                        { value: 'coordenador', label: 'Coordenador' },
+                        { value: 'gestor', label: 'Gestor' },
+                        { value: 'analista', label: 'Analista' },
+                        { value: 'tecnico', label: 'Tecnico' }
+                    ]}
+                    error={validation.errors.vinculo_role}
+                />
             </div>
         </form>
     )

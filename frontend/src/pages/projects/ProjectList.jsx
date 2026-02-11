@@ -1,4 +1,5 @@
 import ProjectTable from './ProjectTable'
+import Skeleton from '../../components/ui/Skeleton'
 
 export default function ProjectList({
     loading,
@@ -23,7 +24,9 @@ export default function ProjectList({
                 </div>
                 <div className="card-body" style={{ padding: 0 }}>
                     {loading ? (
-                        <div style={{ padding: 'var(--spacing-6)', textAlign: 'center' }}>Carregando...</div>
+                        <div style={{ padding: 'var(--spacing-6)' }}>
+                            <Skeleton lines={6} />
+                        </div>
                     ) : projects.length === 0 ? (
                         <div style={{ padding: 'var(--spacing-6)', textAlign: 'center', color: 'var(--color-gray-500)' }}>
                             Nenhum projeto encontrado

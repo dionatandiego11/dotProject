@@ -1,3 +1,5 @@
+import FormField from '../../components/ui/FormField'
+
 export default function ProjectFilters({
     search,
     onSearchChange,
@@ -8,18 +10,14 @@ export default function ProjectFilters({
         <div className="topbar">
             <h1 className="page-title">Projetos</h1>
             <div style={{ display: 'flex', gap: 'var(--spacing-3)' }}>
-                <form onSubmit={onSearchSubmit} style={{ display: 'flex', gap: 'var(--spacing-2)' }}>
-                    <input
+                <form onSubmit={onSearchSubmit} style={{ display: 'flex', gap: 'var(--spacing-2)', minWidth: 320 }}>
+                    <FormField
+                        as="input"
                         type="text"
                         placeholder="Buscar projetos..."
                         value={search}
                         onChange={(event) => onSearchChange(event.target.value)}
-                        style={{
-                            padding: 'var(--spacing-2) var(--spacing-3)',
-                            border: '1px solid var(--color-gray-300)',
-                            borderRadius: 'var(--radius-md)',
-                            fontSize: '0.875rem',
-                        }}
+                        style={{ minWidth: 260 }}
                     />
                     <button type="submit" className="btn btn-secondary">Buscar</button>
                 </form>
