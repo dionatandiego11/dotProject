@@ -163,8 +163,28 @@ class Request
 
     public function getHeader(string $name): ?string
     {
-        $name = strtoupper(str_replace('-', '_', $name));
-        return $this->headers[$name] ?? null;
+        $normalized = strtoupper(str_replace('-', '_', $name));
+        $dashVariant = strtoupper(str_replace('_', '-', $normalized));
+
+        return $this->headers[$normalized]
+            ?? $this->headers[$dashVariant]
+            ?? null;
+    }
+
+    /**
+     * Returns request host without port.
+     */
+    public function getHost(): string
+    {
+        $host = $_SERVER['HTTP_X_FORWARDED_HOST'] ?? $_SERVER['HTTP_HOST'] ?? '';
+        if (!is_string($host) || $host === '') {
+            return '';
+        }
+
+        $host = trim(explode(',', $host)[0]);
+        $host = preg_replace('/:\d+$/', '', $host);
+
+        return is_string($host) ? strtolower($host) : '';
     }
 
     public function getBearerToken(): ?string

@@ -23,8 +23,10 @@ require_once DP_BASE_DIR . '/includes/db_connect.php';
 
 use DotProject\Api\Router;
 use DotProject\Api\Middleware\AuthMiddleware;
+use DotProject\Api\Middleware\TenantMiddleware;
 
 $router = new Router();
+$router->use([TenantMiddleware::class, 'handle']);
 $router->use([AuthMiddleware::class, 'handle']);
 
 $GLOBALS['request'] = $router->getRequest();

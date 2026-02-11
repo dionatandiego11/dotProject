@@ -15,6 +15,7 @@ namespace DotProject\Api\Middleware;
 use DotProject\Api\Request;
 use DotProject\Api\Response;
 use DotProject\Auth\JwtManager;
+use DotProject\Core\TenantContext;
 use DotProject\Repository\UserRepository;
 use DotProject\Service\AuthorizationService;
 
@@ -66,6 +67,13 @@ class AuthMiddleware
             return false;
         }
 
+        $requestTenantId = (int) ($request->getParam('_tenant_id') ?? 0);
+        $tokenTenantId = (int) ($payload['tenant_id'] ?? 0);
+        if ($tokenTenantId > 0 && $requestTenantId > 0 && $tokenTenantId !== $requestTenantId) {
+            $response->unauthorized('Token tenant does not match request tenant')->send();
+            return false;
+        }
+
         $userRepository = new UserRepository();
         $user = $userRepository->find($userId);
         if ($user === null) {
@@ -81,6 +89,7 @@ class AuthMiddleware
         // Armazena dados do usuario autenticado na request
         $request->setParams(array_merge($request->getParams(), [
             '_user_id' => $userId,
+            '_tenant_id' => $requestTenantId > 0 ? $requestTenantId : TenantContext::getTenantId(),
             '_user_data' => array_merge($payload, [
                 'username' => $user->getUsername(),
                 'name' => $user->getFullName(),

@@ -46,13 +46,28 @@ class Cache
             FILTER_VALIDATE_BOOL
         );
         $this->defaultTtl = $defaultTtl ?? (int)(getenv('CACHE_TTL') ?: 300);
-        $this->prefix = $prefix;
+        $this->prefix = $this->resolvePrefix($prefix);
         
         if ($redis !== null) {
             $this->redis = $redis;
         } elseif ($this->enabled) {
             $this->connect();
         }
+    }
+
+    private function resolvePrefix(string $prefix): string
+    {
+        $normalized = rtrim($prefix, ':') . ':';
+        if (!TenantContext::isEnabled()) {
+            return $normalized;
+        }
+
+        $tenantId = TenantContext::getTenantId();
+        if ($tenantId === null || $tenantId <= 0) {
+            return $normalized;
+        }
+
+        return $normalized . 'tenant:' . $tenantId . ':';
     }
 
     /**

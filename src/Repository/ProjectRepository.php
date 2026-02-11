@@ -100,6 +100,12 @@ class ProjectRepository extends BaseRepository
         }
 
         $data = $this->extract($entity);
+        $tenantColumn = $this->getTenantColumn();
+        $tenantId = $this->getTenantId();
+        $applyTenant = $this->shouldApplyTenantScope() && $tenantColumn !== null && $tenantId !== null;
+        if ($applyTenant && (!array_key_exists($tenantColumn, $data) || $data[$tenantColumn] === null || $data[$tenantColumn] === '')) {
+            $data[$tenantColumn] = $tenantId;
+        }
         $result = false;
         
         if ($entity->getId() === null) {
@@ -116,7 +122,9 @@ class ProjectRepository extends BaseRepository
             $result = $this->db->update(
                 $this->table,
                 $data,
-                "{$this->primaryKey} = {$id}"
+                $applyTenant
+                    ? "{$this->primaryKey} = {$id} AND {$tenantColumn} = {$tenantId}"
+                    : "{$this->primaryKey} = {$id}"
             );
         }
 
@@ -132,9 +140,16 @@ class ProjectRepository extends BaseRepository
      */
     public function delete(int $id): bool
     {
+        $tenantColumn = $this->getTenantColumn();
+        $tenantId = $this->getTenantId();
+        $where = "{$this->primaryKey} = {$id}";
+        if ($this->shouldApplyTenantScope() && $tenantColumn !== null && $tenantId !== null) {
+            $where .= " AND {$tenantColumn} = {$tenantId}";
+        }
+
         $result = $this->db->delete(
             $this->table,
-            "{$this->primaryKey} = {$id}"
+            $where
         );
 
         if ($result) {
@@ -174,12 +189,13 @@ class ProjectRepository extends BaseRepository
      */
     public function findOverdue(): array
     {
+        $params = [];
         $sql = "SELECT * FROM {$this->table} 
                 WHERE project_end_date < CURDATE() 
-                AND project_status = 0
-                ORDER BY project_end_date ASC";
-        
-        $results = $this->db->fetchAll($sql);
+                AND project_status = 0";
+        $sql = $this->appendTenantScopeToSql($sql, $params);
+        $sql .= " ORDER BY project_end_date ASC";
+        $results = $this->db->fetchAll($sql, $params);
         return array_map([$this, 'hydrate'], $results);
     }
 
@@ -190,14 +206,16 @@ class ProjectRepository extends BaseRepository
      */
     public function searchByName(string $query): array
     {
+        $params = [];
         $sql = "SELECT * FROM {$this->table} 
-                WHERE project_name LIKE ? 
-                OR project_short_name LIKE ?
-                ORDER BY project_name ASC
-                LIMIT 20";
-        
-        $pattern = '%' . $query . '%';
-        $results = $this->db->fetchAll($sql, [$pattern, $pattern]);
+                WHERE (project_name LIKE ? 
+                OR project_short_name LIKE ?)";
+        $params[] = '%' . $query . '%';
+        $params[] = '%' . $query . '%';
+        $sql = $this->appendTenantScopeToSql($sql, $params);
+        $sql .= " ORDER BY project_name ASC LIMIT 20";
+
+        $results = $this->db->fetchAll($sql, $params);
         return array_map([$this, 'hydrate'], $results);
     }
 
@@ -206,10 +224,17 @@ class ProjectRepository extends BaseRepository
      */
     public function updatePercentComplete(int $projectId, int $percent): bool
     {
+        $tenantColumn = $this->getTenantColumn();
+        $tenantId = $this->getTenantId();
+        $where = "{$this->primaryKey} = {$projectId}";
+        if ($this->shouldApplyTenantScope() && $tenantColumn !== null && $tenantId !== null) {
+            $where .= " AND {$tenantColumn} = {$tenantId}";
+        }
+
         $result = $this->db->update(
             $this->table,
             ['project_percent_complete' => $percent],
-            "{$this->primaryKey} = {$projectId}"
+            $where
         );
 
         if ($result) {

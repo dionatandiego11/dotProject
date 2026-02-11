@@ -98,6 +98,12 @@ class TaskRepository extends BaseRepository
         }
 
         $data = $this->extract($entity);
+        $tenantColumn = $this->getTenantColumn();
+        $tenantId = $this->getTenantId();
+        $applyTenant = $this->shouldApplyTenantScope() && $tenantColumn !== null && $tenantId !== null;
+        if ($applyTenant && (!array_key_exists($tenantColumn, $data) || $data[$tenantColumn] === null || $data[$tenantColumn] === '')) {
+            $data[$tenantColumn] = $tenantId;
+        }
         $result = false;
         
         if ($entity->getId() === null) {
@@ -109,7 +115,11 @@ class TaskRepository extends BaseRepository
         } else {
             $id = $data['task_id'];
             unset($data['task_id']);
-            $result = $this->db->update($this->table, $data, "task_id = {$id}");
+            $where = "task_id = {$id}";
+            if ($applyTenant) {
+                $where .= " AND {$tenantColumn} = {$tenantId}";
+            }
+            $result = $this->db->update($this->table, $data, $where);
         }
 
         if ($result) {
@@ -120,7 +130,14 @@ class TaskRepository extends BaseRepository
 
     public function delete(int $id): bool
     {
-        $result = $this->db->delete($this->table, "task_id = {$id}");
+        $tenantColumn = $this->getTenantColumn();
+        $tenantId = $this->getTenantId();
+        $where = "task_id = {$id}";
+        if ($this->shouldApplyTenantScope() && $tenantColumn !== null && $tenantId !== null) {
+            $where .= " AND {$tenantColumn} = {$tenantId}";
+        }
+
+        $result = $this->db->delete($this->table, $where);
         if ($result) {
             $this->clearCache();
         }
@@ -152,11 +169,13 @@ class TaskRepository extends BaseRepository
      */
     public function findOverdue(): array
     {
+        $params = [];
         $sql = "SELECT * FROM {$this->table} 
                 WHERE task_end_date < CURDATE() 
-                AND task_status = 0
-                ORDER BY task_end_date ASC";
-        $results = $this->db->fetchAll($sql);
+                AND task_status = 0";
+        $sql = $this->appendTenantScopeToSql($sql, $params);
+        $sql .= " ORDER BY task_end_date ASC";
+        $results = $this->db->fetchAll($sql, $params);
         return array_map([$this, 'hydrate'], $results);
     }
 
@@ -166,11 +185,13 @@ class TaskRepository extends BaseRepository
      */
     public function findDueSoon(int $days = 3): array
     {
+        $params = [$days];
         $sql = "SELECT * FROM {$this->table} 
                 WHERE task_end_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL ? DAY)
-                AND task_status = 0
-                ORDER BY task_end_date ASC";
-        $results = $this->db->fetchAll($sql, [$days]);
+                AND task_status = 0";
+        $sql = $this->appendTenantScopeToSql($sql, $params);
+        $sql .= " ORDER BY task_end_date ASC";
+        $results = $this->db->fetchAll($sql, $params);
         return array_map([$this, 'hydrate'], $results);
     }
 
@@ -179,6 +200,7 @@ class TaskRepository extends BaseRepository
      */
     public function countByStatus(int $projectId): array
     {
+        $params = [$projectId];
         $sql = "SELECT 
                     SUM(CASE WHEN task_status = 0 THEN 1 ELSE 0 END) as pending,
                     SUM(CASE WHEN task_status = 1 THEN 1 ELSE 0 END) as completed,
@@ -186,7 +208,8 @@ class TaskRepository extends BaseRepository
                     COUNT(*) as total
                 FROM {$this->table} 
                 WHERE task_project = ?";
-        return $this->db->fetchOne($sql, [$projectId]) ?: ['pending' => 0, 'completed' => 0, 'overdue' => 0, 'total' => 0];
+        $sql = $this->appendTenantScopeToSql($sql, $params);
+        return $this->db->fetchOne($sql, $params) ?: ['pending' => 0, 'completed' => 0, 'overdue' => 0, 'total' => 0];
     }
 
     private function supportsTaskAssignedTo(): bool

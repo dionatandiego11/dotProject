@@ -124,14 +124,16 @@ class UserRepository extends BaseRepository
             return $cached;
         }
 
+        $params = [$username];
         $table = $this->table;
         $sql = "SELECT u.*, c.contact_first_name, c.contact_last_name, c.contact_email, c.contact_phone
                 FROM {$table} u
                 LEFT JOIN dotp_contacts c ON c.contact_id = u.user_contact
-                WHERE u.user_username = ?
-                LIMIT 1";
+                WHERE u.user_username = ?";
+        $sql = $this->appendTenantScopeToSql($sql, $params, 'u');
+        $sql .= " LIMIT 1";
         
-        $data = $this->db->fetchOne($sql, [$username]);
+        $data = $this->db->fetchOne($sql, $params);
         if ($data === null) {
             return null;
         }
@@ -146,14 +148,16 @@ class UserRepository extends BaseRepository
      */
     public function findByEmail(string $email): ?UserEntity
     {
+        $params = [$email];
         $table = $this->table;
         $sql = "SELECT u.*, c.contact_first_name, c.contact_last_name, c.contact_email
                 FROM {$table} u
                 INNER JOIN dotp_contacts c ON c.contact_id = u.user_contact
-                WHERE c.contact_email = ?
-                LIMIT 1";
+                WHERE c.contact_email = ?";
+        $sql = $this->appendTenantScopeToSql($sql, $params, 'u');
+        $sql .= " LIMIT 1";
         
-        $data = $this->db->fetchOne($sql, [$email]);
+        $data = $this->db->fetchOne($sql, $params);
         return $data ? $this->hydrate($data) : null;
     }
 
@@ -163,15 +167,17 @@ class UserRepository extends BaseRepository
      */
     public function findActive(): array
     {
+        $params = [];
         $where = $this->supportsUserStatus() ? "WHERE u.user_status = 0" : "";
         $table = $this->table;
         $sql = "SELECT u.*, c.contact_first_name, c.contact_last_name, c.contact_email
                 FROM {$table} u
                 LEFT JOIN dotp_contacts c ON c.contact_id = u.user_contact
-                {$where}
-                ORDER BY c.contact_first_name";
+                {$where}";
+        $sql = $this->appendTenantScopeToSql($sql, $params, 'u');
+        $sql .= " ORDER BY c.contact_first_name";
         
-        $results = $this->db->fetchAll($sql);
+        $results = $this->db->fetchAll($sql, $params);
         return array_map([$this, 'hydrate'], $results);
     }
 
@@ -192,10 +198,17 @@ class UserRepository extends BaseRepository
      */
     public function updateLastLogin(int $userId): bool
     {
+        $tenantColumn = $this->getTenantColumn();
+        $tenantId = $this->getTenantId();
+        $where = "user_id = {$userId}";
+        if ($this->shouldApplyTenantScope() && $tenantColumn !== null && $tenantId !== null) {
+            $where .= " AND {$tenantColumn} = {$tenantId}";
+        }
+
         $result = $this->db->update(
             $this->table,
             ['user_last_login' => date('Y-m-d H:i:s')],
-            "user_id = {$userId}"
+            $where
         );
         
         if ($result) {

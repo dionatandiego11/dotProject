@@ -121,6 +121,14 @@ class ProjetoRepository extends BaseRepository
     {
         $where = [];
         $params = [];
+        if ($this->shouldApplyTenantScope()) {
+            $tenantColumn = $this->getTenantColumn();
+            $tenantId = $this->getTenantId();
+            if ($tenantColumn !== null && $tenantId !== null) {
+                $where[] = "{$tenantColumn} = ?";
+                $params[] = $tenantId;
+            }
+        }
 
         if (!empty($filtros['unidade_id'])) {
             $ids = is_array($filtros['unidade_id']) ? $filtros['unidade_id'] : [$filtros['unidade_id']];
@@ -195,6 +203,13 @@ class ProjetoRepository extends BaseRepository
         }
 
         $data = $this->extract($projeto);
+        if ($this->shouldApplyTenantScope()) {
+            $tenantColumn = $this->getTenantColumn();
+            $tenantId = $this->getTenantId();
+            if ($tenantColumn !== null && $tenantId !== null && (!array_key_exists($tenantColumn, $data) || $data[$tenantColumn] === null || $data[$tenantColumn] === '')) {
+                $data[$tenantColumn] = $tenantId;
+            }
+        }
         unset($data['project_id']);
 
         $result = $this->db->insert($this->table, $data);
@@ -220,6 +235,12 @@ class ProjetoRepository extends BaseRepository
         }
 
         $data = $this->extract($entity);
+        $tenantColumn = $this->getTenantColumn();
+        $tenantId = $this->getTenantId();
+        $applyTenant = $this->shouldApplyTenantScope() && $tenantColumn !== null && $tenantId !== null;
+        if ($applyTenant && (!array_key_exists($tenantColumn, $data) || $data[$tenantColumn] === null || $data[$tenantColumn] === '')) {
+            $data[$tenantColumn] = $tenantId;
+        }
         $id = $data['project_id'] ?? null;
         $result = false;
 
@@ -236,7 +257,9 @@ class ProjetoRepository extends BaseRepository
             $result = $this->db->update(
                 $this->table,
                 $data,
-                "{$this->primaryKey} = {$id}"
+                $applyTenant
+                    ? "{$this->primaryKey} = {$id} AND {$tenantColumn} = {$tenantId}"
+                    : "{$this->primaryKey} = {$id}"
             );
         }
 

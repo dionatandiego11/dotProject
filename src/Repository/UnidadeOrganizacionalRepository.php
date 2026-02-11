@@ -108,7 +108,7 @@ class UnidadeOrganizacionalRepository extends BaseRepository
                 FROM {$this->table} u
                 LEFT JOIN dotp_users uo ON uo.user_id = u.unidade_responsavel_id
                 LEFT JOIN dotp_contacts c ON c.contact_id = uo.user_contact
-                WHERE {$statusFilter}
+                WHERE {$statusFilter}{$this->tenantCondition('u')}
                 ORDER BY u.{$nivelColumn}, u.unidade_nome";
         $rows = $this->db->fetchAll($sql);
         
@@ -259,12 +259,13 @@ class UnidadeOrganizacionalRepository extends BaseRepository
         
         $nivelColumn = $this->resolveNivelColumn();
         $statusFilter = $this->getStatusFilterSql();
+        $tenantCondition = $this->tenantCondition();
         $stats = [
-            'total_unidades' => (int) $this->db->fetchColumn("SELECT COUNT(*) FROM {$this->table} WHERE {$statusFilter}"),
-            'total_niveis' => (int) $this->db->fetchColumn("SELECT COUNT(DISTINCT {$nivelColumn}) FROM {$this->table} WHERE {$statusFilter}"),
-            'unidades_por_nivel' => $this->db->fetchAll("SELECT {$nivelColumn} as nivel, COUNT(*) as total FROM {$this->table} WHERE {$statusFilter} GROUP BY {$nivelColumn} ORDER BY {$nivelColumn}"),
-            'sem_responsavel' => (int) $this->db->fetchColumn("SELECT COUNT(*) FROM {$this->table} WHERE {$statusFilter} AND unidade_responsavel_id IS NULL"),
-            'unidades_raiz' => (int) $this->db->fetchColumn("SELECT COUNT(*) FROM {$this->table} WHERE {$statusFilter} AND unidade_pai_id IS NULL"),
+            'total_unidades' => (int) $this->db->fetchColumn("SELECT COUNT(*) FROM {$this->table} WHERE {$statusFilter}{$tenantCondition}"),
+            'total_niveis' => (int) $this->db->fetchColumn("SELECT COUNT(DISTINCT {$nivelColumn}) FROM {$this->table} WHERE {$statusFilter}{$tenantCondition}"),
+            'unidades_por_nivel' => $this->db->fetchAll("SELECT {$nivelColumn} as nivel, COUNT(*) as total FROM {$this->table} WHERE {$statusFilter}{$tenantCondition} GROUP BY {$nivelColumn} ORDER BY {$nivelColumn}"),
+            'sem_responsavel' => (int) $this->db->fetchColumn("SELECT COUNT(*) FROM {$this->table} WHERE {$statusFilter}{$tenantCondition} AND unidade_responsavel_id IS NULL"),
+            'unidades_raiz' => (int) $this->db->fetchColumn("SELECT COUNT(*) FROM {$this->table} WHERE {$statusFilter}{$tenantCondition} AND unidade_pai_id IS NULL"),
         ];
         
         $this->cache->set($cacheKey, $stats, 300);
@@ -285,8 +286,9 @@ class UnidadeOrganizacionalRepository extends BaseRepository
             }
         }
         
+        $tenantCondition = $this->tenantCondition();
         $this->db->execute(
-            "UPDATE {$this->table} SET unidade_pai_id = ? WHERE unidade_id = ?",
+            "UPDATE {$this->table} SET unidade_pai_id = ? WHERE unidade_id = ?{$tenantCondition}",
             [$novoPaiId, $unidadeId]
         );
         
@@ -329,6 +331,12 @@ class UnidadeOrganizacionalRepository extends BaseRepository
     public function save(object $entity): int
     {
         $data = $this->extract($entity);
+        $tenantColumn = $this->getTenantColumn();
+        $tenantId = $this->getTenantId();
+        $applyTenant = $this->shouldApplyTenantScope() && $tenantColumn !== null && $tenantId !== null;
+        if ($applyTenant && (!array_key_exists($tenantColumn, $data) || $data[$tenantColumn] === null || $data[$tenantColumn] === '')) {
+            $data[$tenantColumn] = $tenantId;
+        }
         
         if ($entity->getId()) {
             $fields = [];
@@ -340,6 +348,10 @@ class UnidadeOrganizacionalRepository extends BaseRepository
             $values[] = $entity->getId();
             
             $sql = "UPDATE {$this->table} SET " . implode(', ', $fields) . " WHERE {$this->primaryKey} = ?";
+            if ($applyTenant) {
+                $sql .= " AND {$tenantColumn} = ?";
+                $values[] = $tenantId;
+            }
             $this->db->execute($sql, $values);
             $this->clearCache();
             return (int) $entity->getId();
@@ -362,10 +374,10 @@ class UnidadeOrganizacionalRepository extends BaseRepository
      */
     public function delete(int $id): bool
     {
-        $result = $this->db->execute(
-            "DELETE FROM {$this->table} WHERE {$this->primaryKey} = ?",
-            [$id]
-        );
+        $params = [$id];
+        $sql = "DELETE FROM {$this->table} WHERE {$this->primaryKey} = ?";
+        $sql = $this->appendTenantScopeToSql($sql, $params);
+        $result = $this->db->execute($sql, $params);
         
         $this->clearCache();
         return $result;
@@ -431,5 +443,24 @@ class UnidadeOrganizacionalRepository extends BaseRepository
             return "{$column} = 1";
         }
         return "{$column} = 'ativo'";
+    }
+
+    private function tenantCondition(?string $alias = null): string
+    {
+        if (!$this->shouldApplyTenantScope()) {
+            return '';
+        }
+
+        $tenantColumn = $this->getTenantColumn();
+        $tenantId = $this->getTenantId();
+        if ($tenantColumn === null || $tenantId === null) {
+            return '';
+        }
+
+        $column = $alias !== null && $alias !== ''
+            ? $alias . '.' . $tenantColumn
+            : $tenantColumn;
+
+        return " AND {$column} = {$tenantId}";
     }
 }

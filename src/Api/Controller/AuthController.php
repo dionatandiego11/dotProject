@@ -21,6 +21,7 @@ use DotProject\Auth\JwtManager;
 class AuthController extends BaseController
 {
     private ?bool $hasUserStatusColumn = null;
+    private ?bool $hasUserTenantColumn = null;
 
     /**
      * POST /v1/auth/login
@@ -37,6 +38,12 @@ class AuthController extends BaseController
         $username = (string) $this->request->getBodyParam('username');
         $password = (string) $this->request->getBodyParam('password');
         $statusSelect = $this->supportsUserStatusColumn() ? ', u.user_status' : '';
+        $tenantId = $this->getTenantId();
+        $tenantWhere = $this->supportsUserTenantColumn() && $tenantId !== null ? ' AND u.tenant_id = ?' : '';
+        $params = [$username];
+        if ($tenantWhere !== '') {
+            $params[] = $tenantId;
+        }
 
         // Busca o usuario no banco
         $user = $this->db->fetchOneParams(sprintf(
@@ -44,11 +51,12 @@ class AuthController extends BaseController
                     c.contact_first_name, c.contact_last_name, c.contact_email%s
              FROM %s u
              LEFT JOIN %s c ON c.contact_id = u.user_contact
-             WHERE u.user_username = ?",
+             WHERE u.user_username = ?%s",
             $statusSelect,
             $this->db->table('users'),
-            $this->db->table('contacts')
-        ), [$username]);
+            $this->db->table('contacts'),
+            $tenantWhere
+        ), $params);
 
         if ($user === null || $this->isInactiveUser($user)) {
             return $this->error('Invalid credentials', Response::HTTP_UNAUTHORIZED);
@@ -85,6 +93,7 @@ class AuthController extends BaseController
             'username' => $user['user_username'],
             'name' => trim(($user['contact_first_name'] ?? '') . ' ' . ($user['contact_last_name'] ?? '')),
             'email' => $user['contact_email'] ?? null,
+            'tenant_id' => $tenantId,
         ]);
 
         $refreshToken = $jwt->generateRefreshToken((int) $user['user_id']);
@@ -128,6 +137,12 @@ class AuthController extends BaseController
         }
 
         $statusSelect = $this->supportsUserStatusColumn() ? ', u.user_status' : '';
+        $tenantId = $this->getTenantId();
+        $tenantWhere = $this->supportsUserTenantColumn() && $tenantId !== null ? ' AND u.tenant_id = ?' : '';
+        $params = [$userId];
+        if ($tenantWhere !== '') {
+            $params[] = $tenantId;
+        }
 
         // Busca dados atualizados do usuario
         $user = $this->db->fetchOneParams(sprintf(
@@ -137,11 +152,12 @@ class AuthController extends BaseController
              FROM %s u
              LEFT JOIN %s c ON c.contact_id = u.user_contact
              LEFT JOIN dotp_unidades_organizacionais un ON un.unidade_id = u.user_company
-             WHERE u.user_id = ?",
+             WHERE u.user_id = ?%s",
             $statusSelect,
             $this->db->table('users'),
-            $this->db->table('contacts')
-        ), [$userId]);
+            $this->db->table('contacts'),
+            $tenantWhere
+        ), $params);
 
         if ($user === null) {
             return $this->error('User not found', Response::HTTP_UNAUTHORIZED);
@@ -157,6 +173,7 @@ class AuthController extends BaseController
             'username' => $user['user_username'],
             'name' => trim(($user['contact_first_name'] ?? '') . ' ' . ($user['contact_last_name'] ?? '')),
             'email' => $user['contact_email'] ?? null,
+            'tenant_id' => $tenantId,
         ]);
         $newRefreshToken = $jwt->generateRefreshToken((int) $user['user_id']);
 
@@ -180,6 +197,12 @@ class AuthController extends BaseController
         }
 
         $statusSelect = $this->supportsUserStatusColumn() ? ', u.user_status' : '';
+        $tenantId = $this->getTenantId();
+        $tenantWhere = $this->supportsUserTenantColumn() && $tenantId !== null ? ' AND u.tenant_id = ?' : '';
+        $params = [$userId];
+        if ($tenantWhere !== '') {
+            $params[] = $tenantId;
+        }
 
         $user = $this->db->fetchOneParams(sprintf(
             "SELECT u.user_id, u.user_username, u.user_company,
@@ -188,11 +211,12 @@ class AuthController extends BaseController
              FROM %s u
              LEFT JOIN %s c ON c.contact_id = u.user_contact
              LEFT JOIN dotp_unidades_organizacionais un ON un.unidade_id = u.user_company
-             WHERE u.user_id = ?",
+             WHERE u.user_id = ?%s",
             $statusSelect,
             $this->db->table('users'),
-            $this->db->table('contacts')
-        ), [$userId]);
+            $this->db->table('contacts'),
+            $tenantWhere
+        ), $params);
 
         if ($user === null) {
             return $this->notFound('User not found');
@@ -242,6 +266,42 @@ class AuthController extends BaseController
         }
 
         return $this->hasUserStatusColumn;
+    }
+
+    private function supportsUserTenantColumn(): bool
+    {
+        if ($this->hasUserTenantColumn !== null) {
+            return $this->hasUserTenantColumn;
+        }
+
+        try {
+            $usersTable = (string) $this->db->table('users');
+            $exists = (int) ($this->db->fetchValue(
+                "SELECT COUNT(*)
+                 FROM information_schema.columns
+                 WHERE table_schema = DATABASE()
+                   AND table_name = ?
+                   AND column_name = 'tenant_id'",
+                [$usersTable]
+            ) ?? 0);
+
+            $this->hasUserTenantColumn = $exists > 0;
+        } catch (\Throwable) {
+            $this->hasUserTenantColumn = false;
+        }
+
+        return $this->hasUserTenantColumn;
+    }
+
+    private function getTenantId(): ?int
+    {
+        $tenantId = $this->request->getParam('_tenant_id');
+        if ($tenantId === null || $tenantId === '') {
+            return null;
+        }
+
+        $value = (int) $tenantId;
+        return $value > 0 ? $value : null;
     }
 
     /**
