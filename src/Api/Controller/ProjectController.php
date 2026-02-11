@@ -15,7 +15,8 @@ namespace DotProject\Api\Controller;
 use DotProject\Api\Request;
 use DotProject\Api\Response;
 use DotProject\Core\TenantContext;
-use DotProject\Entity\Project;
+use DotProject\Entity\ProjectEntity;
+use DotProject\Repository\ProjectRepository;
 use DotProject\Service\AuthorizationService;
 use DotProject\Service\PermissionService;
 use DotProject\Service\ProjectStatusHistoryService;
@@ -26,6 +27,7 @@ use DotProject\Service\ProjectStatusHistoryService;
 class ProjectController extends BaseController
 {
     private ?ProjectStatusHistoryService $statusHistoryService = null;
+    private ?ProjectRepository $projectRepository = null;
     /** @var array<string, bool> */
     private array $tableHasTenantColumn = [];
 
@@ -229,33 +231,50 @@ class ProjectController extends BaseController
             return $guard;
         }
 
-        $project = new Project();
-        $project->fill([
-            'project_name' => $body['name'],
-            'project_short_name' => $shortName !== '' ? $shortName : null,
-            'project_company' => $unidadeId,
-            'project_parent' => $body['parent_id'] ?? 0,
-            'project_owner' => $this->getUserId(),
-            'project_creator' => $this->getUserId(),
-            'project_url' => $body['url'] ?? '',
-            'project_demo_url' => $body['demo_url'] ?? '',
-            'project_start_date' => $body['start_date'] ?? date('Y-m-d'),
-            'project_end_date' => $body['end_date'] ?? null,
-            'project_target_budget' => $body['budget'] ?? 0,
-            'project_status' => $body['status'] ?? 0,
-            'project_percent_complete' => $body['percent_complete'] ?? 0,
-            'project_color_identifier' => $body['color'] ?? '#4A90D9',
-            'project_type' => $body['type'] ?? 0,
-            'project_description' => $body['description'] ?? '',
-            'project_priority' => $body['priority'] ?? 0,
-        ]);
+        $project = new ProjectEntity();
+        $project->setName((string) ($body['name'] ?? ''));
+        $project->setShortName($shortName !== '' ? $shortName : null);
+        $project->setCompanyId($unidadeId);
+        $project->setOwnerId($this->getUserId());
+        $project->setUrl(isset($body['url']) ? (string) $body['url'] : '');
+        $project->setStatus((int) ($body['status'] ?? 0));
+        $project->setPercentComplete((int) ($body['percent_complete'] ?? 0));
+        $project->setColorIdentifier((string) ($body['color'] ?? '#4A90D9'));
+        $project->setDescription(isset($body['description']) ? (string) $body['description'] : '');
+        $project->setPriority((int) ($body['priority'] ?? 0));
+        $project->setStartDate(new \DateTime((string) ($body['start_date'] ?? date('Y-m-d'))));
+        if (!empty($body['end_date'])) {
+            $project->setEndDate(new \DateTime((string) $body['end_date']));
+        }
 
-        if (!$project->save()) {
+        $projectId = $this->projectRepository()->save($project);
+        if ($projectId <= 0) {
+            return $this->error('Failed to create project');
+        }
+
+        $legacyFields = [];
+        if ($this->tableHasColumn($this->db->table('projects'), 'project_parent')) {
+            $legacyFields['project_parent'] = (int) ($body['parent_id'] ?? 0);
+        }
+        if ($this->tableHasColumn($this->db->table('projects'), 'project_creator')) {
+            $legacyFields['project_creator'] = $this->getUserId();
+        }
+        if ($this->tableHasColumn($this->db->table('projects'), 'project_demo_url')) {
+            $legacyFields['project_demo_url'] = (string) ($body['demo_url'] ?? '');
+        }
+        if ($this->tableHasColumn($this->db->table('projects'), 'project_target_budget')) {
+            $legacyFields['project_target_budget'] = (float) ($body['budget'] ?? 0);
+        }
+        if ($this->tableHasColumn($this->db->table('projects'), 'project_type')) {
+            $legacyFields['project_type'] = (int) ($body['type'] ?? 0);
+        }
+
+        if (!$this->updateProjectRow($projectId, $legacyFields)) {
             return $this->error('Failed to create project');
         }
 
         return $this->created([
-            'id' => $project->getId(),
+            'id' => $projectId,
             'unidade_id' => $unidadeId,
             'message' => 'Project created successfully',
         ]);
@@ -278,7 +297,7 @@ class ProjectController extends BaseController
             return $guard;
         }
 
-        $project = Project::find($id);
+        $project = $this->projectRepository()->find($id);
         if ($project === null) {
             return $this->notFound('Project not found');
         }
@@ -299,22 +318,6 @@ class ProjectController extends BaseController
         $unidadeId = $hasUnidadeField ? $this->resolveUnidadeFromBody($body) : null;
 
         // Atualiza apenas campos fornecidos
-        $updateFields = [
-            'name' => 'project_name',
-            'short_name' => 'project_short_name',
-            'url' => 'project_url',
-            'demo_url' => 'project_demo_url',
-            'start_date' => 'project_start_date',
-            'end_date' => 'project_end_date',
-            'budget' => 'project_target_budget',
-            'status' => 'project_status',
-            'percent_complete' => 'project_percent_complete',
-            'color' => 'project_color_identifier',
-            'type' => 'project_type',
-            'description' => 'project_description',
-            'priority' => 'project_priority',
-        ];
-
         $validationData = [];
         if (isset($body['name'])) {
             $validationData['project_name'] = $body['name'];
@@ -370,11 +373,11 @@ class ProjectController extends BaseController
             }
         }
 
-        $currentStatus = (int) ($project->getAttribute('project_status') ?? 0);
+        $currentStatus = $project->getStatus();
         $this->normalizeProjectStatusPercent(
             $body,
             $currentStatus,
-            (int) ($project->getAttribute('project_percent_complete') ?? 0)
+            $project->getPercentComplete()
         );
 
         $targetStatus = null;
@@ -406,17 +409,56 @@ class ProjectController extends BaseController
             }
         }
 
-        foreach ($updateFields as $apiField => $dbField) {
-            if (array_key_exists($apiField, $body)) {
-                $project->setAttribute($dbField, $body[$apiField]);
-            }
+        if (array_key_exists('name', $body)) {
+            $project->setName((string) $body['name']);
+        }
+        if (array_key_exists('short_name', $body)) {
+            $project->setShortName($body['short_name'] !== null ? (string) $body['short_name'] : null);
+        }
+        if (array_key_exists('url', $body)) {
+            $project->setUrl($body['url'] !== null ? (string) $body['url'] : null);
+        }
+        if (array_key_exists('start_date', $body)) {
+            $project->setStartDate($body['start_date'] ? new \DateTime((string) $body['start_date']) : null);
+        }
+        if (array_key_exists('end_date', $body)) {
+            $project->setEndDate($body['end_date'] ? new \DateTime((string) $body['end_date']) : null);
+        }
+        if (array_key_exists('status', $body)) {
+            $project->setStatus((int) $body['status']);
+        }
+        if (array_key_exists('percent_complete', $body)) {
+            $project->setPercentComplete((int) $body['percent_complete']);
+        }
+        if (array_key_exists('color', $body)) {
+            $project->setColorIdentifier((string) $body['color']);
+        }
+        if (array_key_exists('description', $body)) {
+            $project->setDescription($body['description'] !== null ? (string) $body['description'] : null);
+        }
+        if (array_key_exists('priority', $body)) {
+            $project->setPriority((int) $body['priority']);
         }
 
         if ($hasUnidadeField && $unidadeId !== null) {
-            $project->setAttribute('project_company', $unidadeId);
+            $project->setCompanyId($unidadeId);
         }
 
-        if (!$project->save()) {
+        if ($this->projectRepository()->save($project) <= 0) {
+            return $this->error('Failed to update project');
+        }
+
+        $legacyUpdates = [];
+        if (array_key_exists('demo_url', $body) && $this->tableHasColumn($this->db->table('projects'), 'project_demo_url')) {
+            $legacyUpdates['project_demo_url'] = $body['demo_url'] !== null ? (string) $body['demo_url'] : '';
+        }
+        if (array_key_exists('budget', $body) && $this->tableHasColumn($this->db->table('projects'), 'project_target_budget')) {
+            $legacyUpdates['project_target_budget'] = (float) ($body['budget'] ?? 0);
+        }
+        if (array_key_exists('type', $body) && $this->tableHasColumn($this->db->table('projects'), 'project_type')) {
+            $legacyUpdates['project_type'] = (int) $body['type'];
+        }
+        if (!$this->updateProjectRow($id, $legacyUpdates)) {
             return $this->error('Failed to update project');
         }
 
@@ -453,7 +495,7 @@ class ProjectController extends BaseController
             return $guard;
         }
 
-        $project = Project::find($id);
+        $project = $this->projectRepository()->find($id);
         if ($project === null) {
             return $this->notFound('Project not found');
         }
@@ -472,7 +514,7 @@ class ProjectController extends BaseController
             ]);
         }
 
-        $currentStatus = (int) ($project->getAttribute('project_status') ?? 0);
+        $currentStatus = $project->getStatus();
         if (!$this->isAllowedProjectStatusTransition($currentStatus, $targetStatus)) {
             return $this->invalidProjectStatusTransitionResponse($currentStatus, $targetStatus);
         }
@@ -485,15 +527,15 @@ class ProjectController extends BaseController
         $this->normalizeProjectStatusPercent(
             $payload,
             $currentStatus,
-            (int) ($project->getAttribute('project_percent_complete') ?? 0)
+            $project->getPercentComplete()
         );
 
-        $project->setAttribute('project_status', (int) $payload['status']);
+        $project->setStatus((int) $payload['status']);
         if (array_key_exists('percent_complete', $payload)) {
-            $project->setAttribute('project_percent_complete', (int) $payload['percent_complete']);
+            $project->setPercentComplete((int) $payload['percent_complete']);
         }
 
-        if (!$project->save()) {
+        if ($this->projectRepository()->save($project) <= 0) {
             return $this->error('Failed to update project status');
         }
 
@@ -509,8 +551,8 @@ class ProjectController extends BaseController
 
         return $this->json([
             'id' => $project->getId(),
-            'status' => (int) ($project->getAttribute('project_status') ?? 0),
-            'percent_complete' => (int) ($project->getAttribute('project_percent_complete') ?? 0),
+            'status' => $project->getStatus(),
+            'percent_complete' => $project->getPercentComplete(),
             'message' => 'Project status updated successfully',
         ]);
     }
@@ -532,7 +574,7 @@ class ProjectController extends BaseController
             return $guard;
         }
 
-        $project = Project::find($id);
+        $project = $this->projectRepository()->find($id);
         if ($project === null) {
             return $this->notFound('Project not found');
         }
@@ -557,7 +599,7 @@ class ProjectController extends BaseController
                 return $this->error('Failed to purge project tasks before delete');
             }
 
-            if (!$project->delete()) {
+            if (!$this->projectRepository()->delete($id)) {
                 $this->db->rollback();
                 return $this->error('Failed to delete project');
             }
@@ -709,10 +751,16 @@ class ProjectController extends BaseController
             $data['demo_url'] = $row['project_demo_url'] ?? '';
             $data['budget'] = (float) ($row['project_target_budget'] ?? 0);
             $data['actual_budget'] = (float) ($row['project_actual_budget'] ?? 0);
-            $data['owner_id'] = $row['project_owner'] ? (int) $row['project_owner'] : null;
-            $data['creator_id'] = $row['project_creator'] ? (int) $row['project_creator'] : null;
+            $data['owner_id'] = isset($row['project_owner']) && (int) $row['project_owner'] > 0
+                ? (int) $row['project_owner']
+                : null;
+            $data['creator_id'] = isset($row['project_creator']) && (int) $row['project_creator'] > 0
+                ? (int) $row['project_creator']
+                : null;
             $data['type'] = (int) ($row['project_type'] ?? 0);
-            $data['parent_id'] = $row['project_parent'] ? (int) $row['project_parent'] : null;
+            $data['parent_id'] = isset($row['project_parent']) && (int) $row['project_parent'] > 0
+                ? (int) $row['project_parent']
+                : null;
         }
 
         return $data;
@@ -943,6 +991,26 @@ class ProjectController extends BaseController
         return $exists > 0;
     }
 
+    /**
+     * @param array<string, mixed> $fields
+     */
+    private function updateProjectRow(int $projectId, array $fields): bool
+    {
+        if ($fields === []) {
+            return true;
+        }
+
+        return $this->db->update(
+            'projects',
+            $fields,
+            sprintf(
+                'project_id = %d%s',
+                $projectId,
+                $this->tenantAndCondition($this->db->table('projects'))
+            )
+        );
+    }
+
     private function statusHistoryService(): ProjectStatusHistoryService
     {
         if ($this->statusHistoryService === null) {
@@ -1159,5 +1227,14 @@ class ProjectController extends BaseController
         }
 
         return $tenantId;
+    }
+
+    private function projectRepository(): ProjectRepository
+    {
+        if ($this->projectRepository === null) {
+            $this->projectRepository = new ProjectRepository($this->db);
+        }
+
+        return $this->projectRepository;
     }
 }

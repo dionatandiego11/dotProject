@@ -8,5 +8,9 @@ Arquivos movidos de classes/:
 - customfieldsparser.class.php
 - CustomFields.class.php
 
+Arquivos movidos de src/Entity/:
+- Project.php
+- Task.php
+
 Motivo: sem referencias runtime encontradas na aplicacao moderna (scan local).
 Acao: manter em quarentena ate fechar ciclo de validacao.

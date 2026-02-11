@@ -221,6 +221,7 @@ SET @tbl_exists := (
     FROM information_schema.tables
     WHERE table_schema = DATABASE()
       AND table_name = 'dotp_projetos_prefeitura'
+      AND table_type = 'BASE TABLE'
 );
 SET @col_exists := (
     SELECT COUNT(*)
@@ -267,6 +268,7 @@ SET @tbl_exists := (
     FROM information_schema.tables
     WHERE table_schema = DATABASE()
       AND table_name = 'dotp_programas'
+      AND table_type = 'BASE TABLE'
 );
 SET @col_exists := (
     SELECT COUNT(*)

@@ -15,7 +15,8 @@ namespace DotProject\Service;
 
 use DotProject\Core\Database;
 use DotProject\Core\TenantContext;
-use DotProject\Entity\Task;
+use DotProject\Entity\TaskEntity;
+use DotProject\Repository\TaskRepository;
 
 /**
  * Task Service
@@ -25,12 +26,14 @@ use DotProject\Entity\Task;
 class TaskService
 {
     private Database $db;
+    private TaskRepository $taskRepository;
     /** @var array<string, bool> */
     private array $columnPresenceCache = [];
 
     public function __construct(?Database $db = null)
     {
         $this->db = $db ?? Database::getInstance();
+        $this->taskRepository = new TaskRepository($this->db);
     }
 
     /**
@@ -38,48 +41,51 @@ class TaskService
      * 
      * @param int $projectId Project ID
      * @param bool $onlyParent If true, return only parent tasks
-     * @return array<int, Task>
+     * @return array<int, TaskEntity>
      */
     public function getProjectTasks(int $projectId, bool $onlyParent = false): array
     {
-        $where = sprintf(
-            'task_project = %d%s',
-            $projectId,
-            $this->tenantAndCondition($this->db->table('tasks'))
+        $tasks = $this->taskRepository->findBy(
+            ['task_project' => $projectId],
+            ['task_start_date' => 'ASC', 'task_order' => 'ASC']
         );
 
-        if ($onlyParent) {
-            $where .= ' AND task_id = task_parent';
+        if (!$onlyParent) {
+            return $tasks;
         }
 
-        return Task::findAll($where, 'task_start_date ASC, task_order ASC');
+        return array_values(array_filter(
+            $tasks,
+            static fn(TaskEntity $task): bool => $task->getId() !== null && $task->getId() === $task->getParentTaskId()
+        ));
     }
 
     /**
      * Get child tasks of a parent task
      * 
      * @param int $parentId Parent task ID
-     * @return array<int, Task>
+     * @return array<int, TaskEntity>
      */
     public function getChildTasks(int $parentId): array
     {
-        return Task::findAll(
-            sprintf(
-                'task_parent = %d AND task_id != task_parent%s',
-                $parentId,
-                $this->tenantAndCondition($this->db->table('tasks'))
-            ),
-            'task_order ASC'
+        $tasks = $this->taskRepository->findBy(
+            ['task_parent' => $parentId],
+            ['task_order' => 'ASC']
         );
+
+        return array_values(array_filter(
+            $tasks,
+            static fn(TaskEntity $task): bool => $task->getId() !== null && $task->getId() !== $task->getParentTaskId()
+        ));
     }
 
     /**
      * Create a new task
      * 
      * @param array<string, mixed> $data Task data
-     * @return Task|null Created task or null on failure
+     * @return TaskEntity|null Created task or null on failure
      */
-    public function createTask(array $data): ?Task
+    public function createTask(array $data): ?TaskEntity
     {
         // Validate required fields
         if (empty($data['task_name']) || empty($data['task_project'])) {
@@ -105,18 +111,24 @@ class TaskService
             $data['tenant_id'] = $tenantId;
         }
 
-        $task = new Task($data);
-
-        if ($task->save()) {
-            // Set task_parent to itself if not specified
-            if (empty($data['task_parent'])) {
-                $task->setAttribute('task_parent', $task->getId());
-                $task->save();
-            }
-            return $task;
+        $data = $this->filterExistingTaskColumns($data);
+        $taskId = $this->db->insert('tasks', $data);
+        if ($taskId === false) {
+            return null;
         }
 
-        return null;
+        $taskId = (int) $taskId;
+
+        // Set task_parent to itself if not specified
+        if (empty($data['task_parent']) && $this->hasTableColumn($this->db->table('tasks'), 'task_parent')) {
+            $this->db->update(
+                'tasks',
+                ['task_parent' => $taskId],
+                sprintf('task_id = %d%s', $taskId, $this->tenantAndCondition($this->db->table('tasks')))
+            );
+        }
+
+        return $this->taskRepository->find($taskId);
     }
 
     /**
@@ -138,15 +150,15 @@ class TaskService
             return false;
         }
 
-        $task = Task::find($taskId);
+        $task = $this->taskRepository->find($taskId);
         if ($task === null) {
             return false;
         }
 
         $percent = max(0, min(100, $percent));
-        $task->setAttribute('task_percent_complete', $percent);
+        $task->setPercentComplete($percent);
 
-        return $task->save();
+        return $this->taskRepository->save($task) > 0;
     }
 
     /**
@@ -260,37 +272,36 @@ class TaskService
      * Get overdue tasks for a project
      * 
      * @param int|null $projectId Project ID (null for all projects)
-     * @return array<int, Task>
+     * @return array<int, TaskEntity>
      */
     public function getOverdueTasks(?int $projectId = null): array
     {
-        $where = "task_percent_complete < 100
-                  AND task_end_date < NOW()
-                  AND task_end_date != '0000-00-00 00:00:00'";
-        $where .= $this->tenantAndCondition($this->db->table('tasks'));
-
-        if ($projectId !== null) {
-            $where .= sprintf(' AND task_project = %d', $projectId);
+        $tasks = $this->taskRepository->findOverdue();
+        if ($projectId === null) {
+            return $tasks;
         }
 
-        return Task::findAll($where, 'task_end_date ASC');
+        return array_values(array_filter(
+            $tasks,
+            static fn(TaskEntity $task): bool => $task->getProjectId() === $projectId
+        ));
     }
 
     /**
      * Get milestones for a project
      * 
      * @param int $projectId Project ID
-     * @return array<int, Task>
+     * @return array<int, TaskEntity>
      */
     public function getMilestones(int $projectId): array
     {
-        return Task::findAll(
-            sprintf(
-                'task_project = %d AND task_milestone = 1%s',
-                $projectId,
-                $this->tenantAndCondition($this->db->table('tasks'))
-            ),
-            'task_end_date ASC'
+        if (!$this->hasTableColumn($this->db->table('tasks'), 'task_milestone')) {
+            return [];
+        }
+
+        return $this->taskRepository->findBy(
+            ['task_project' => $projectId, 'task_milestone' => 1],
+            ['task_end_date' => 'ASC']
         );
     }
 
@@ -299,22 +310,25 @@ class TaskService
      * 
      * @param int $days Number of days to look ahead
      * @param int|null $userId Filter by assigned user
-     * @return array<int, Task>
+     * @return array<int, TaskEntity>
      */
     public function getUpcomingTasks(int $days = 7, ?int $userId = null): array
     {
-        $where = sprintf(
-            "task_end_date BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL %d DAY)
-             AND task_percent_complete < 100",
-            $days
+        $sql = sprintf(
+            "SELECT * FROM `%s`
+             WHERE task_end_date BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL %d DAY)
+               AND task_percent_complete < 100%s",
+            $this->db->table('tasks'),
+            $days,
+            $this->tenantAndCondition($this->db->table('tasks'))
         );
-        $where .= $this->tenantAndCondition($this->db->table('tasks'));
-
         if ($userId !== null) {
-            $where .= sprintf(' AND task_owner = %d', $userId);
+            $sql .= sprintf(' AND task_owner = %d', $userId);
         }
+        $sql .= ' ORDER BY task_end_date ASC';
 
-        return Task::findAll($where, 'task_end_date ASC');
+        $rows = $this->db->fetchAll($sql);
+        return array_map(fn(array $row): TaskEntity => $this->mapTaskRowToEntity($row), $rows);
     }
 
     /**
@@ -458,5 +472,48 @@ class TaskService
         }
 
         return $tenantId;
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    private function filterExistingTaskColumns(array $data): array
+    {
+        $tasksTable = $this->db->table('tasks');
+        foreach (array_keys($data) as $column) {
+            if (!$this->hasTableColumn($tasksTable, $column)) {
+                unset($data[$column]);
+            }
+        }
+
+        return $data;
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    private function mapTaskRowToEntity(array $row): TaskEntity
+    {
+        $task = new TaskEntity();
+        $task->setId((int) ($row['task_id'] ?? 0));
+        $task->setName((string) ($row['task_name'] ?? ''));
+        $task->setDescription(isset($row['task_description']) ? (string) $row['task_description'] : null);
+        $task->setProjectId((int) ($row['task_project'] ?? 0));
+        $task->setParentTaskId(isset($row['task_parent']) && (int) $row['task_parent'] > 0 ? (int) $row['task_parent'] : null);
+        $task->setOwnerId((int) ($row['task_owner'] ?? 0));
+        $task->setAssignedTo(isset($row['task_assigned_to']) && (int) $row['task_assigned_to'] > 0 ? (int) $row['task_assigned_to'] : null);
+        $task->setStatus((int) ($row['task_status'] ?? 0));
+        $task->setPriority((int) ($row['task_priority'] ?? 0));
+        $task->setPercentComplete((int) ($row['task_percent_complete'] ?? 0));
+
+        if (!empty($row['task_start_date'])) {
+            $task->setStartDate(new \DateTime((string) $row['task_start_date']));
+        }
+        if (!empty($row['task_end_date'])) {
+            $task->setEndDate(new \DateTime((string) $row['task_end_date']));
+        }
+
+        return $task;
     }
 }

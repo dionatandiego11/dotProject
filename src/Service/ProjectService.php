@@ -15,7 +15,8 @@ namespace DotProject\Service;
 
 use DotProject\Core\Database;
 use DotProject\Core\TenantContext;
-use DotProject\Entity\Project;
+use DotProject\Entity\ProjectEntity;
+use DotProject\Repository\ProjectRepository;
 
 /**
  * Project Service
@@ -25,12 +26,14 @@ use DotProject\Entity\Project;
 class ProjectService
 {
     private Database $db;
+    private ProjectRepository $projectRepository;
     /** @var array<string, bool> */
     private array $columnPresenceCache = [];
 
     public function __construct(?Database $db = null)
     {
         $this->db = $db ?? Database::getInstance();
+        $this->projectRepository = new ProjectRepository($this->db);
     }
 
     /**
@@ -38,39 +41,34 @@ class ProjectService
      * 
      * @param int|null $companyId Filter by company
      * @param int|null $userId Filter by owner
-     * @return array<int, Project>
+     * @return array<int, ProjectEntity>
      */
     public function getActiveProjects(?int $companyId = null, ?int $userId = null): array
     {
-        $where = 'project_status = 3';
-        $where .= $this->tenantAndCondition($this->db->table('projects'));
+        $criteria = ['project_status' => 3];
 
         if ($companyId !== null) {
-            $where .= sprintf(' AND project_company = %d', $companyId);
+            $criteria['project_company'] = $companyId;
         }
 
         if ($userId !== null) {
-            $where .= sprintf(' AND project_owner = %d', $userId);
+            $criteria['project_owner'] = $userId;
         }
 
-        return Project::findAll($where, 'project_name ASC');
+        return $this->projectRepository->findBy($criteria, ['project_name' => 'ASC']);
     }
 
     /**
      * Get projects by status
      * 
      * @param int $status Project status (0=Not Defined, 1=Proposed, 2=In Planning, 3=In Progress, 4=On Hold, 5=Complete, 6=Archived)
-     * @return array<int, Project>
+     * @return array<int, ProjectEntity>
      */
     public function getProjectsByStatus(int $status): array
     {
-        return Project::findAll(
-            sprintf(
-                'project_status = %d%s',
-                $status,
-                $this->tenantAndCondition($this->db->table('projects'))
-            ),
-            'project_name ASC'
+        return $this->projectRepository->findBy(
+            ['project_status' => $status],
+            ['project_name' => 'ASC']
         );
     }
 
@@ -78,9 +76,9 @@ class ProjectService
      * Create a new project
      * 
      * @param array<string, mixed> $data Project data
-     * @return Project|null Created project or null on failure
+     * @return ProjectEntity|null Created project or null on failure
      */
-    public function createProject(array $data): ?Project
+    public function createProject(array $data): ?ProjectEntity
     {
         // Validate required fields
         if (empty($data['project_name'])) {
@@ -102,18 +100,31 @@ class ProjectService
         ];
 
         $data = array_merge($defaults, $data);
-        $tenantId = $this->getTenantId();
-        if ($tenantId !== null && $this->hasTableColumn($this->db->table('projects'), 'tenant_id')) {
-            $data['tenant_id'] = $tenantId;
+        $project = new ProjectEntity();
+        $project->setName((string) $data['project_name']);
+        $project->setShortName(isset($data['project_short_name']) ? (string) $data['project_short_name'] : null);
+        $project->setDescription(isset($data['project_description']) ? (string) $data['project_description'] : null);
+        $project->setStatus((int) $data['project_status']);
+        $project->setPriority((int) $data['project_priority']);
+        $project->setPercentComplete((int) $data['project_percent_complete']);
+        $project->setOwnerId(isset($data['project_owner']) ? (int) $data['project_owner'] : null);
+        $project->setCompanyId(isset($data['project_company']) ? (int) $data['project_company'] : null);
+        $project->setColorIdentifier((string) $data['project_color_identifier']);
+        $project->setUrl(isset($data['project_url']) ? (string) $data['project_url'] : null);
+
+        if (!empty($data['project_start_date'])) {
+            $project->setStartDate(new \DateTime((string) $data['project_start_date']));
+        }
+        if (!empty($data['project_end_date'])) {
+            $project->setEndDate(new \DateTime((string) $data['project_end_date']));
         }
 
-        $project = new Project($data);
-
-        if ($project->save()) {
-            return $project;
+        $savedId = $this->projectRepository->save($project);
+        if ($savedId <= 0) {
+            return null;
         }
 
-        return null;
+        return $this->projectRepository->find($savedId);
     }
 
     /**
@@ -134,7 +145,7 @@ class ProjectService
             return null;
         }
 
-        $project = Project::find($projectId);
+        $project = $this->projectRepository->find($projectId);
         if ($project === null) {
             return null;
         }
@@ -156,8 +167,7 @@ class ProjectService
 
         $progress = (float) ($this->db->fetchValue($sql) ?? 0);
 
-        $project->setAttribute('project_percent_complete', $progress);
-        $project->save();
+        $this->projectRepository->updatePercentComplete($projectId, (int) round($progress));
 
         return $progress;
     }
@@ -236,7 +246,7 @@ class ProjectService
             $this->tenantAndCondition($this->db->table('projects'))
         ));
         if ($projectExists !== null) {
-            $project = Project::find($projectId);
+            $project = $this->projectRepository->find($projectId);
             if ($project !== null) {
                 $stats['progress'] = (float) $project->getPercentComplete();
             }
@@ -249,40 +259,22 @@ class ProjectService
      * Get recent projects
      * 
      * @param int $limit Number of projects to return
-     * @return array<int, Project>
+     * @return array<int, ProjectEntity>
      */
     public function getRecentProjects(int $limit = 10): array
     {
-        $sql = sprintf(
-            "SELECT * FROM `%s` WHERE 1=1%s ORDER BY project_id DESC LIMIT %d",
-            $this->db->table('projects'),
-            $this->tenantAndCondition($this->db->table('projects')),
-            $limit
-        );
-
-        $rows = $this->db->fetchAll($sql);
-        return array_map(fn($row) => Project::fromArray($row), $rows);
+        return $this->projectRepository->findBy([], ['project_id' => 'DESC'], $limit);
     }
 
     /**
      * Search projects by name
      * 
      * @param string $query Search query
-     * @return array<int, Project>
+     * @return array<int, ProjectEntity>
      */
     public function searchProjects(string $query): array
     {
-        $escapedQuery = $this->db->escape($query);
-
-        return Project::findAll(
-            sprintf(
-                "(project_name LIKE '%%%s%%' OR project_short_name LIKE '%%%s%%')%s",
-                $escapedQuery,
-                $escapedQuery,
-                $this->tenantAndCondition($this->db->table('projects'))
-            ),
-            'project_name ASC'
-        );
+        return $this->projectRepository->searchByName($query);
     }
 
     /**

@@ -20,6 +20,8 @@ class ProjectRepository extends BaseRepository
 {
     protected string $table = 'dotp_projects';
     protected string $primaryKey = 'project_id';
+    /** @var array<string, bool> */
+    private array $columnPresenceCache = [];
 
     /**
      * {@inheritdoc}
@@ -72,7 +74,7 @@ class ProjectRepository extends BaseRepository
             throw new \InvalidArgumentException('Entity must be ProjectEntity');
         }
 
-        return [
+        $data = [
             'project_id' => $entity->getId(),
             'project_name' => $entity->getName(),
             'project_short_name' => $entity->getShortName(),
@@ -88,6 +90,18 @@ class ProjectRepository extends BaseRepository
             'project_color_identifier' => $entity->getColorIdentifier(),
             'project_url' => $entity->getUrl(),
         ];
+
+        foreach (array_keys($data) as $column) {
+            if ($column === $this->primaryKey) {
+                continue;
+            }
+
+            if (!$this->hasColumn($column)) {
+                unset($data[$column]);
+            }
+        }
+
+        return $data;
     }
 
     /**
@@ -242,5 +256,24 @@ class ProjectRepository extends BaseRepository
         }
 
         return $result;
+    }
+
+    private function hasColumn(string $column): bool
+    {
+        if (array_key_exists($column, $this->columnPresenceCache)) {
+            return $this->columnPresenceCache[$column];
+        }
+
+        $exists = (int) ($this->db->fetchValue(
+            "SELECT COUNT(*)
+             FROM information_schema.columns
+             WHERE table_schema = DATABASE()
+               AND table_name = ?
+               AND column_name = ?",
+            [trim($this->table, '`'), $column]
+        ) ?? 0);
+
+        $this->columnPresenceCache[$column] = $exists > 0;
+        return $this->columnPresenceCache[$column];
     }
 }

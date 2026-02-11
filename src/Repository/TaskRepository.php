@@ -18,6 +18,8 @@ class TaskRepository extends BaseRepository
     protected string $table = 'dotp_tasks';
     protected string $primaryKey = 'task_id';
     private ?bool $hasTaskAssignedTo = null;
+    /** @var array<string, bool> */
+    private array $columnPresenceCache = [];
 
     protected function hydrate(array $data): TaskEntity
     {
@@ -86,6 +88,16 @@ class TaskRepository extends BaseRepository
 
         if ($this->supportsTaskAssignedTo()) {
             $data['task_assigned_to'] = $entity->getAssignedTo();
+        }
+
+        foreach (array_keys($data) as $column) {
+            if ($column === $this->primaryKey) {
+                continue;
+            }
+
+            if (!$this->hasColumn($column)) {
+                unset($data[$column]);
+            }
         }
 
         return $data;
@@ -234,5 +246,24 @@ class TaskRepository extends BaseRepository
         }
 
         return $this->hasTaskAssignedTo;
+    }
+
+    private function hasColumn(string $column): bool
+    {
+        if (array_key_exists($column, $this->columnPresenceCache)) {
+            return $this->columnPresenceCache[$column];
+        }
+
+        $exists = (int) ($this->db->fetchValue(
+            "SELECT COUNT(*)
+             FROM information_schema.columns
+             WHERE table_schema = DATABASE()
+               AND table_name = ?
+               AND column_name = ?",
+            [trim($this->table, '`'), $column]
+        ) ?? 0);
+
+        $this->columnPresenceCache[$column] = $exists > 0;
+        return $this->columnPresenceCache[$column];
     }
 }

@@ -16,7 +16,8 @@ use DotProject\Api\Request;
 use DotProject\Api\Response;
 use DotProject\Core\Logger;
 use DotProject\Core\TenantContext;
-use DotProject\Entity\Task;
+use DotProject\Entity\TaskEntity;
+use DotProject\Repository\TaskRepository;
 use DotProject\Service\AuthorizationService;
 use DotProject\Service\PermissionService;
 use DotProject\Service\ProjectProgressSyncService;
@@ -28,6 +29,7 @@ class TaskController extends BaseController
 {
     private ?bool $hasTaskAssignedTo = null;
     private ?ProjectProgressSyncService $projectProgressSync = null;
+    private ?TaskRepository $taskRepository = null;
     /** @var array<string, bool> */
     private array $tableHasTenantColumn = [];
 
@@ -259,7 +261,6 @@ class TaskController extends BaseController
         $taskPayload = [
             'task_name' => $body['name'],
             'task_project' => (int) $body['project_id'],
-            'task_parent' => $body['parent_id'] ?? 0,
             'task_milestone' => $body['milestone'] ?? 0,
             'task_owner' => $ownerId,
             'task_creator' => $this->getUserId(),
@@ -277,21 +278,51 @@ class TaskController extends BaseController
             'task_type' => $body['type'] ?? 0,
         ];
 
-        if ($this->supportsTaskAssignedToColumn()) {
-            $taskPayload['task_assigned_to'] = $assigneeId;
+        $task = new TaskEntity();
+        $task->setName((string) $taskPayload['task_name']);
+        $task->setProjectId((int) $taskPayload['task_project']);
+        $task->setOwnerId((int) $ownerId);
+        $task->setAssignedTo($assigneeId);
+        $task->setStatus((int) ($taskPayload['task_status'] ?? 0));
+        $task->setPriority((int) ($taskPayload['task_priority'] ?? 0));
+        $task->setPercentComplete((int) ($taskPayload['task_percent_complete'] ?? 0));
+        $task->setDescription((string) ($taskPayload['task_description'] ?? ''));
+        $task->setParentTaskId(isset($body['parent_id']) ? (int) $body['parent_id'] : null);
+        $task->setEstimatedHours(isset($taskPayload['task_duration']) ? (float) $taskPayload['task_duration'] : null);
+        $task->setActualHours(0.0);
+        $task->setStartDate(new \DateTime((string) ($taskPayload['task_start_date'] ?? date('Y-m-d'))));
+        if (!empty($taskPayload['task_end_date'])) {
+            $task->setEndDate(new \DateTime((string) $taskPayload['task_end_date']));
         }
 
-        $task = new Task();
-        $task->fill($taskPayload);
+        $taskId = $this->taskRepository()->save($task);
+        if ($taskId <= 0) {
+            return $this->error('Failed to create task');
+        }
 
-        if (!$task->save()) {
+        $legacyPayload = [
+            'task_parent' => isset($body['parent_id']) ? (int) $body['parent_id'] : 0,
+            'task_milestone' => (int) ($body['milestone'] ?? 0),
+            'task_creator' => $this->getUserId(),
+            'task_duration' => (float) ($body['duration'] ?? 1),
+            'task_duration_type' => (int) ($body['duration_type'] ?? 1),
+            'task_hours_worked' => 0,
+            'task_order' => (int) ($maxOrder + 1),
+            'task_access' => (int) ($body['access'] ?? 0),
+            'task_type' => (int) ($body['type'] ?? 0),
+        ];
+        if ($this->supportsTaskAssignedToColumn()) {
+            $legacyPayload['task_assigned_to'] = $assigneeId;
+        }
+
+        if (!$this->updateTaskRow($taskId, $legacyPayload)) {
             return $this->error('Failed to create task');
         }
 
         $this->syncProjectProgress((int) $body['project_id']);
 
         return $this->created([
-            'id' => $task->getId(),
+            'id' => $taskId,
             'message' => 'Task created successfully',
         ]);
     }
@@ -313,7 +344,7 @@ class TaskController extends BaseController
             return $guard;
         }
 
-        $task = Task::find($id);
+        $task = $this->taskRepository()->find($id);
         if ($task === null) {
             return $this->notFound('Task not found');
         }
@@ -335,22 +366,6 @@ class TaskController extends BaseController
             }
         }
 
-        // Atualiza apenas campos fornecidos
-        $updateFields = [
-            'name' => 'task_name',
-            'description' => 'task_description',
-            'owner_id' => 'task_owner',
-            'start_date' => 'task_start_date',
-            'end_date' => 'task_end_date',
-            'duration' => 'task_duration',
-            'priority' => 'task_priority',
-            'percent_complete' => 'task_percent_complete',
-            'status' => 'task_status',
-            'milestone' => 'task_milestone',
-            'parent_id' => 'task_parent',
-            'order' => 'task_order',
-        ];
-
         $validationData = [];
         if (isset($body['name'])) {
             $validationData['task_name'] = $body['name'];
@@ -367,10 +382,10 @@ class TaskController extends BaseController
 
         if (!empty($validationData)) {
             if (!array_key_exists('task_name', $validationData)) {
-                $validationData['task_name'] = (string) ($task->getAttribute('task_name') ?? '');
+                $validationData['task_name'] = $task->getName();
             }
             if (!array_key_exists('task_project', $validationData)) {
-                $validationData['task_project'] = (int) ($task->getAttribute('task_project') ?? 0);
+                $validationData['task_project'] = $task->getProjectId();
             }
 
             $validation = $this->validation()->validateTask($validationData);
@@ -381,31 +396,67 @@ class TaskController extends BaseController
 
         $this->normalizeTaskStatusPercent(
             $body,
-            (int) ($task->getAttribute('task_status') ?? 0),
-            (int) ($task->getAttribute('task_percent_complete') ?? 0)
+            $task->getStatus(),
+            $task->getPercentComplete()
         );
 
-        foreach ($updateFields as $apiField => $dbField) {
-            if (isset($body[$apiField])) {
-                $task->setAttribute($dbField, $body[$apiField]);
-            }
+        if (array_key_exists('name', $body)) {
+            $task->setName((string) $body['name']);
+        }
+        if (array_key_exists('description', $body)) {
+            $task->setDescription($body['description'] !== null ? (string) $body['description'] : null);
+        }
+        if (array_key_exists('owner_id', $body)) {
+            $task->setOwnerId((int) $body['owner_id']);
+        }
+        if (array_key_exists('start_date', $body)) {
+            $task->setStartDate($body['start_date'] ? new \DateTime((string) $body['start_date']) : null);
+        }
+        if (array_key_exists('end_date', $body)) {
+            $task->setEndDate($body['end_date'] ? new \DateTime((string) $body['end_date']) : null);
+        }
+        if (array_key_exists('duration', $body)) {
+            $task->setEstimatedHours((float) $body['duration']);
+        }
+        if (array_key_exists('priority', $body)) {
+            $task->setPriority((int) $body['priority']);
+        }
+        if (array_key_exists('percent_complete', $body)) {
+            $task->setPercentComplete((int) $body['percent_complete']);
+        }
+        if (array_key_exists('status', $body)) {
+            $task->setStatus((int) $body['status']);
+        }
+        if (array_key_exists('parent_id', $body)) {
+            $task->setParentTaskId($body['parent_id'] !== null ? (int) $body['parent_id'] : null);
         }
 
         if ($this->supportsTaskAssignedToColumn()) {
             if (array_key_exists('assigned_to', $body) || array_key_exists('assigned_to_id', $body)) {
                 $assigneeRaw = $body['assigned_to'] ?? $body['assigned_to_id'];
-                $task->setAttribute('task_assigned_to', ($assigneeRaw !== null && (int) $assigneeRaw > 0) ? (int) $assigneeRaw : null);
+                $task->setAssignedTo(($assigneeRaw !== null && (int) $assigneeRaw > 0) ? (int) $assigneeRaw : null);
             } elseif (array_key_exists('owner_id', $body)) {
                 $ownerId = (int) ($body['owner_id'] ?? 0);
-                $task->setAttribute('task_assigned_to', $ownerId > 0 ? $ownerId : null);
+                $task->setAssignedTo($ownerId > 0 ? $ownerId : null);
             }
         }
 
-        if (!$task->save()) {
+        if ($this->taskRepository()->save($task) <= 0) {
             return $this->error('Failed to update task');
         }
 
-        $this->syncProjectProgress((int) ($task->getAttribute('task_project') ?? 0));
+        $legacyUpdates = [];
+        if (array_key_exists('milestone', $body)) {
+            $legacyUpdates['task_milestone'] = (int) $body['milestone'];
+        }
+        if (array_key_exists('order', $body)) {
+            $legacyUpdates['task_order'] = (int) $body['order'];
+        }
+        if (!$this->updateTaskRow($id, $legacyUpdates)) {
+            return $this->error('Failed to update task');
+        }
+
+        $this->syncProjectProgress($task->getProjectId());
 
         return $this->json([
             'id' => $task->getId(),
@@ -430,7 +481,7 @@ class TaskController extends BaseController
             return $guard;
         }
 
-        $task = Task::find($id);
+        $task = $this->taskRepository()->find($id);
         if ($task === null) {
             return $this->notFound('Task not found');
         }
@@ -447,11 +498,11 @@ class TaskController extends BaseController
             return $this->error('Cannot delete task with subtasks. Delete subtasks first.', Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
-        if (!$task->delete()) {
+        if (!$this->taskRepository()->delete($id)) {
             return $this->error('Failed to delete task');
         }
 
-        $this->syncProjectProgress((int) ($task->getAttribute('task_project') ?? 0));
+        $this->syncProjectProgress($task->getProjectId());
 
         return $this->response->noContent();
     }
@@ -582,6 +633,37 @@ class TaskController extends BaseController
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * @param array<string, mixed> $fields
+     */
+    private function updateTaskRow(int $taskId, array $fields): bool
+    {
+        if ($fields === []) {
+            return true;
+        }
+
+        $tasksTable = $this->db->table('tasks');
+        foreach (array_keys($fields) as $column) {
+            if (!$this->tableHasColumn($tasksTable, $column)) {
+                unset($fields[$column]);
+            }
+        }
+
+        if ($fields === []) {
+            return true;
+        }
+
+        return $this->db->update(
+            'tasks',
+            $fields,
+            sprintf(
+                'task_id = %d%s',
+                $taskId,
+                $this->tenantAndCondition($tasksTable)
+            )
+        );
     }
 
     /**
@@ -742,5 +824,14 @@ class TaskController extends BaseController
         }
 
         return $tenantId;
+    }
+
+    private function taskRepository(): TaskRepository
+    {
+        if ($this->taskRepository === null) {
+            $this->taskRepository = new TaskRepository($this->db);
+        }
+
+        return $this->taskRepository;
     }
 }
