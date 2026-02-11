@@ -14,6 +14,7 @@ namespace DotProject\Api\Controller;
 
 use DotProject\Api\Request;
 use DotProject\Api\Response;
+use DotProject\Core\TenantContext;
 use DotProject\Dto\ApiResponse;
 use DotProject\Service\AuthorizationService;
 use DotProject\Service\KanbanService;
@@ -26,6 +27,8 @@ class KanbanController extends BaseController
 {
     private ?KanbanService $kanbanService = null;
     private ?UnidadeCompanySyncService $unidadeCompanySync = null;
+    /** @var array<string, bool> */
+    private array $columnPresenceCache = [];
     
     /**
      * GET /v1/kanban/boards
@@ -372,11 +375,14 @@ class KanbanController extends BaseController
             sprintf(
                 "SELECT u.user_company
                  FROM `%s` u
-                 JOIN `%s` un ON un.unidade_id = u.user_company
+                 JOIN `%s` un ON un.unidade_id = u.user_company%s
                  WHERE u.user_id = ? AND u.user_company IS NOT NULL AND u.user_company <> 0
+                 %s
                  LIMIT 1",
                 $usersTable,
-                $unidadesTable
+                $unidadesTable,
+                $this->tenantAndCondition($unidadesTable, 'un'),
+                $this->tenantAndCondition($usersTable, 'u')
             ),
             [$userId]
         ) ?? 0);
@@ -389,13 +395,16 @@ class KanbanController extends BaseController
             sprintf(
                 "SELECT v.vinculo_unidade_id
                  FROM `%s` v
-                 JOIN `%s` un ON un.unidade_id = v.vinculo_unidade_id
+                 JOIN `%s` un ON un.unidade_id = v.vinculo_unidade_id%s
                  WHERE v.vinculo_user_id = ?
                    AND v.vinculo_status = 'ativo'
+                   %s
                  ORDER BY v.vinculo_is_principal DESC, v.vinculo_id ASC
                  LIMIT 1",
                 $vinculosTable,
-                $unidadesTable
+                $unidadesTable,
+                $this->tenantAndCondition($unidadesTable, 'un'),
+                $this->tenantAndCondition($vinculosTable, 'v')
             ),
             [$userId]
         ) ?? 0);
@@ -410,9 +419,11 @@ class KanbanController extends BaseController
                  FROM `%s` un
                  WHERE un.unidade_responsavel_id = ?
                    AND un.unidade_status = 'ativo'
+                   %s
                  ORDER BY un.unidade_nivel_id ASC, un.unidade_id ASC
                  LIMIT 1",
-                $unidadesTable
+                $unidadesTable,
+                $this->tenantAndCondition($unidadesTable, 'un')
             ),
             [$userId]
         ) ?? 0);
@@ -434,8 +445,9 @@ class KanbanController extends BaseController
         $unidadesTable = $db->table('unidades_organizacionais');
         $exists = $db->fetchValue(
             sprintf(
-                "SELECT unidade_id FROM `%s` WHERE unidade_id = ? LIMIT 1",
-                $unidadesTable
+                "SELECT unidade_id FROM `%s` WHERE unidade_id = ?%s LIMIT 1",
+                $unidadesTable,
+                $this->tenantAndCondition($unidadesTable)
             ),
             [$unidadeId]
         );
@@ -456,8 +468,10 @@ class KanbanController extends BaseController
                 "SELECT project_company
                  FROM `%s`
                  WHERE project_id = ?
+                 %s
                  LIMIT 1",
-                $projectsTable
+                $projectsTable,
+                $this->tenantAndCondition($projectsTable)
             ),
             [$projectId]
         ) ?? 0);
@@ -470,5 +484,54 @@ class KanbanController extends BaseController
         }
 
         return $fallbackCompanyId;
+    }
+
+    private function tenantAndCondition(string $table, ?string $alias = null): string
+    {
+        $tenantId = $this->getTenantId();
+        if ($tenantId === null || !$this->hasTableColumn($table, 'tenant_id')) {
+            return '';
+        }
+
+        $column = $alias !== null && $alias !== ''
+            ? $alias . '.tenant_id'
+            : 'tenant_id';
+
+        return " AND {$column} = {$tenantId}";
+    }
+
+    private function hasTableColumn(string $table, string $column): bool
+    {
+        $tableName = trim($table, '`');
+        $cacheKey = $tableName . ':' . $column;
+        if (array_key_exists($cacheKey, $this->columnPresenceCache)) {
+            return $this->columnPresenceCache[$cacheKey];
+        }
+
+        $exists = (int) ($this->db->fetchValue(
+            "SELECT COUNT(*)
+             FROM information_schema.columns
+             WHERE table_schema = DATABASE()
+               AND table_name = ?
+               AND column_name = ?",
+            [$tableName, $column]
+        ) ?? 0);
+
+        $this->columnPresenceCache[$cacheKey] = $exists > 0;
+        return $this->columnPresenceCache[$cacheKey];
+    }
+
+    private function getTenantId(): ?int
+    {
+        if (!TenantContext::isEnabled()) {
+            return null;
+        }
+
+        $tenantId = TenantContext::getTenantId();
+        if ($tenantId === null || $tenantId <= 0) {
+            return null;
+        }
+
+        return $tenantId;
     }
 }

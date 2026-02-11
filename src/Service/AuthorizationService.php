@@ -15,6 +15,7 @@ namespace DotProject\Service;
 
 use DotProject\Core\Cache;
 use DotProject\Core\Database;
+use DotProject\Core\TenantContext;
 use DotProject\Entity\UserEntity;
 use DotProject\Repository\UserRepository;
 
@@ -59,6 +60,8 @@ class AuthorizationService
     private ?array $userPermissions = null;
     private ?string $vinculoStatusColumn = null;
     private ?bool $hasUserTasksTable = null;
+    /** @var array<string, bool> */
+    private array $columnPresenceCache = [];
     
     private static ?AuthorizationService $instance = null;
     
@@ -179,9 +182,10 @@ class AuthorizationService
         
         // Query user role from database
         $sql = sprintf(
-            "SELECT user_type FROM `%s` WHERE user_id = %d",
+            "SELECT user_type FROM `%s` WHERE user_id = %d%s",
             $this->db->table('users'),
-            $userId
+            $userId,
+            $this->tenantAndCondition($this->db->table('users'))
         );
         
         $rawRole = (int) ($this->db->fetchValue($sql) ?? self::ROLE_USER);
@@ -312,10 +316,11 @@ class AuthorizationService
     {
         // Check if user is project owner
         $sql = sprintf(
-            "SELECT COUNT(*) FROM `%s` WHERE project_id = %d AND project_owner = %d",
+            "SELECT COUNT(*) FROM `%s` WHERE project_id = %d AND project_owner = %d%s",
             $this->db->table('projects'),
             $projectId,
-            $userId
+            $userId,
+            $this->tenantAndCondition($this->db->table('projects'))
         );
         
         if ((int) $this->db->fetchValue($sql) > 0) {
@@ -327,11 +332,13 @@ class AuthorizationService
             $sql = sprintf(
                 "SELECT COUNT(*) FROM `%s` t 
                  JOIN `%s` ut ON t.task_id = ut.task_id 
-                 WHERE t.task_project = %d AND ut.user_id = %d",
+                 WHERE t.task_project = %d AND ut.user_id = %d%s%s",
                 $this->db->table('tasks'),
                 $this->db->table('user_tasks'),
                 $projectId,
-                $userId
+                $userId,
+                $this->tenantAndCondition($this->db->table('tasks'), 't'),
+                $this->tenantAndCondition($this->db->table('user_tasks'), 'ut')
             );
 
             if ((int) $this->db->fetchValue($sql) > 0) {
@@ -349,9 +356,10 @@ class AuthorizationService
         $sql = sprintf(
             "SELECT COUNT(*) FROM `%s` 
              WHERE project_id = ? 
-               AND project_company IN (%s)",
+               AND project_company IN (%s)%s",
             $this->db->table('projects'),
-            $placeholders
+            $placeholders,
+            $this->tenantAndCondition($this->db->table('projects'))
         );
 
         return (int) $this->db->fetchValue(
@@ -408,10 +416,11 @@ class AuthorizationService
     {
         // Check if user is task owner
         $sql = sprintf(
-            "SELECT COUNT(*) FROM `%s` WHERE task_id = %d AND task_owner = %d",
+            "SELECT COUNT(*) FROM `%s` WHERE task_id = %d AND task_owner = %d%s",
             $this->db->table('tasks'),
             $taskId,
-            $userId
+            $userId,
+            $this->tenantAndCondition($this->db->table('tasks'))
         );
         
         if ((int) $this->db->fetchValue($sql) > 0) {
@@ -421,10 +430,11 @@ class AuthorizationService
         // Check if user is assigned to task
         if ($this->hasUserTasksTable()) {
             $sql = sprintf(
-                "SELECT COUNT(*) FROM `%s` WHERE task_id = %d AND user_id = %d",
+                "SELECT COUNT(*) FROM `%s` WHERE task_id = %d AND user_id = %d%s",
                 $this->db->table('user_tasks'),
                 $taskId,
-                $userId
+                $userId,
+                $this->tenantAndCondition($this->db->table('user_tasks'))
             );
             
             if ((int) $this->db->fetchValue($sql) > 0) {
@@ -434,9 +444,10 @@ class AuthorizationService
         
         // Check project access (if user can access project, can view tasks)
         $sql = sprintf(
-            "SELECT task_project FROM `%s` WHERE task_id = %d",
+            "SELECT task_project FROM `%s` WHERE task_id = %d%s",
             $this->db->table('tasks'),
-            $taskId
+            $taskId,
+            $this->tenantAndCondition($this->db->table('tasks'))
         );
         
         $projectId = (int) $this->db->fetchValue($sql);
@@ -533,16 +544,21 @@ class AuthorizationService
         
         // Admin can access all projects
         if ($this->isAdmin($userId)) {
-            $sql = sprintf("SELECT project_id FROM `%s`", $this->db->table('projects'));
+            $sql = sprintf(
+                "SELECT project_id FROM `%s` WHERE 1=1%s",
+                $this->db->table('projects'),
+                $this->tenantAndCondition($this->db->table('projects'))
+            );
             $results = $this->db->fetchAll($sql);
             return array_map(fn($row) => (int) $row['project_id'], $results);
         }
         
         // Get projects where user is owner
         $sql = sprintf(
-            "SELECT project_id FROM `%s` WHERE project_owner = %d",
+            "SELECT project_id FROM `%s` WHERE project_owner = %d%s",
             $this->db->table('projects'),
-            $userId
+            $userId,
+            $this->tenantAndCondition($this->db->table('projects'))
         );
         $ownerProjects = $this->db->fetchAll($sql);
         
@@ -553,10 +569,12 @@ class AuthorizationService
                 "SELECT DISTINCT t.task_project as project_id 
                  FROM `%s` t 
                  JOIN `%s` ut ON t.task_id = ut.task_id 
-                 WHERE ut.user_id = %d",
+                 WHERE ut.user_id = %d%s%s",
                 $this->db->table('tasks'),
                 $this->db->table('user_tasks'),
-                $userId
+                $userId,
+                $this->tenantAndCondition($this->db->table('tasks'), 't'),
+                $this->tenantAndCondition($this->db->table('user_tasks'), 'ut')
             );
             $taskProjects = $this->db->fetchAll($sql);
         }
@@ -566,9 +584,10 @@ class AuthorizationService
         if (!empty($scopeCompanyIds)) {
             $placeholders = implode(',', array_fill(0, count($scopeCompanyIds), '?'));
             $sql = sprintf(
-                "SELECT project_id FROM `%s` WHERE project_company IN (%s)",
+                "SELECT project_id FROM `%s` WHERE project_company IN (%s)%s",
                 $this->db->table('projects'),
-                $placeholders
+                $placeholders,
+                $this->tenantAndCondition($this->db->table('projects'))
             );
             $companyProjects = $this->db->fetchAll($sql, $scopeCompanyIds);
         }
@@ -613,8 +632,9 @@ class AuthorizationService
 
         $userCompany = (int) ($this->db->fetchValue(
             sprintf(
-                "SELECT user_company FROM `%s` WHERE user_id = ? AND user_company IS NOT NULL AND user_company <> 0",
-                $this->db->table('users')
+                "SELECT user_company FROM `%s` WHERE user_id = ? AND user_company IS NOT NULL AND user_company <> 0%s",
+                $this->db->table('users'),
+                $this->tenantAndCondition($this->db->table('users'))
             ),
             [$userId]
         ) ?? 0);
@@ -629,9 +649,10 @@ class AuthorizationService
                 "SELECT vinculo_unidade_id
                  FROM `%s`
                  WHERE vinculo_user_id = ?
-                   AND %s = ?",
+                   AND %s = ?%s",
                 $this->db->table('usuario_unidades'),
-                $vinculoStatusColumn
+                $vinculoStatusColumn,
+                $this->tenantAndCondition($this->db->table('usuario_unidades'))
             ),
             [$userId, $activeValue]
         );
@@ -693,6 +714,54 @@ class AuthorizationService
 
         $this->hasUserTasksTable = $exists > 0;
         return $this->hasUserTasksTable;
+    }
+
+    private function tenantAndCondition(string $table, ?string $alias = null): string
+    {
+        $tenantId = $this->getTenantId();
+        if ($tenantId === null || !$this->hasTableColumn($table, 'tenant_id')) {
+            return '';
+        }
+
+        $column = $alias !== null && $alias !== ''
+            ? $alias . '.tenant_id'
+            : 'tenant_id';
+
+        return " AND {$column} = {$tenantId}";
+    }
+
+    private function hasTableColumn(string $table, string $column): bool
+    {
+        $tableName = trim($table, '`');
+        $cacheKey = $tableName . ':' . $column;
+        if (array_key_exists($cacheKey, $this->columnPresenceCache)) {
+            return $this->columnPresenceCache[$cacheKey];
+        }
+
+        $exists = (int) ($this->db->fetchValue(
+            "SELECT COUNT(*) FROM information_schema.columns
+             WHERE table_schema = DATABASE()
+               AND table_name = ?
+               AND column_name = ?",
+            [$tableName, $column]
+        ) ?? 0);
+
+        $this->columnPresenceCache[$cacheKey] = $exists > 0;
+        return $this->columnPresenceCache[$cacheKey];
+    }
+
+    private function getTenantId(): ?int
+    {
+        if (!TenantContext::isEnabled()) {
+            return null;
+        }
+
+        $tenantId = TenantContext::getTenantId();
+        if ($tenantId === null || $tenantId <= 0) {
+            return null;
+        }
+
+        return $tenantId;
     }
     
     /**

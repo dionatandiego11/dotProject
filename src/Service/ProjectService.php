@@ -14,6 +14,7 @@ declare(strict_types=1);
 namespace DotProject\Service;
 
 use DotProject\Core\Database;
+use DotProject\Core\TenantContext;
 use DotProject\Entity\Project;
 
 /**
@@ -24,6 +25,8 @@ use DotProject\Entity\Project;
 class ProjectService
 {
     private Database $db;
+    /** @var array<string, bool> */
+    private array $columnPresenceCache = [];
 
     public function __construct(?Database $db = null)
     {
@@ -40,6 +43,7 @@ class ProjectService
     public function getActiveProjects(?int $companyId = null, ?int $userId = null): array
     {
         $where = 'project_status = 3';
+        $where .= $this->tenantAndCondition($this->db->table('projects'));
 
         if ($companyId !== null) {
             $where .= sprintf(' AND project_company = %d', $companyId);
@@ -61,7 +65,11 @@ class ProjectService
     public function getProjectsByStatus(int $status): array
     {
         return Project::findAll(
-            sprintf('project_status = %d', $status),
+            sprintf(
+                'project_status = %d%s',
+                $status,
+                $this->tenantAndCondition($this->db->table('projects'))
+            ),
             'project_name ASC'
         );
     }
@@ -94,6 +102,10 @@ class ProjectService
         ];
 
         $data = array_merge($defaults, $data);
+        $tenantId = $this->getTenantId();
+        if ($tenantId !== null && $this->hasTableColumn($this->db->table('projects'), 'tenant_id')) {
+            $data['tenant_id'] = $tenantId;
+        }
 
         $project = new Project($data);
 
@@ -112,6 +124,16 @@ class ProjectService
      */
     public function updateProgress(int $projectId): ?float
     {
+        $projectExists = $this->db->fetchValue(sprintf(
+            "SELECT project_id FROM `%s` WHERE project_id = %d%s",
+            $this->db->table('projects'),
+            $projectId,
+            $this->tenantAndCondition($this->db->table('projects'))
+        ));
+        if ($projectExists === null) {
+            return null;
+        }
+
         $project = Project::find($projectId);
         if ($project === null) {
             return null;
@@ -120,15 +142,16 @@ class ProjectService
         $workingHours = $this->getConfigValue('daily_working_hours', 8);
 
         $sql = sprintf(
-            "SELECT 
-                SUM(task_duration * task_percent_complete * IF(task_duration_type = 24, %d, task_duration_type)) / 
+            "SELECT
+                SUM(task_duration * task_percent_complete * IF(task_duration_type = 24, %d, task_duration_type)) /
                 SUM(task_duration * IF(task_duration_type = 24, %d, task_duration_type)) AS progress
             FROM `%s`
-            WHERE task_project = %d AND task_id = task_parent",
+            WHERE task_project = %d AND task_id = task_parent%s",
             $workingHours,
             $workingHours,
             $this->db->table('tasks'),
-            $projectId
+            $projectId,
+            $this->tenantAndCondition($this->db->table('tasks'))
         );
 
         $progress = (float) ($this->db->fetchValue($sql) ?? 0);
@@ -159,51 +182,64 @@ class ProjectService
 
         // Total tasks
         $sql = sprintf(
-            "SELECT COUNT(*) FROM `%s` WHERE task_project = %d",
+            "SELECT COUNT(*) FROM `%s` WHERE task_project = %d%s",
             $this->db->table('tasks'),
-            $projectId
+            $projectId,
+            $this->tenantAndCondition($this->db->table('tasks'))
         );
         $stats['total_tasks'] = (int) ($this->db->fetchValue($sql) ?? 0);
 
         // Completed tasks (100%)
         $sql = sprintf(
-            "SELECT COUNT(*) FROM `%s` WHERE task_project = %d AND task_percent_complete = 100",
+            "SELECT COUNT(*) FROM `%s` WHERE task_project = %d AND task_percent_complete = 100%s",
             $this->db->table('tasks'),
-            $projectId
+            $projectId,
+            $this->tenantAndCondition($this->db->table('tasks'))
         );
         $stats['completed_tasks'] = (int) ($this->db->fetchValue($sql) ?? 0);
 
         // Overdue tasks
         $sql = sprintf(
-            "SELECT COUNT(*) FROM `%s` WHERE task_project = %d 
-             AND task_percent_complete < 100 
-             AND task_end_date < NOW() 
-             AND task_end_date != '0000-00-00 00:00:00'",
+            "SELECT COUNT(*) FROM `%s` WHERE task_project = %d
+             AND task_percent_complete < 100
+             AND task_end_date < NOW()
+             AND task_end_date != '0000-00-00 00:00:00'%s",
             $this->db->table('tasks'),
-            $projectId
+            $projectId,
+            $this->tenantAndCondition($this->db->table('tasks'))
         );
         $stats['overdue_tasks'] = (int) ($this->db->fetchValue($sql) ?? 0);
 
         // Total hours worked
         $sql = sprintf(
-            "SELECT SUM(task_hours_worked) FROM `%s` WHERE task_project = %d",
+            "SELECT SUM(task_hours_worked) FROM `%s` WHERE task_project = %d%s",
             $this->db->table('tasks'),
-            $projectId
+            $projectId,
+            $this->tenantAndCondition($this->db->table('tasks'))
         );
         $stats['total_hours_worked'] = (float) ($this->db->fetchValue($sql) ?? 0);
 
         // Milestones
         $sql = sprintf(
-            "SELECT COUNT(*) FROM `%s` WHERE task_project = %d AND task_milestone = 1",
+            "SELECT COUNT(*) FROM `%s` WHERE task_project = %d AND task_milestone = 1%s",
             $this->db->table('tasks'),
-            $projectId
+            $projectId,
+            $this->tenantAndCondition($this->db->table('tasks'))
         );
         $stats['milestones'] = (int) ($this->db->fetchValue($sql) ?? 0);
 
         // Progress from project
-        $project = Project::find($projectId);
-        if ($project !== null) {
-            $stats['progress'] = (float) $project->getPercentComplete();
+        $projectExists = $this->db->fetchValue(sprintf(
+            "SELECT project_id FROM `%s` WHERE project_id = %d%s",
+            $this->db->table('projects'),
+            $projectId,
+            $this->tenantAndCondition($this->db->table('projects'))
+        ));
+        if ($projectExists !== null) {
+            $project = Project::find($projectId);
+            if ($project !== null) {
+                $stats['progress'] = (float) $project->getPercentComplete();
+            }
         }
 
         return $stats;
@@ -218,8 +254,9 @@ class ProjectService
     public function getRecentProjects(int $limit = 10): array
     {
         $sql = sprintf(
-            "SELECT * FROM `%s` ORDER BY project_id DESC LIMIT %d",
+            "SELECT * FROM `%s` WHERE 1=1%s ORDER BY project_id DESC LIMIT %d",
             $this->db->table('projects'),
+            $this->tenantAndCondition($this->db->table('projects')),
             $limit
         );
 
@@ -239,9 +276,10 @@ class ProjectService
 
         return Project::findAll(
             sprintf(
-                "project_name LIKE '%%%s%%' OR project_short_name LIKE '%%%s%%'",
+                "(project_name LIKE '%%%s%%' OR project_short_name LIKE '%%%s%%')%s",
                 $escapedQuery,
-                $escapedQuery
+                $escapedQuery,
+                $this->tenantAndCondition($this->db->table('projects'))
             ),
             'project_name ASC'
         );
@@ -327,5 +365,54 @@ class ProjectService
     {
         global $dPconfig;
         return $dPconfig[$key] ?? $default;
+    }
+
+    private function tenantAndCondition(string $table, ?string $alias = null): string
+    {
+        $tenantId = $this->getTenantId();
+        if ($tenantId === null || !$this->hasTableColumn($table, 'tenant_id')) {
+            return '';
+        }
+
+        $column = $alias !== null && $alias !== ''
+            ? $alias . '.tenant_id'
+            : 'tenant_id';
+
+        return " AND {$column} = {$tenantId}";
+    }
+
+    private function hasTableColumn(string $table, string $column): bool
+    {
+        $tableName = trim($table, '`');
+        $cacheKey = $tableName . ':' . $column;
+        if (array_key_exists($cacheKey, $this->columnPresenceCache)) {
+            return $this->columnPresenceCache[$cacheKey];
+        }
+
+        $exists = (int) ($this->db->fetchValue(
+            "SELECT COUNT(*)
+             FROM information_schema.columns
+             WHERE table_schema = DATABASE()
+               AND table_name = ?
+               AND column_name = ?",
+            [$tableName, $column]
+        ) ?? 0);
+
+        $this->columnPresenceCache[$cacheKey] = $exists > 0;
+        return $this->columnPresenceCache[$cacheKey];
+    }
+
+    private function getTenantId(): ?int
+    {
+        if (!TenantContext::isEnabled()) {
+            return null;
+        }
+
+        $tenantId = TenantContext::getTenantId();
+        if ($tenantId === null || $tenantId <= 0) {
+            return null;
+        }
+
+        return $tenantId;
     }
 }
