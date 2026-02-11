@@ -14,11 +14,14 @@ namespace DotProject\Service;
 
 use DotProject\Core\Database;
 use DotProject\Core\Logger;
+use DotProject\Core\TenantContext;
 
 class ProjectStatusHistoryService
 {
     private Database $db;
     private ?bool $historyTableAvailable = null;
+    /** @var array<string, bool> */
+    private array $columnPresenceCache = [];
 
     public function __construct(?Database $db = null)
     {
@@ -49,14 +52,19 @@ class ProjectStatusHistoryService
             $note = null;
         }
 
-        $inserted = $this->db->insert('project_status_history', [
+        $insertData = [
             'history_project_id' => $projectId,
             'history_from_status' => $fromStatus,
             'history_to_status' => $toStatus,
             'history_changed_by_user_id' => ($changedByUserId !== null && $changedByUserId > 0) ? $changedByUserId : null,
             'history_source' => $source,
             'history_note' => $note,
-        ]);
+        ];
+        $tenantId = $this->getTenantId();
+        if ($tenantId !== null && $this->hasTableColumn($this->db->table('project_status_history'), 'tenant_id')) {
+            $insertData['tenant_id'] = $tenantId;
+        }
+        $inserted = $this->db->insert('project_status_history', $insertData);
 
         if ($inserted === false) {
             Logger::warning('Failed to persist project status history', [
@@ -94,14 +102,16 @@ class ProjectStatusHistoryService
                 c.contact_first_name,
                 c.contact_last_name
              FROM `%s` h
-             LEFT JOIN `%s` u ON u.user_id = h.history_changed_by_user_id
+             LEFT JOIN `%s` u ON u.user_id = h.history_changed_by_user_id%s
              LEFT JOIN `%s` c ON c.contact_id = u.user_contact
-             WHERE h.history_project_id = ?
+             WHERE h.history_project_id = ?%s
              ORDER BY h.history_created_at DESC, h.history_id DESC
              LIMIT %d",
             $this->db->table('project_status_history'),
             $this->db->table('users'),
+            $this->tenantAndCondition($this->db->table('users'), 'u'),
             $this->db->table('contacts'),
+            $this->tenantAndCondition($this->db->table('project_status_history'), 'h'),
             $limit
         );
 
@@ -153,12 +163,13 @@ class ProjectStatusHistoryService
         }
 
         try {
+            $table = trim((string) $this->db->table('project_status_history'), '`');
             $exists = (int) ($this->db->fetchValue(
                 "SELECT COUNT(*)
                  FROM information_schema.tables
                  WHERE table_schema = DATABASE()
                    AND table_name = ?",
-                [$this->db->table('project_status_history')]
+                [$table]
             ) ?? 0);
             $this->historyTableAvailable = $exists > 0;
         } catch (\Throwable $e) {
@@ -166,5 +177,54 @@ class ProjectStatusHistoryService
         }
 
         return $this->historyTableAvailable;
+    }
+
+    private function tenantAndCondition(string $table, ?string $alias = null): string
+    {
+        $tenantId = $this->getTenantId();
+        if ($tenantId === null || !$this->hasTableColumn($table, 'tenant_id')) {
+            return '';
+        }
+
+        $column = $alias !== null && $alias !== ''
+            ? $alias . '.tenant_id'
+            : 'tenant_id';
+
+        return " AND {$column} = {$tenantId}";
+    }
+
+    private function hasTableColumn(string $table, string $column): bool
+    {
+        $tableName = trim($table, '`');
+        $cacheKey = $tableName . ':' . $column;
+        if (array_key_exists($cacheKey, $this->columnPresenceCache)) {
+            return $this->columnPresenceCache[$cacheKey];
+        }
+
+        $exists = (int) ($this->db->fetchValue(
+            "SELECT COUNT(*)
+             FROM information_schema.columns
+             WHERE table_schema = DATABASE()
+               AND table_name = ?
+               AND column_name = ?",
+            [$tableName, $column]
+        ) ?? 0);
+
+        $this->columnPresenceCache[$cacheKey] = $exists > 0;
+        return $this->columnPresenceCache[$cacheKey];
+    }
+
+    private function getTenantId(): ?int
+    {
+        if (!TenantContext::isEnabled()) {
+            return null;
+        }
+
+        $tenantId = TenantContext::getTenantId();
+        if ($tenantId === null || $tenantId <= 0) {
+            return null;
+        }
+
+        return $tenantId;
     }
 }

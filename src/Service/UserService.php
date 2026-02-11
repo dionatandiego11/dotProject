@@ -15,6 +15,7 @@ namespace DotProject\Service;
 
 use DotProject\Core\Cache;
 use DotProject\Core\Database;
+use DotProject\Core\TenantContext;
 use DotProject\Entity\UserEntity;
 use DotProject\Repository\UserRepository;
 
@@ -35,6 +36,8 @@ class UserService
     private Cache $cache;
     private ValidationService $validator;
     private ?int $passwordMaxLength = null;
+    /** @var array<string, bool> */
+    private array $columnPresenceCache = [];
     
     public function __construct(
         ?UserRepository $repository = null,
@@ -343,7 +346,10 @@ class UserService
         if ($result) {
             // Delete contact if exists
             if ($user->getContactId()) {
-                $this->db->delete('contacts', "contact_id = {$user->getContactId()}");
+                $this->db->delete(
+                    'contacts',
+                    "contact_id = {$user->getContactId()}" . $this->tenantAndCondition($this->db->table('contacts'))
+                );
             }
             
             // Clear cache
@@ -378,11 +384,13 @@ class UserService
         $statusClause = $this->repository->supportsUserStatus() ? ' AND u.user_status = 0' : '';
         $sql = sprintf(
             "SELECT u.* FROM `%s` u 
-             JOIN `%s` c ON c.contact_id = u.user_contact 
-             WHERE c.contact_email = ?%s",
+             JOIN `%s` c ON c.contact_id = u.user_contact%s
+             WHERE c.contact_email = ?%s%s",
             $this->db->table('users'),
             $this->db->table('contacts'),
-            $statusClause
+            $this->tenantAndCondition($this->db->table('contacts'), 'c'),
+            $statusClause,
+            $this->tenantAndCondition($this->db->table('users'), 'u')
         );
         
         $data = $this->db->fetchOne($sql, [$email]);
@@ -427,17 +435,19 @@ class UserService
         $sql = sprintf(
             "SELECT u.*, c.contact_first_name, c.contact_last_name, c.contact_email 
              FROM `%s` u 
-             LEFT JOIN `%s` c ON c.contact_id = u.user_contact 
+             LEFT JOIN `%s` c ON c.contact_id = u.user_contact%s
              WHERE (u.user_username LIKE ? 
                 OR c.contact_first_name LIKE ? 
                 OR c.contact_last_name LIKE ? 
                 OR c.contact_email LIKE ?)
-             %s
+             %s%s
              ORDER BY u.user_username
              LIMIT 20",
             $this->db->table('users'),
             $this->db->table('contacts'),
-            $statusClause
+            $this->tenantAndCondition($this->db->table('contacts'), 'c'),
+            $statusClause,
+            $this->tenantAndCondition($this->db->table('users'), 'u')
         );
         
         $pattern = '%' . $query . '%';
@@ -552,7 +562,7 @@ class UserService
         $this->db->update(
             'users',
             ['user_password' => $newHash],
-            "user_id = {$userId}"
+            "user_id = {$userId}" . $this->tenantAndCondition($this->db->table('users'))
         );
     }
     
@@ -581,14 +591,19 @@ class UserService
             return null;
         }
         
-        $result = $this->db->insert('contacts', [
+        $insertData = [
             'contact_first_name' => $data['contact_first_name'] ?? '',
             'contact_last_name' => $data['contact_last_name'] ?? '',
             'contact_email' => $data['contact_email'] ?? '',
             'contact_phone' => $data['contact_phone'] ?? '',
             'contact_company' => $data['contact_company'] ?? null,
             'contact_type' => 1, // Internal user
-        ]);
+        ];
+        $tenantId = $this->getTenantId();
+        if ($tenantId !== null && $this->hasTableColumn($this->db->table('contacts'), 'tenant_id')) {
+            $insertData['tenant_id'] = $tenantId;
+        }
+        $result = $this->db->insert('contacts', $insertData);
         
         if (!$result) {
             return null;
@@ -621,7 +636,11 @@ class UserService
             return true;
         }
         
-        return $this->db->update('contacts', $updateData, "contact_id = {$contactId}");
+        return $this->db->update(
+            'contacts',
+            $updateData,
+            "contact_id = {$contactId}" . $this->tenantAndCondition($this->db->table('contacts'))
+        );
     }
     
     /**
@@ -630,9 +649,10 @@ class UserService
     private function getUserTaskCount(int $userId): int
     {
         $sql = sprintf(
-            "SELECT COUNT(*) FROM `%s` WHERE task_owner = %d",
+            "SELECT COUNT(*) FROM `%s` WHERE task_owner = %d%s",
             $this->db->table('tasks'),
-            $userId
+            $userId,
+            $this->tenantAndCondition($this->db->table('tasks'))
         );
         
         return (int) $this->db->fetchValue($sql);
@@ -644,9 +664,10 @@ class UserService
     private function getUserCompletedTaskCount(int $userId): int
     {
         $sql = sprintf(
-            "SELECT COUNT(*) FROM `%s` WHERE task_owner = %d AND task_percent_complete = 100",
+            "SELECT COUNT(*) FROM `%s` WHERE task_owner = %d AND task_percent_complete = 100%s",
             $this->db->table('tasks'),
-            $userId
+            $userId,
+            $this->tenantAndCondition($this->db->table('tasks'))
         );
         
         return (int) $this->db->fetchValue($sql);
@@ -658,13 +679,15 @@ class UserService
     private function getUserActiveProjectCount(int $userId): int
     {
         $sql = sprintf(
-            "SELECT COUNT(DISTINCT p.project_id) FROM `%s` p 
-             LEFT JOIN `%s` t ON t.task_project = p.project_id 
-             WHERE p.project_status = 0 AND (p.project_owner = %d OR t.task_owner = %d)",
+            "SELECT COUNT(DISTINCT p.project_id) FROM `%s` p
+             LEFT JOIN `%s` t ON t.task_project = p.project_id%s
+             WHERE p.project_status = 0 AND (p.project_owner = %d OR t.task_owner = %d)%s",
             $this->db->table('projects'),
             $this->db->table('tasks'),
+            $this->tenantAndCondition($this->db->table('tasks'), 't'),
             $userId,
-            $userId
+            $userId,
+            $this->tenantAndCondition($this->db->table('projects'), 'p')
         );
         
         return (int) $this->db->fetchValue($sql);
@@ -687,9 +710,10 @@ class UserService
     public function getRecentUsersCount(int $days = 30): int
     {
         $sql = sprintf(
-            "SELECT COUNT(*) FROM `%s` WHERE user_regdate >= DATE_SUB(CURDATE(), INTERVAL %d DAY)",
+            "SELECT COUNT(*) FROM `%s` WHERE user_regdate >= DATE_SUB(CURDATE(), INTERVAL %d DAY)%s",
             $this->db->table('users'),
-            $days
+            $days,
+            $this->tenantAndCondition($this->db->table('users'))
         );
         
         return (int) $this->db->fetchValue($sql);
@@ -705,20 +729,71 @@ class UserService
         // Active users (logged in last 30 days)
         $activeSql = sprintf(
             "SELECT COUNT(DISTINCT user_id) FROM `%s` 
-             WHERE user_last_login >= DATE_SUB(NOW(), INTERVAL 30 DAY)",
-            $this->db->table('user_access_log')
+             WHERE user_last_login >= DATE_SUB(NOW(), INTERVAL 30 DAY)%s",
+            $this->db->table('user_access_log'),
+            $this->tenantAndCondition($this->db->table('user_access_log'))
         );
         
         // Today's logins
         $todaySql = sprintf(
             "SELECT COUNT(DISTINCT user_id) FROM `%s` 
-             WHERE DATE(access_date) = CURDATE()",
-            $this->db->table('user_access_log')
+             WHERE DATE(access_date) = CURDATE()%s",
+            $this->db->table('user_access_log'),
+            $this->tenantAndCondition($this->db->table('user_access_log'))
         );
         
         return [
             'active_last_30_days' => (int) $this->db->fetchValue($activeSql),
             'today' => (int) $this->db->fetchValue($todaySql),
         ];
+    }
+
+    private function tenantAndCondition(string $table, ?string $alias = null): string
+    {
+        $tenantId = $this->getTenantId();
+        if ($tenantId === null || !$this->hasTableColumn($table, 'tenant_id')) {
+            return '';
+        }
+
+        $column = $alias !== null && $alias !== ''
+            ? $alias . '.tenant_id'
+            : 'tenant_id';
+
+        return " AND {$column} = {$tenantId}";
+    }
+
+    private function hasTableColumn(string $table, string $column): bool
+    {
+        $tableName = trim($table, '`');
+        $cacheKey = $tableName . ':' . $column;
+        if (array_key_exists($cacheKey, $this->columnPresenceCache)) {
+            return $this->columnPresenceCache[$cacheKey];
+        }
+
+        $exists = (int) ($this->db->fetchValue(
+            "SELECT COUNT(*)
+             FROM information_schema.columns
+             WHERE table_schema = DATABASE()
+               AND table_name = ?
+               AND column_name = ?",
+            [$tableName, $column]
+        ) ?? 0);
+
+        $this->columnPresenceCache[$cacheKey] = $exists > 0;
+        return $this->columnPresenceCache[$cacheKey];
+    }
+
+    private function getTenantId(): ?int
+    {
+        if (!TenantContext::isEnabled()) {
+            return null;
+        }
+
+        $tenantId = TenantContext::getTenantId();
+        if ($tenantId === null || $tenantId <= 0) {
+            return null;
+        }
+
+        return $tenantId;
     }
 }

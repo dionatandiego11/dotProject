@@ -16,6 +16,7 @@ namespace DotProject\Service;
 use DotProject\Core\Cache;
 use DotProject\Core\Database;
 use DotProject\Core\Logger;
+use DotProject\Core\TenantContext;
 use DotProject\Entity\TaskEntity;
 use DotProject\Repository\TaskRepository;
 use DotProject\Repository\ProjectRepository;
@@ -38,6 +39,8 @@ class ModernTaskService
     private ValidationService $validator;
     private Database $db;
     private Cache $cache;
+    /** @var array<string, bool> */
+    private array $columnPresenceCache = [];
     
     public function __construct(
         ?TaskRepository $taskRepository = null,
@@ -437,10 +440,11 @@ class ModernTaskService
         
         // Check if already assigned
         $sql = sprintf(
-            "SELECT COUNT(*) FROM `%s` WHERE task_id = %d AND user_id = %d",
+            "SELECT COUNT(*) FROM `%s` WHERE task_id = %d AND user_id = %d%s",
             $this->db->table('user_tasks'),
             $taskId,
-            $userId
+            $userId,
+            $this->tenantAndCondition($this->db->table('user_tasks'))
         );
         
         if ((int) $this->db->fetchValue($sql) > 0) {
@@ -448,16 +452,21 @@ class ModernTaskService
             return $this->db->update(
                 'user_tasks',
                 ['perc_assignment' => $percent],
-                "task_id = {$taskId} AND user_id = {$userId}"
+                "task_id = {$taskId} AND user_id = {$userId}" . $this->tenantAndCondition($this->db->table('user_tasks'))
             );
         }
         
         // Create new assignment
-        $result = $this->db->insert('user_tasks', [
+        $insertData = [
             'task_id' => $taskId,
             'user_id' => $userId,
             'perc_assignment' => $percent,
-        ]);
+        ];
+        $tenantId = $this->getTenantId();
+        if ($tenantId !== null && $this->hasTableColumn($this->db->table('user_tasks'), 'tenant_id')) {
+            $insertData['tenant_id'] = $tenantId;
+        }
+        $result = $this->db->insert('user_tasks', $insertData);
         
         if ($result) {
             // Update task assigned_to
@@ -491,7 +500,7 @@ class ModernTaskService
         
         $result = $this->db->delete(
             'user_tasks',
-            "task_id = {$taskId} AND user_id = {$userId}"
+            "task_id = {$taskId} AND user_id = {$userId}" . $this->tenantAndCondition($this->db->table('user_tasks'))
         );
         
         if ($result) {
@@ -500,9 +509,10 @@ class ModernTaskService
             if ($task && $task->getAssignedTo() === $userId) {
                 // Get remaining assignees
                 $sql = sprintf(
-                    "SELECT user_id FROM `%s` WHERE task_id = %d ORDER BY perc_assignment DESC LIMIT 1",
+                    "SELECT user_id FROM `%s` WHERE task_id = %d%s ORDER BY perc_assignment DESC LIMIT 1",
                     $this->db->table('user_tasks'),
-                    $taskId
+                    $taskId,
+                    $this->tenantAndCondition($this->db->table('user_tasks'))
                 );
                 $newAssignee = $this->db->fetchValue($sql);
                 
@@ -519,7 +529,10 @@ class ModernTaskService
      */
     private function unassignAllUsers(int $taskId): bool
     {
-        return $this->db->delete('user_tasks', "task_id = {$taskId}");
+        return $this->db->delete(
+            'user_tasks',
+            "task_id = {$taskId}" . $this->tenantAndCondition($this->db->table('user_tasks'))
+        );
     }
     
     /**
@@ -533,11 +546,13 @@ class ModernTaskService
         $sql = sprintf(
             "SELECT t.*, td.dependencies_req_task_id 
              FROM `%s` td
-             JOIN `%s` t ON t.task_id = td.dependencies_req_task_id
-             WHERE td.dependencies_task_id = %d",
+             JOIN `%s` t ON t.task_id = td.dependencies_req_task_id%s
+             WHERE td.dependencies_task_id = %d%s",
             $this->db->table('task_dependencies'),
             $this->db->table('tasks'),
-            $taskId
+            $this->tenantAndCondition($this->db->table('tasks'), 't'),
+            $taskId,
+            $this->tenantAndCondition($this->db->table('task_dependencies'), 'td')
         );
         
         return $this->db->fetchAll($sql);
@@ -554,11 +569,13 @@ class ModernTaskService
         $sql = sprintf(
             "SELECT t.*, td.dependencies_task_id 
              FROM `%s` td
-             JOIN `%s` t ON t.task_id = td.dependencies_task_id
-             WHERE td.dependencies_req_task_id = %d",
+             JOIN `%s` t ON t.task_id = td.dependencies_task_id%s
+             WHERE td.dependencies_req_task_id = %d%s",
             $this->db->table('task_dependencies'),
             $this->db->table('tasks'),
-            $taskId
+            $this->tenantAndCondition($this->db->table('tasks'), 't'),
+            $taskId,
+            $this->tenantAndCondition($this->db->table('task_dependencies'), 'td')
         );
         
         return $this->db->fetchAll($sql);
@@ -592,20 +609,26 @@ class ModernTaskService
         // Check if already exists
         $sql = sprintf(
             "SELECT COUNT(*) FROM `%s` 
-             WHERE dependencies_task_id = %d AND dependencies_req_task_id = %d",
+             WHERE dependencies_task_id = %d AND dependencies_req_task_id = %d%s",
             $this->db->table('task_dependencies'),
             $taskId,
-            $requiredTaskId
+            $requiredTaskId,
+            $this->tenantAndCondition($this->db->table('task_dependencies'))
         );
         
         if ((int) $this->db->fetchValue($sql) > 0) {
             return true; // Already exists
         }
         
-        $result = $this->db->insert('task_dependencies', [
+        $insertData = [
             'dependencies_task_id' => $taskId,
             'dependencies_req_task_id' => $requiredTaskId,
-        ]);
+        ];
+        $tenantId = $this->getTenantId();
+        if ($tenantId !== null && $this->hasTableColumn($this->db->table('task_dependencies'), 'tenant_id')) {
+            $insertData['tenant_id'] = $tenantId;
+        }
+        $result = $this->db->insert('task_dependencies', $insertData);
         
         return $result !== false;
     }
@@ -630,7 +653,8 @@ class ModernTaskService
         
         return $this->db->delete(
             'task_dependencies',
-            "dependencies_task_id = {$taskId} AND dependencies_req_task_id = {$requiredTaskId}"
+            "dependencies_task_id = {$taskId} AND dependencies_req_task_id = {$requiredTaskId}" .
+            $this->tenantAndCondition($this->db->table('task_dependencies'))
         );
     }
     
@@ -703,13 +727,18 @@ class ModernTaskService
         $task->setActualHours($currentHours + $hours);
         
         // Log to task_log
-        $result = $this->db->insert('task_log', [
+        $insertData = [
             'task_log_task' => $taskId,
             'task_log_creator' => $userId,
             'task_log_hours' => $hours,
             'task_log_description' => $description ?? '',
             'task_log_date' => date('Y-m-d H:i:s'),
-        ]);
+        ];
+        $tenantId = $this->getTenantId();
+        if ($tenantId !== null && $this->hasTableColumn($this->db->table('task_log'), 'tenant_id')) {
+            $insertData['tenant_id'] = $tenantId;
+        }
+        $result = $this->db->insert('task_log', $insertData);
         
         if ($result) {
             $this->taskRepository->save($task);
@@ -752,5 +781,54 @@ class ModernTaskService
         }
         
         return $details;
+    }
+
+    private function tenantAndCondition(string $table, ?string $alias = null): string
+    {
+        $tenantId = $this->getTenantId();
+        if ($tenantId === null || !$this->hasTableColumn($table, 'tenant_id')) {
+            return '';
+        }
+
+        $column = $alias !== null && $alias !== ''
+            ? $alias . '.tenant_id'
+            : 'tenant_id';
+
+        return " AND {$column} = {$tenantId}";
+    }
+
+    private function hasTableColumn(string $table, string $column): bool
+    {
+        $tableName = trim($table, '`');
+        $cacheKey = $tableName . ':' . $column;
+        if (array_key_exists($cacheKey, $this->columnPresenceCache)) {
+            return $this->columnPresenceCache[$cacheKey];
+        }
+
+        $exists = (int) ($this->db->fetchValue(
+            "SELECT COUNT(*)
+             FROM information_schema.columns
+             WHERE table_schema = DATABASE()
+               AND table_name = ?
+               AND column_name = ?",
+            [$tableName, $column]
+        ) ?? 0);
+
+        $this->columnPresenceCache[$cacheKey] = $exists > 0;
+        return $this->columnPresenceCache[$cacheKey];
+    }
+
+    private function getTenantId(): ?int
+    {
+        if (!TenantContext::isEnabled()) {
+            return null;
+        }
+
+        $tenantId = TenantContext::getTenantId();
+        if ($tenantId === null || $tenantId <= 0) {
+            return null;
+        }
+
+        return $tenantId;
     }
 }
