@@ -96,6 +96,11 @@ class SecretarioDashboardController extends BaseController
     private function getModern(int $unidadeId, array $unidadesEscopo): array
     {
         $db = \DotProject\Core\Database::getInstance();
+        $tenantProgramas = $this->tenantAndCondition('dotp_programas', 'p');
+        $tenantProgramasJoin = $this->tenantAndCondition('dotp_programas', 'prog');
+        $tenantProjetos = $this->tenantAndCondition('dotp_projetos_prefeitura');
+        $tenantProjetosAlias = $this->tenantAndCondition('dotp_projetos_prefeitura', 'p');
+        $tenantProjetosSubquery = $this->tenantAndCondition('dotp_projetos_prefeitura', 'pp');
 
         if (empty($unidadesEscopo)) {
             $alertas = ['total' => 0, 'nao_lidos' => 0];
@@ -123,14 +128,15 @@ class SecretarioDashboardController extends BaseController
 
         try {
             $programas = $db->fetchAll(
-                "SELECT 
+                "SELECT
                     id,
                     nome,
                     estado,
                     percent_execucao,
-                    (SELECT COUNT(*) FROM dotp_projetos_prefeitura WHERE programa_id = p.id AND estado != 'Cancelado') as total_projetos
+                    (SELECT COUNT(*) FROM dotp_projetos_prefeitura pp WHERE pp.programa_id = p.id AND pp.estado != 'Cancelado'{$tenantProjetosSubquery}) as total_projetos
                 FROM dotp_programas p
                 WHERE unidade_id IN ($placeholders)
+                {$tenantProgramas}
                 ORDER BY percent_execucao ASC",
                 $unidadesEscopo
             );
@@ -139,18 +145,19 @@ class SecretarioDashboardController extends BaseController
         }
 
         $projetos = $db->fetchAll(
-            "SELECT 
+            "SELECT
                 estado,
                 COUNT(*) as total
-            FROM dotp_projetos_prefeitura 
+            FROM dotp_projetos_prefeitura
             WHERE unidade_id IN ($placeholders)
             AND estado != 'Cancelado'
+            {$tenantProjetos}
             GROUP BY estado",
             $unidadesEscopo
         );
 
         $atencao = $db->fetchAll(
-            "SELECT 
+            "SELECT
                 p.id,
                 p.nome,
                 p.estado,
@@ -158,10 +165,11 @@ class SecretarioDashboardController extends BaseController
                 prog.nome as programa_nome,
                 p.data_prevista_fim
             FROM dotp_projetos_prefeitura p
-            LEFT JOIN dotp_programas prog ON prog.id = p.programa_id
+            LEFT JOIN dotp_programas prog ON prog.id = p.programa_id{$tenantProgramasJoin}
             WHERE p.unidade_id IN ($placeholders)
             AND p.estado NOT IN ('Concluido', 'Cancelado')
             AND p.estado = 'Atrasado'
+            {$tenantProjetosAlias}
             ORDER BY p.data_prevista_fim ASC
             LIMIT 15",
             $unidadesEscopo
@@ -189,31 +197,34 @@ class SecretarioDashboardController extends BaseController
     private function getLegacy(int $userId): array
     {
         $db = \DotProject\Core\Database::getInstance();
+        $tenantProjects = $this->tenantAndCondition('dotp_projects');
 
         $projetos = $db->fetchAll(
-            "SELECT 
-                CASE project_status 
+            "SELECT
+                CASE project_status
                     WHEN 3 THEN 'Em_Andamento'
                     WHEN 4 THEN 'Em_Espera'
                     WHEN 5 THEN 'Concluido'
                     ELSE 'Outro'
                 END as estado,
                 COUNT(*) as total
-            FROM dotp_projects 
+            FROM dotp_projects
             WHERE project_owner = ?
+            {$tenantProjects}
             GROUP BY project_status",
             [$userId]
         );
 
         $listaProjectos = $db->fetchAll(
-            "SELECT 
+            "SELECT
                 project_id as id,
                 project_name as nome,
                 project_percent_complete as percent_execucao,
                 project_end_date as data_prevista_fim
-            FROM dotp_projects 
+            FROM dotp_projects
             WHERE project_owner = ?
             AND project_status NOT IN (5, 7)
+            {$tenantProjects}
             ORDER BY project_end_date ASC
             LIMIT 15",
             [$userId]

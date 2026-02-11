@@ -43,32 +43,37 @@ class PrefeitoDashboardController extends BaseController
     private function getModern(): array
     {
         $db = \DotProject\Core\Database::getInstance();
+        $tenantProgramas = $this->tenantAndCondition('dotp_programas');
+        $tenantProjetos = $this->tenantAndCondition('dotp_projetos_prefeitura');
+        $tenantProjetosAlias = $this->tenantAndCondition('dotp_projetos_prefeitura', 'p');
+        $tenantUnidadesAlias = $this->tenantAndCondition('dotp_unidades_organizacionais', 'u');
+        $tenantEtapasAlias = $this->tenantAndCondition('dotp_etapas', 'et');
 
         $ppaExecucao = $db->fetchAll(
-            "SELECT 
+            "SELECT
                 COUNT(*) as total_programas,
                 COUNT(CASE WHEN estado = 'Concluido' THEN 1 END) as concluidos,
                 COUNT(CASE WHEN estado IN ('Critico', 'Parado') THEN 1 END) as criticos,
                 COUNT(CASE WHEN estado = 'Atencao' THEN 1 END) as atencao,
                 AVG(percent_execucao) as percentual_medio
-            FROM dotp_programas 
-            WHERE estado != 'Arquivado'"
+            FROM dotp_programas
+            WHERE estado != 'Arquivado'{$tenantProgramas}"
         )[0] ?? [];
 
         $projetosStatus = $db->fetchAll(
-            "SELECT 
+            "SELECT
                 estado,
                 COUNT(*) as total,
                 SUM(valor_previsto) as valor_total
-            FROM dotp_projetos_prefeitura 
-            WHERE estado != 'Cancelado'
+            FROM dotp_projetos_prefeitura
+            WHERE estado != 'Cancelado'{$tenantProjetos}
             GROUP BY estado"
         );
 
         $nivelColumn = $this->getUnidadeNivelColumn();
         $statusFilter = $this->getUnidadeStatusFilter('u');
         $porSecretaria = $db->fetchAll(
-            "SELECT 
+            "SELECT
                 u.unidade_id,
                 u.unidade_nome,
                 u.unidade_sigla,
@@ -77,14 +82,14 @@ class PrefeitoDashboardController extends BaseController
                 COUNT(CASE WHEN p.estado = 'Concluido' THEN 1 END) as concluidos,
                 AVG(p.percent_execucao) as percentual_execucao
             FROM dotp_unidades_organizacionais u
-            LEFT JOIN dotp_projetos_prefeitura p ON p.unidade_id = u.unidade_id AND p.estado != 'Cancelado'
-            WHERE u.{$nivelColumn} = 2 AND {$statusFilter}
+            LEFT JOIN dotp_projetos_prefeitura p ON p.unidade_id = u.unidade_id AND p.estado != 'Cancelado'{$tenantProjetosAlias}
+            WHERE u.{$nivelColumn} = 2 AND {$statusFilter}{$tenantUnidadesAlias}
             GROUP BY u.unidade_id
             ORDER BY u.unidade_nome"
         );
 
         $obrasDestaque = $db->fetchAll(
-            "SELECT 
+            "SELECT
                 p.id,
                 p.nome,
                 p.estado,
@@ -96,15 +101,15 @@ class PrefeitoDashboardController extends BaseController
                 et.estado as etapa_estado,
                 DATEDIFF(CURDATE(), et.data_prevista_fim) as dias_atraso
             FROM dotp_projetos_prefeitura p
-            JOIN dotp_unidades_organizacionais u ON u.unidade_id = p.unidade_id
-            LEFT JOIN dotp_etapas et ON et.projeto_id = p.id AND et.numero = p.etapa_atual
-            WHERE p.estado = 'Atrasado'
+            JOIN dotp_unidades_organizacionais u ON u.unidade_id = p.unidade_id{$tenantUnidadesAlias}
+            LEFT JOIN dotp_etapas et ON et.projeto_id = p.id AND et.numero = p.etapa_atual{$tenantEtapasAlias}
+            WHERE p.estado = 'Atrasado'{$tenantProjetosAlias}
             ORDER BY dias_atraso DESC
             LIMIT 10"
         );
 
         $conveniosVencer = $db->fetchAll(
-            "SELECT 
+            "SELECT
                 p.id,
                 p.nome,
                 p.data_prevista_fim,
@@ -112,47 +117,49 @@ class PrefeitoDashboardController extends BaseController
                 u.unidade_nome,
                 DATEDIFF(p.data_prevista_fim, CURDATE()) as dias_restantes
             FROM dotp_projetos_prefeitura p
-            JOIN dotp_unidades_organizacionais u ON u.unidade_id = p.unidade_id
+            JOIN dotp_unidades_organizacionais u ON u.unidade_id = p.unidade_id{$tenantUnidadesAlias}
             WHERE p.tipo = 'Convenio'
             AND p.estado NOT IN ('Concluido', 'Cancelado')
             AND p.data_prevista_fim IS NOT NULL
             AND DATEDIFF(p.data_prevista_fim, CURDATE()) <= 60
+            {$tenantProjetosAlias}
             ORDER BY dias_restantes ASC
             LIMIT 10"
         );
 
         $emendas = $db->fetchAll(
-            "SELECT 
+            "SELECT
                 COUNT(*) as total,
                 COUNT(CASE WHEN percent_execucao >= 80 THEN 1 END) as executadas,
                 COUNT(CASE WHEN percent_execucao < 30 AND DATEDIFF(CURDATE(), data_prevista_fim) < 120 THEN 1 END) as em_risco
-            FROM dotp_projetos_prefeitura 
-            WHERE tipo = 'Emenda' AND estado != 'Cancelado'"
+            FROM dotp_projetos_prefeitura
+            WHERE tipo = 'Emenda' AND estado != 'Cancelado'{$tenantProjetos}"
         )[0] ?? [];
 
         $timeline = $db->fetchAll(
-            "SELECT 
+            "SELECT
                 p.id,
                 p.nome,
                 p.data_prevista_fim as data,
                 'vencimento' as tipo_evento,
                 u.unidade_nome
             FROM dotp_projetos_prefeitura p
-            JOIN dotp_unidades_organizacionais u ON u.unidade_id = p.unidade_id
+            JOIN dotp_unidades_organizacionais u ON u.unidade_id = p.unidade_id{$tenantUnidadesAlias}
             WHERE p.estado NOT IN ('Concluido', 'Cancelado')
             AND p.data_prevista_fim IS NOT NULL
             AND DATEDIFF(p.data_prevista_fim, CURDATE()) BETWEEN 0 AND 30
+            {$tenantProjetosAlias}
             ORDER BY p.data_prevista_fim ASC
             LIMIT 15"
         );
 
         $orcamento = $db->fetchAll(
-            "SELECT 
+            "SELECT
                 COALESCE(SUM(valor_previsto), 0) as previsto,
                 COALESCE(SUM(CASE WHEN situacao_orcamentaria = 'empenhado' THEN valor_previsto * 0.3 END), 0) as empenhado,
                 COALESCE(SUM(CASE WHEN situacao_orcamentaria = 'pago' THEN valor_previsto END), 0) as pago
-            FROM dotp_projetos_prefeitura 
-            WHERE estado != 'Cancelado'"
+            FROM dotp_projetos_prefeitura
+            WHERE estado != 'Cancelado'{$tenantProjetos}"
         )[0] ?? [];
 
         return [
@@ -185,20 +192,25 @@ class PrefeitoDashboardController extends BaseController
     private function getLegacy(): array
     {
         $db = \DotProject\Core\Database::getInstance();
+        $tenantProjects = $this->tenantAndCondition('dotp_projects');
+        $tenantProjectsAlias = $this->tenantAndCondition('dotp_projects', 'p');
+        $tenantTasksAlias = $this->tenantAndCondition('dotp_tasks', 't');
+        $tenantCompaniesWhere = $this->tenantWhereCondition('dotp_companies', 'c');
+        $tenantUnidadesAlias = $this->tenantAndCondition('dotp_unidades_organizacionais', 'u');
 
         $projectStats = $db->fetchAll(
-            "SELECT 
+            "SELECT
                 COUNT(*) as total,
                 COUNT(CASE WHEN project_status = 5 THEN 1 END) as concluidos,
                 COUNT(CASE WHEN project_status IN (4, 7) THEN 1 END) as criticos,
                 COUNT(CASE WHEN project_status = 3 THEN 1 END) as em_andamento,
                 AVG(project_percent_complete) as percentual_medio
-            FROM dotp_projects"
+            FROM dotp_projects{$this->tenantWhereCondition('dotp_projects')}"
         )[0] ?? [];
 
         $projetosStatus = $db->fetchAll(
-            "SELECT 
-                CASE project_status 
+            "SELECT
+                CASE project_status
                     WHEN 0 THEN 'Nao_Definido'
                     WHEN 1 THEN 'Proposto'
                     WHEN 2 THEN 'Em_Planejamento'
@@ -211,13 +223,13 @@ class PrefeitoDashboardController extends BaseController
                 END as estado,
                 COUNT(*) as total,
                 SUM(project_target_budget) as valor_total
-            FROM dotp_projects 
-            WHERE project_status NOT IN (6, 7)
+            FROM dotp_projects
+            WHERE project_status NOT IN (6, 7){$tenantProjects}
             GROUP BY project_status"
         );
 
         $porSecretaria = $db->fetchAll(
-            "SELECT 
+            "SELECT
                 c.company_id as unidade_id,
                 COALESCE(NULLIF(TRIM(u.unidade_nome), ''), c.company_name) as unidade_nome,
                 SUBSTRING(COALESCE(NULLIF(TRIM(u.unidade_nome), ''), c.company_name), 1, 5) as unidade_sigla,
@@ -226,17 +238,18 @@ class PrefeitoDashboardController extends BaseController
                 COUNT(CASE WHEN p.project_status = 5 THEN 1 END) as concluidos,
                 AVG(p.project_percent_complete) as percentual_execucao
             FROM dotp_companies c
-            LEFT JOIN dotp_projects p ON p.project_company = c.company_id
-            LEFT JOIN dotp_unidades_organizacionais u ON u.unidade_id = c.company_id
+            LEFT JOIN dotp_projects p ON p.project_company = c.company_id{$tenantProjectsAlias}
+            LEFT JOIN dotp_unidades_organizacionais u ON u.unidade_id = c.company_id{$tenantUnidadesAlias}
+            {$tenantCompaniesWhere}
             GROUP BY c.company_id
             ORDER BY unidade_nome"
         );
 
         $projetos = $db->fetchAll(
-            "SELECT 
+            "SELECT
                 project_id as id,
                 project_name as nome,
-                CASE project_status 
+                CASE project_status
                     WHEN 4 THEN 'Em_Espera'
                     WHEN 3 THEN 'Em_Andamento'
                     ELSE 'Outro'
@@ -245,34 +258,36 @@ class PrefeitoDashboardController extends BaseController
                 project_end_date as data_prevista_fim,
                 '' as justificativa_atraso,
                 '' as secretaria
-            FROM dotp_projects 
+            FROM dotp_projects
             WHERE project_status IN (2, 3, 4)
+            {$tenantProjects}
             ORDER BY project_end_date ASC
             LIMIT 10"
         );
 
         $timeline = $db->fetchAll(
-            "SELECT 
+            "SELECT
                 t.task_id as id,
                 t.task_name as nome,
                 t.task_end_date as data,
                 'tarefa' as tipo_evento,
                 p.project_name as unidade_nome
             FROM dotp_tasks t
-            JOIN dotp_projects p ON p.project_id = t.task_project
+            JOIN dotp_projects p ON p.project_id = t.task_project{$tenantProjectsAlias}
             WHERE t.task_percent_complete < 100
             AND t.task_end_date IS NOT NULL
             AND DATEDIFF(t.task_end_date, CURDATE()) BETWEEN 0 AND 30
+            {$tenantTasksAlias}
             ORDER BY t.task_end_date ASC
             LIMIT 15"
         );
 
         $orcamento = $db->fetchAll(
-            "SELECT 
+            "SELECT
                 COALESCE(SUM(project_target_budget), 0) as previsto,
                 COALESCE(SUM(project_actual_budget), 0) as pago
-            FROM dotp_projects 
-            WHERE project_status NOT IN (6, 7)"
+            FROM dotp_projects
+            WHERE project_status NOT IN (6, 7){$tenantProjects}"
         )[0] ?? [];
 
         return [

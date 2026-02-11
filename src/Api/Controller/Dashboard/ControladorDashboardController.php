@@ -43,15 +43,20 @@ class ControladorDashboardController extends BaseController
     private function getModern(): array
     {
         $db = \DotProject\Core\Database::getInstance();
+        $tenantProjetos = $this->tenantAndCondition('dotp_projetos_prefeitura');
+        $tenantProjetosAlias = $this->tenantAndCondition('dotp_projetos_prefeitura', 'p');
+        $tenantFiles = $this->tenantAndCondition('dotp_files');
+        $tenantUnidadesAlias = $this->tenantAndCondition('dotp_unidades_organizacionais', 'u');
 
         $alertasConformidade = [
             'sem_prestacao_contas' => (int) $db->fetchValue(
-                "SELECT COUNT(*) FROM dotp_projetos_prefeitura WHERE tipo = 'Convenio' 
-                 AND estado = 'Concluido' 
-                 AND id NOT IN (SELECT DISTINCT file_project FROM dotp_files WHERE file_project IS NOT NULL)"
+                "SELECT COUNT(*) FROM dotp_projetos_prefeitura WHERE tipo = 'Convenio'
+                 AND estado = 'Concluido'
+                 AND id NOT IN (SELECT DISTINCT file_project FROM dotp_files WHERE file_project IS NOT NULL{$tenantFiles})
+                 {$tenantProjetos}"
             ),
             'execucao_acima_cronograma' => (int) $db->fetchValue(
-                "SELECT COUNT(*) FROM dotp_projetos_prefeitura WHERE percent_execucao > 100 AND estado != 'Concluido'"
+                "SELECT COUNT(*) FROM dotp_projetos_prefeitura WHERE percent_execucao > 100 AND estado != 'Concluido'{$tenantProjetos}"
             ),
             'diferenca_empenho_execucao' => 0,
         ];
@@ -59,21 +64,21 @@ class ControladorDashboardController extends BaseController
         $nivelColumn = $this->getUnidadeNivelColumn();
         $statusFilter = $this->getUnidadeStatusFilter('u');
         $panorama = $db->fetchAll(
-            "SELECT 
+            "SELECT
                 u.unidade_id,
                 u.unidade_nome,
                 COUNT(DISTINCT p.id) as total_projetos,
                 COUNT(CASE WHEN p.estado = 'Atrasado' THEN 1 END) as alertas,
                 AVG(p.percent_execucao) as execucao_media
             FROM dotp_unidades_organizacionais u
-            LEFT JOIN dotp_projetos_prefeitura p ON p.unidade_id = u.unidade_id AND p.estado != 'Cancelado'
-            WHERE u.{$nivelColumn} = 2 AND {$statusFilter}
+            LEFT JOIN dotp_projetos_prefeitura p ON p.unidade_id = u.unidade_id AND p.estado != 'Cancelado'{$tenantProjetosAlias}
+            WHERE u.{$nivelColumn} = 2 AND {$statusFilter}{$tenantUnidadesAlias}
             GROUP BY u.unidade_id
             ORDER BY u.unidade_nome"
         );
 
         $irregularidades = $db->fetchAll(
-            "SELECT 
+            "SELECT
                 p.id,
                 p.nome,
                 p.estado,
@@ -81,8 +86,8 @@ class ControladorDashboardController extends BaseController
                 u.unidade_nome as secretaria,
                 'Execução acima do cronograma' as irregularidade
             FROM dotp_projetos_prefeitura p
-            JOIN dotp_unidades_organizacionais u ON u.unidade_id = p.unidade_id
-            WHERE p.percent_execucao > 100 AND p.estado != 'Concluido'
+            JOIN dotp_unidades_organizacionais u ON u.unidade_id = p.unidade_id{$tenantUnidadesAlias}
+            WHERE p.percent_execucao > 100 AND p.estado != 'Concluido'{$tenantProjetosAlias}
             LIMIT 20"
         );
 
@@ -99,25 +104,29 @@ class ControladorDashboardController extends BaseController
     private function getLegacy(): array
     {
         $db = \DotProject\Core\Database::getInstance();
+        $tenantProjectsAlias = $this->tenantAndCondition('dotp_projects', 'p');
+        $tenantCompaniesWhere = $this->tenantWhereCondition('dotp_companies', 'c');
+        $tenantUnidadesAlias = $this->tenantAndCondition('dotp_unidades_organizacionais', 'u');
 
         $stats = $db->fetchAll(
-            "SELECT 
+            "SELECT
                 COUNT(*) as total,
                 COUNT(CASE WHEN project_percent_complete > 100 THEN 1 END) as acima_100,
                 COUNT(CASE WHEN project_status = 4 THEN 1 END) as em_espera
-            FROM dotp_projects"
+            FROM dotp_projects{$this->tenantWhereCondition('dotp_projects')}"
         )[0] ?? [];
 
         $panorama = $db->fetchAll(
-            "SELECT 
+            "SELECT
                 c.company_id as unidade_id,
                 COALESCE(NULLIF(TRIM(u.unidade_nome), ''), c.company_name) as unidade_nome,
                 COUNT(p.project_id) as total_projetos,
                 COUNT(CASE WHEN p.project_status = 4 THEN 1 END) as alertas,
                 AVG(p.project_percent_complete) as execucao_media
             FROM dotp_companies c
-            LEFT JOIN dotp_projects p ON p.project_company = c.company_id
-            LEFT JOIN dotp_unidades_organizacionais u ON u.unidade_id = c.company_id
+            LEFT JOIN dotp_projects p ON p.project_company = c.company_id{$tenantProjectsAlias}
+            LEFT JOIN dotp_unidades_organizacionais u ON u.unidade_id = c.company_id{$tenantUnidadesAlias}
+            {$tenantCompaniesWhere}
             GROUP BY c.company_id
             ORDER BY unidade_nome"
         );

@@ -15,6 +15,8 @@ use DotProject\Api\Response;
 
 class TecnicoDashboardController extends BaseController
 {
+    use DashboardHelperTrait;
+
     /**
      * GET /api/v1/dashboard/tecnico
      */
@@ -39,38 +41,41 @@ class TecnicoDashboardController extends BaseController
     private function getData(int $userId): array
     {
         $db = \DotProject\Core\Database::getInstance();
+        $tenantTasks = $this->tenantAndCondition('dotp_tasks');
+        $tenantTasksAlias = $this->tenantAndCondition('dotp_tasks', 't');
+        $tenantProjectsAlias = $this->tenantAndCondition('dotp_projects', 'p');
 
         $resumo = $db->fetchAll(
-            "SELECT 
+            "SELECT
                 COUNT(*) as total,
                 COUNT(CASE WHEN task_percent_complete >= 100 THEN 1 END) as concluidas,
                 COUNT(CASE WHEN task_percent_complete < 100 THEN 1 END) as pendentes,
                 COUNT(CASE WHEN task_end_date < CURDATE() AND task_percent_complete < 100 THEN 1 END) as atrasadas
-            FROM dotp_tasks 
-            WHERE task_owner = ?",
+            FROM dotp_tasks
+            WHERE task_owner = ?{$tenantTasks}",
             [$userId]
         )[0] ?? [];
 
         $tarefas = $db->fetchAll(
-            "SELECT 
+            "SELECT
                 t.task_id as id,
                 t.task_name as nome,
                 t.task_priority as prioridade,
                 t.task_percent_complete as progresso,
                 t.task_end_date as prazo,
                 p.project_name as projeto,
-                CASE 
+                CASE
                     WHEN t.task_end_date < CURDATE() AND t.task_percent_complete < 100 THEN 'atrasada'
                     WHEN DATEDIFF(t.task_end_date, CURDATE()) <= 3 THEN 'urgente'
                     ELSE 'normal'
                 END as urgencia
             FROM dotp_tasks t
-            LEFT JOIN dotp_projects p ON p.project_id = t.task_project
+            LEFT JOIN dotp_projects p ON p.project_id = t.task_project{$tenantProjectsAlias}
             WHERE t.task_owner = ?
-            AND t.task_percent_complete < 100
-            ORDER BY 
-                CASE WHEN t.task_end_date < CURDATE() THEN 0 
-                     WHEN DATEDIFF(t.task_end_date, CURDATE()) <= 3 THEN 1 
+            AND t.task_percent_complete < 100{$tenantTasksAlias}
+            ORDER BY
+                CASE WHEN t.task_end_date < CURDATE() THEN 0
+                     WHEN DATEDIFF(t.task_end_date, CURDATE()) <= 3 THEN 1
                      ELSE 2 END,
                 t.task_priority DESC,
                 t.task_end_date ASC
@@ -79,14 +84,15 @@ class TecnicoDashboardController extends BaseController
         );
 
         $concluidasSemana = $db->fetchAll(
-            "SELECT 
+            "SELECT
                 task_id as id,
                 task_name as nome,
                 task_end_date as data_conclusao
-            FROM dotp_tasks 
+            FROM dotp_tasks
             WHERE task_owner = ?
             AND task_percent_complete >= 100
             AND task_end_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+            {$tenantTasks}
             ORDER BY task_end_date DESC
             LIMIT 10",
             [$userId]
@@ -102,19 +108,21 @@ class TecnicoDashboardController extends BaseController
             FROM dotp_projects p
             JOIN dotp_tasks t ON t.task_project = p.project_id
             WHERE t.task_owner = ?
+            {$tenantTasksAlias}{$tenantProjectsAlias}
             GROUP BY p.project_id
             ORDER BY p.project_name",
             [$userId]
         );
 
         $produtividade = $db->fetchAll(
-            "SELECT 
+            "SELECT
                 DATE(task_end_date) as data,
                 COUNT(*) as tarefas_concluidas
-            FROM dotp_tasks 
+            FROM dotp_tasks
             WHERE task_owner = ?
             AND task_percent_complete >= 100
             AND task_end_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+            {$tenantTasks}
             GROUP BY DATE(task_end_date)
             ORDER BY data DESC",
             [$userId]

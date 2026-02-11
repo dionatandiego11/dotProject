@@ -62,23 +62,29 @@ class CoordenadorDashboardController extends BaseController
     private function getModern(int $userId, array $unidadesEscopo): array
     {
         $db = \DotProject\Core\Database::getInstance();
+        $tenantProjetos = $this->tenantAndCondition('dotp_projetos_prefeitura');
+        $tenantProjetosAlias = $this->tenantAndCondition('dotp_projetos_prefeitura', 'p');
+        $tenantProgramasAlias = $this->tenantAndCondition('dotp_programas', 'prog');
+        $tenantUsersAlias = $this->tenantAndCondition('dotp_users', 'u');
+        $tenantVinculosAlias = $this->tenantAndCondition('dotp_usuario_unidades', 'v');
+        $tenantTasksAlias = $this->tenantAndCondition('dotp_tasks', 't');
         $placeholders = implode(',', array_fill(0, count($unidadesEscopo), '?'));
 
         $resumo = $db->fetchAll(
-            "SELECT 
+            "SELECT
                 COUNT(*) as total,
                 COUNT(CASE WHEN estado = 'Concluido' THEN 1 END) as concluidos,
                 COUNT(CASE WHEN estado = 'Atrasado' THEN 1 END) as atrasados,
                 COUNT(CASE WHEN estado NOT IN ('Concluido', 'Cancelado') THEN 1 END) as em_andamento,
                 AVG(percent_execucao) as percentual_medio
-            FROM dotp_projetos_prefeitura 
+            FROM dotp_projetos_prefeitura
             WHERE unidade_id IN ($placeholders)
-            AND estado != 'Cancelado'",
+            AND estado != 'Cancelado'{$tenantProjetos}",
             $unidadesEscopo
         )[0] ?? [];
 
         $projetos = $db->fetchAll(
-            "SELECT 
+            "SELECT
                 p.id,
                 p.nome,
                 p.tipo,
@@ -88,24 +94,25 @@ class CoordenadorDashboardController extends BaseController
                 p.data_prevista_fim,
                 prog.nome as programa_nome
             FROM dotp_projetos_prefeitura p
-            LEFT JOIN dotp_programas prog ON prog.id = p.programa_id
+            LEFT JOIN dotp_programas prog ON prog.id = p.programa_id{$tenantProgramasAlias}
             WHERE p.unidade_id IN ($placeholders)
-            AND p.estado != 'Cancelado'
-            ORDER BY 
+            AND p.estado != 'Cancelado'{$tenantProjetosAlias}
+            ORDER BY
                 CASE p.estado WHEN 'Atrasado' THEN 0 ELSE 1 END,
                 p.percent_execucao ASC",
             $unidadesEscopo
         );
 
         $equipe = $db->fetchAll(
-            "SELECT 
+            "SELECT
                 u.user_id,
                 u.user_username as nome,
                 COUNT(t.task_id) as tarefas_ativas
             FROM dotp_users u
-            JOIN dotp_usuario_unidades v ON v.vinculo_user_id = u.user_id AND v.vinculo_status = 'ativo'
-            LEFT JOIN dotp_tasks t ON t.task_owner = u.user_id AND t.task_percent_complete < 100
+            JOIN dotp_usuario_unidades v ON v.vinculo_user_id = u.user_id AND v.vinculo_status = 'ativo'{$tenantVinculosAlias}
+            LEFT JOIN dotp_tasks t ON t.task_owner = u.user_id AND t.task_percent_complete < 100{$tenantTasksAlias}
             WHERE v.vinculo_unidade_id IN ($placeholders)
+            {$tenantUsersAlias}
             GROUP BY u.user_id
             ORDER BY tarefas_ativas DESC",
             $unidadesEscopo
@@ -131,25 +138,26 @@ class CoordenadorDashboardController extends BaseController
     private function getLegacy(int $userId): array
     {
         $db = \DotProject\Core\Database::getInstance();
+        $tenantProjects = $this->tenantAndCondition('dotp_projects');
 
         $resumo = $db->fetchAll(
-            "SELECT 
+            "SELECT
                 COUNT(*) as total,
                 COUNT(CASE WHEN project_status = 5 THEN 1 END) as concluidos,
                 COUNT(CASE WHEN project_status = 4 THEN 1 END) as atrasados,
                 COUNT(CASE WHEN project_status = 3 THEN 1 END) as em_andamento,
                 AVG(project_percent_complete) as percentual_medio
-            FROM dotp_projects 
-            WHERE project_owner = ?",
+            FROM dotp_projects
+            WHERE project_owner = ?{$tenantProjects}",
             [$userId]
         )[0] ?? [];
 
         $projetos = $db->fetchAll(
-            "SELECT 
+            "SELECT
                 project_id as id,
                 project_name as nome,
                 '' as tipo,
-                CASE project_status 
+                CASE project_status
                     WHEN 3 THEN 'Em_Andamento'
                     WHEN 4 THEN 'Em_Espera'
                     WHEN 5 THEN 'Concluido'
@@ -158,9 +166,10 @@ class CoordenadorDashboardController extends BaseController
                 project_percent_complete as percent_execucao,
                 project_start_date as data_prevista_inicio,
                 project_end_date as data_prevista_fim
-            FROM dotp_projects 
+            FROM dotp_projects
             WHERE project_owner = ?
             AND project_status NOT IN (6, 7)
+            {$tenantProjects}
             ORDER BY project_percent_complete ASC",
             [$userId]
         );
