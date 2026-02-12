@@ -330,6 +330,101 @@ class ProjectService
     }
 
     /**
+     * @return array{total: int, terminal: int, active: int}
+     */
+    public function projectTaskDeletionStats(int $projectId): array
+    {
+        $tasksTable = $this->db->table('tasks');
+        $row = $this->db->fetchOne(
+            sprintf(
+                "SELECT
+                    COUNT(*) AS total,
+                    SUM(CASE WHEN task_status IN (3, 5, 6) THEN 1 ELSE 0 END) AS terminal
+                 FROM %s
+                 WHERE task_project = ?%s",
+                $tasksTable,
+                $this->tenantAndCondition($tasksTable)
+            ),
+            [$projectId]
+        );
+
+        $total = (int) ($row['total'] ?? 0);
+        $terminal = (int) ($row['terminal'] ?? 0);
+        $active = max(0, $total - $terminal);
+
+        return [
+            'total' => $total,
+            'terminal' => $terminal,
+            'active' => $active,
+        ];
+    }
+
+    public function purgeProjectTasks(int $projectId): bool
+    {
+        $tasksTable = $this->db->table('tasks');
+        $taskIdsSql = sprintf(
+            'SELECT task_id FROM %s WHERE task_project = ?%s',
+            $tasksTable,
+            $this->tenantAndCondition($tasksTable)
+        );
+
+        $cleanupSteps = [
+            [
+                'table' => 'task_log',
+                'sql' => sprintf('DELETE FROM %s WHERE task_log_task IN (%s)', $this->db->table('task_log'), $taskIdsSql),
+                'params' => [$projectId],
+            ],
+            [
+                'table' => 'task_contacts',
+                'sql' => sprintf('DELETE FROM %s WHERE task_id IN (%s)', $this->db->table('task_contacts'), $taskIdsSql),
+                'params' => [$projectId],
+            ],
+            [
+                'table' => 'task_departments',
+                'sql' => sprintf('DELETE FROM %s WHERE task_id IN (%s)', $this->db->table('task_departments'), $taskIdsSql),
+                'params' => [$projectId],
+            ],
+            [
+                'table' => 'user_tasks',
+                'sql' => sprintf('DELETE FROM %s WHERE task_id IN (%s)', $this->db->table('user_tasks'), $taskIdsSql),
+                'params' => [$projectId],
+            ],
+            [
+                'table' => 'task_dependencies',
+                'sql' => sprintf(
+                    'DELETE FROM %s WHERE dependencies_task_id IN (%s) OR dependencies_req_task_id IN (%s)',
+                    $this->db->table('task_dependencies'),
+                    $taskIdsSql,
+                    $taskIdsSql
+                ),
+                'params' => [$projectId, $projectId],
+            ],
+        ];
+
+        foreach ($cleanupSteps as $step) {
+            if (!$this->tableExists($step['table'])) {
+                continue;
+            }
+
+            $result = $this->db->execute($step['sql'], $step['params']);
+            if ($result === false) {
+                return false;
+            }
+        }
+
+        $deleted = $this->db->execute(
+            sprintf(
+                'DELETE FROM %s WHERE task_project = ?%s',
+                $tasksTable,
+                $this->tenantAndCondition($tasksTable)
+            ),
+            [$projectId]
+        );
+
+        return $deleted !== false;
+    }
+
+    /**
      * Generate a random color for project identifier
      */
     private function generateProjectColor(): string
@@ -357,6 +452,19 @@ class ProjectService
     {
         global $dPconfig;
         return $dPconfig[$key] ?? $default;
+    }
+
+    private function tableExists(string $table): bool
+    {
+        $exists = (int) ($this->db->fetchValue(
+            "SELECT COUNT(*)
+             FROM information_schema.tables
+             WHERE table_schema = DATABASE()
+               AND table_name = ?",
+            [$this->db->table($table)]
+        ) ?? 0);
+
+        return $exists > 0;
     }
 
     private function tenantAndCondition(string $table, ?string $alias = null): string

@@ -3,6 +3,7 @@ import { lazy, Suspense, useState, useEffect } from 'react'
 import Loading from './components/Loading'
 import { isAuthenticated } from './services/api'
 import { ToastProvider } from './contexts/ToastContext'
+import ErrorBoundary from './components/ErrorBoundary'
 import useCurrentUser from './hooks/useCurrentUser'
 import { isAdminUser } from './utils/userAccess'
 
@@ -69,128 +70,130 @@ function App() {
     }
 
     return (
-        <ToastProvider>
-            <Routes>
-                {/* Login - Public */}
-                <Route
-                    path="/login"
-                    element={
-                        <Suspense fallback={<Loading fullScreen />}>
-                            <Login />
-                        </Suspense>
-                    }
-                />
-
-                {/* Setup antigo - compatibilidade */}
-                <Route
-                    path="/setup"
-                    element={
-                        <PrivateRoute>
-                            <Navigate to="/admin/setup" replace />
-                        </PrivateRoute>
-                    }
-                />
-
-                {/* Protected Routes with MainLayout */}
-                <Route
-                    path="/"
-                    element={
-                        <PrivateRoute>
-                            <MainLayout />
-                        </PrivateRoute>
-                    }
-                >
-                    {/* Dashboard Principal (único) */}
-                    <Route index element={
-                        <Suspense fallback={<Loading />}>
-                            <Dashboard />
-                        </Suspense>
-                    } />
-
-                    {/* Projects */}
-                    <Route path="projects" element={
-                        <Suspense fallback={<Loading />}>
-                            <Projects />
-                        </Suspense>
-                    } />
-                    <Route path="projects/:id" element={
-                        <Suspense fallback={<Loading />}>
-                            <ProjectDetails />
-                        </Suspense>
-                    } />
-
-                    {/* Kanban */}
-                    <Route path="kanban" element={
-                        <Suspense fallback={<Loading />}>
-                            <Kanban />
-                        </Suspense>
-                    } />
-
-                    {/* Admin - Níveis, Unidades, Usuários, Permissões */}
-                    {/* Removido /admin (dashboard redundante) */}
-                    <Route path="admin/niveis" element={
-                        <Suspense fallback={<Loading />}>
-                            <NiveisList />
-                        </Suspense>
-                    } />
-                    <Route path="admin/unidades" element={
-                        <Suspense fallback={<Loading />}>
-                            <UnidadesTree />
-                        </Suspense>
-                    } />
-                    <Route path="admin/usuarios" element={
-                        <Suspense fallback={<Loading />}>
-                            <UsuariosAdmin />
-                        </Suspense>
-                    } />
-                    <Route path="admin/organograma" element={
-                        <Suspense fallback={<Loading />}>
-                            <Organograma />
-                        </Suspense>
-                    } />
-                    <Route path="admin/setup" element={
-                        <AdminRoute>
-                            <Suspense fallback={<Loading />}>
-                                <SetupWizard />
+        <ErrorBoundary>
+            <ToastProvider>
+                <Routes>
+                    {/* Login - Public */}
+                    <Route
+                        path="/login"
+                        element={
+                            <Suspense fallback={<Loading fullScreen />}>
+                                <Login />
                             </Suspense>
-                        </AdminRoute>
+                        }
+                    />
+
+                    {/* Setup antigo - compatibilidade */}
+                    <Route
+                        path="/setup"
+                        element={
+                            <PrivateRoute>
+                                <Navigate to="/admin/setup" replace />
+                            </PrivateRoute>
+                        }
+                    />
+
+                    {/* Protected Routes with MainLayout */}
+                    <Route
+                        path="/"
+                        element={
+                            <PrivateRoute>
+                                <MainLayout />
+                            </PrivateRoute>
+                        }
+                    >
+                        {/* Dashboard Principal (único) */}
+                        <Route index element={
+                            <Suspense fallback={<Loading />}>
+                                <Dashboard />
+                            </Suspense>
+                        } />
+
+                        {/* Projects */}
+                        <Route path="projects" element={
+                            <Suspense fallback={<Loading />}>
+                                <Projects />
+                            </Suspense>
+                        } />
+                        <Route path="projects/:id" element={
+                            <Suspense fallback={<Loading />}>
+                                <ProjectDetails />
+                            </Suspense>
+                        } />
+
+                        {/* Kanban */}
+                        <Route path="kanban" element={
+                            <Suspense fallback={<Loading />}>
+                                <Kanban />
+                            </Suspense>
+                        } />
+
+                        {/* Admin - Níveis, Unidades, Usuários, Permissões */}
+                        {/* Removido /admin (dashboard redundante) */}
+                        <Route path="admin/niveis" element={
+                            <Suspense fallback={<Loading />}>
+                                <NiveisList />
+                            </Suspense>
+                        } />
+                        <Route path="admin/unidades" element={
+                            <Suspense fallback={<Loading />}>
+                                <UnidadesTree />
+                            </Suspense>
+                        } />
+                        <Route path="admin/usuarios" element={
+                            <Suspense fallback={<Loading />}>
+                                <UsuariosAdmin />
+                            </Suspense>
+                        } />
+                        <Route path="admin/organograma" element={
+                            <Suspense fallback={<Loading />}>
+                                <Organograma />
+                            </Suspense>
+                        } />
+                        <Route path="admin/setup" element={
+                            <AdminRoute>
+                                <Suspense fallback={<Loading />}>
+                                    <SetupWizard />
+                                </Suspense>
+                            </AdminRoute>
+                        } />
+
+                        {/* Redirecionar /admin para /admin/unidades */}
+                        <Route path="admin" element={
+                            <Navigate to="/admin/unidades" replace />
+                        } />
+                    </Route>
+
+                    {/* Redirect /dashboard/* to / (todos os dashboards agora são em /) */}
+                    <Route path="/dashboard/*" element={
+                        <PrivateRoute>
+                            <Navigate to="/" replace />
+                        </PrivateRoute>
                     } />
 
-                    {/* Redirecionar /admin para /admin/unidades */}
-                    <Route path="admin" element={
-                        <Navigate to="/admin/unidades" replace />
+                    {/* Debug page - public */}
+                    <Route path="/debug" element={
+                        <div style={{ padding: 40 }}>
+                            <h1>🔧 Debug</h1>
+                            <p>Token: {localStorage.getItem('dp_token') ? '✅ Presente' : '❌ Ausente'}</p>
+                            <button onClick={() => { localStorage.clear(); window.location.reload(); }}>
+                                🗑️ Limpar Cache
+                            </button>
+                            <hr />
+                            <a href="/">← Voltar</a>
+                        </div>
                     } />
-                </Route>
 
-                {/* Redirect /dashboard/* to / (todos os dashboards agora são em /) */}
-                <Route path="/dashboard/*" element={
-                    <PrivateRoute>
-                        <Navigate to="/" replace />
-                    </PrivateRoute>
-                } />
-
-                {/* Debug page - public */}
-                <Route path="/debug" element={
-                    <div style={{ padding: 40 }}>
-                        <h1>🔧 Debug</h1>
-                        <p>Token: {localStorage.getItem('dp_token') ? '✅ Presente' : '❌ Ausente'}</p>
-                        <button onClick={() => { localStorage.clear(); window.location.reload(); }}>
-                            🗑️ Limpar Cache
-                        </button>
-                        <hr />
-                        <a href="/">← Voltar</a>
-                    </div>
-                } />
-
-                {/* 404 */}
-                <Route path="*" element={
-                    <div style={{ padding: 40, textAlign: 'center' }}>
-                        <h1>404 - Página não encontrada</h1>
-                        <a href="/">← Voltar para Home</a>
-                    </div>
-                } />
-            </Routes>
-        </ToastProvider>
+                    {/* 404 */}
+                    <Route path="*" element={
+                        <div style={{ padding: 40, textAlign: 'center' }}>
+                            <h1>404 - Página não encontrada</h1>
+                            <a href="/">← Voltar para Home</a>
+                        </div>
+                    } />
+                </Routes>
+            </ToastProvider>
+        </ErrorBoundary>
     )
 }
 

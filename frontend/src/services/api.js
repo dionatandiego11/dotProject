@@ -1,4 +1,4 @@
-import { getToken, isAuthenticated, setToken } from './client';
+import * as apiClient from './client';
 import * as authService from './auth';
 import * as projectsService from './projects';
 import * as tasksService from './tasks';
@@ -10,7 +10,7 @@ import * as filesService from './files';
 import * as dashboardService from './dashboard';
 import * as adminService from './admin';
 
-export { setToken, getToken, isAuthenticated };
+export * from './client';
 export * from './auth';
 export * from './projects';
 export * from './tasks';
@@ -22,10 +22,21 @@ export * from './files';
 export * from './dashboard';
 export * from './admin';
 
-const api = {
-    setToken,
-    getToken,
-    isAuthenticated,
+export const services = Object.freeze({
+    auth: authService,
+    projects: projectsService,
+    tasks: tasksService,
+    analytics: analyticsService,
+    integrations: integrationsService,
+    kanban: kanbanService,
+    notifications: notificationsService,
+    files: filesService,
+    dashboard: dashboardService,
+    admin: adminService,
+});
+
+export const api = Object.freeze({
+    ...apiClient,
     ...authService,
     ...projectsService,
     ...tasksService,
@@ -36,6 +47,8 @@ const api = {
     ...filesService,
     ...dashboardService,
     ...adminService,
-};
+    client: apiClient,
+    services,
+});
 
 export default api;

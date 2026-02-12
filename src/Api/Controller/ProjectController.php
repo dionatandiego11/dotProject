@@ -12,13 +12,17 @@ declare(strict_types=1);
 
 namespace DotProject\Api\Controller;
 
+use DotProject\Api\Formatter\ProjectFormatter;
 use DotProject\Api\Request;
 use DotProject\Api\Response;
-use DotProject\Core\TenantContext;
+use DotProject\Core\Database;
+use DotProject\Core\TenantAwareTrait;
 use DotProject\Entity\ProjectEntity;
 use DotProject\Repository\ProjectRepository;
 use DotProject\Service\AuthorizationService;
 use DotProject\Service\PermissionService;
+use DotProject\Service\ProjectService;
+use DotProject\Service\ProjectMutationService;
 use DotProject\Service\ProjectStatusHistoryService;
 
 /**
@@ -26,10 +30,13 @@ use DotProject\Service\ProjectStatusHistoryService;
  */
 class ProjectController extends BaseController
 {
+    use TenantAwareTrait;
+
     private ?ProjectStatusHistoryService $statusHistoryService = null;
     private ?ProjectRepository $projectRepository = null;
-    /** @var array<string, bool> */
-    private array $tableHasTenantColumn = [];
+    private ?ProjectService $projectService = null;
+    private ?ProjectMutationService $projectMutationService = null;
+    private ?ProjectFormatter $projectFormatter = null;
 
     /**
      * GET /v1/projects
@@ -121,7 +128,7 @@ class ProjectController extends BaseController
             $pagination['offset'],
         ]));
 
-        $projects = array_map(fn($row) => $this->formatProject($row), $rows);
+        $projects = array_map(fn($row) => $this->projectFormatter()->formatProject($row), $rows);
 
         return $this->response->paginated(
             $projects,
@@ -168,7 +175,7 @@ class ProjectController extends BaseController
             return $this->notFound('Project not found');
         }
 
-        return $this->json($this->formatProject($row, true));
+        return $this->json($this->projectFormatter()->formatProject($row, true));
     }
 
     /**
@@ -182,102 +189,8 @@ class ProjectController extends BaseController
             return $this->response->forbidden('Insufficient permissions');
         }
 
-        $body = $this->request->getBody();
-        $unidadeId = $this->resolveUnidadeFromBody($body);
-
-        if ($unidadeId === null) {
-            return $this->response->validationError(
-                $this->unidadeValidationError('A unidade responsavel e obrigatoria.')
-            );
-        }
-        if (!empty($body['start_date']) && !empty($body['end_date'])) {
-            if (strtotime($body['start_date']) > strtotime($body['end_date'])) {
-                return $this->response->validationError([
-                    'end_date' => 'A data de término deve ser maior ou igual à data de início.'
-                ]);
-            }
-        }
-        $shortName = '';
-        if (array_key_exists('short_name', $body)) {
-            $shortName = trim((string) $body['short_name']);
-        }
-        $validationData = [
-            'project_name' => $body['name'] ?? '',
-            'project_short_name' => $shortName,
-            'project_company' => $unidadeId,
-            'project_status' => $body['status'] ?? 0,
-            'project_percent_complete' => $body['percent_complete'] ?? 0,
-            'project_priority' => $body['priority'] ?? 0,
-        ];
-        $validation = $this->validation()->validateProject($validationData);
-
-        if ($validation->fails()) {
-            return $this->response->validationError($validation->errors());
-        }
-
-        $this->normalizeProjectStatusPercent($body, null, null);
-
-        $unidadeExists = $this->db->fetchValue(sprintf(
-            "SELECT unidade_id FROM dotp_unidades_organizacionais WHERE unidade_id = %d%s",
-            $unidadeId,
-            $this->tenantAndCondition('dotp_unidades_organizacionais')
-        ));
-        if ($unidadeExists === null) {
-            return $this->response->validationError(
-                $this->unidadeValidationError('Unidade responsavel nao encontrada.')
-            );
-        }
-        if ($guard = $this->ensureCanUseTargetUnidade($unidadeId)) {
-            return $guard;
-        }
-
-        $project = new ProjectEntity();
-        $project->setName((string) ($body['name'] ?? ''));
-        $project->setShortName($shortName !== '' ? $shortName : null);
-        $project->setCompanyId($unidadeId);
-        $project->setOwnerId($this->getUserId());
-        $project->setUrl(isset($body['url']) ? (string) $body['url'] : '');
-        $project->setStatus((int) ($body['status'] ?? 0));
-        $project->setPercentComplete((int) ($body['percent_complete'] ?? 0));
-        $project->setColorIdentifier((string) ($body['color'] ?? '#4A90D9'));
-        $project->setDescription(isset($body['description']) ? (string) $body['description'] : '');
-        $project->setPriority((int) ($body['priority'] ?? 0));
-        $project->setStartDate(new \DateTime((string) ($body['start_date'] ?? date('Y-m-d'))));
-        if (!empty($body['end_date'])) {
-            $project->setEndDate(new \DateTime((string) $body['end_date']));
-        }
-
-        $projectId = $this->projectRepository()->save($project);
-        if ($projectId <= 0) {
-            return $this->error('Failed to create project');
-        }
-
-        $legacyFields = [];
-        if ($this->tableHasColumn($this->db->table('projects'), 'project_parent')) {
-            $legacyFields['project_parent'] = (int) ($body['parent_id'] ?? 0);
-        }
-        if ($this->tableHasColumn($this->db->table('projects'), 'project_creator')) {
-            $legacyFields['project_creator'] = $this->getUserId();
-        }
-        if ($this->tableHasColumn($this->db->table('projects'), 'project_demo_url')) {
-            $legacyFields['project_demo_url'] = (string) ($body['demo_url'] ?? '');
-        }
-        if ($this->tableHasColumn($this->db->table('projects'), 'project_target_budget')) {
-            $legacyFields['project_target_budget'] = (float) ($body['budget'] ?? 0);
-        }
-        if ($this->tableHasColumn($this->db->table('projects'), 'project_type')) {
-            $legacyFields['project_type'] = (int) ($body['type'] ?? 0);
-        }
-
-        if (!$this->updateProjectRow($projectId, $legacyFields)) {
-            return $this->error('Failed to create project');
-        }
-
-        return $this->created([
-            'id' => $projectId,
-            'unidade_id' => $unidadeId,
-            'message' => 'Project created successfully',
-        ]);
+        $result = $this->projectMutationService()->create($this->request->getBody(), $this->getUserId());
+        return $this->mutationResponse($result);
     }
 
     /**
@@ -302,180 +215,8 @@ class ProjectController extends BaseController
             return $this->notFound('Project not found');
         }
 
-        $body = $this->request->getBody();
-        if (array_key_exists('short_name', $body) && trim((string) $body['short_name']) === '') {
-            $body['short_name'] = null;
-        }
-        if (!empty($body['start_date']) && !empty($body['end_date'])) {
-            if (strtotime($body['start_date']) > strtotime($body['end_date'])) {
-                return $this->response->validationError([
-                    'end_date' => 'A data de término deve ser maior ou igual à data de início.'
-                ]);
-            }
-        }
-
-        $hasUnidadeField = $this->hasUnidadeField($body);
-        $unidadeId = $hasUnidadeField ? $this->resolveUnidadeFromBody($body) : null;
-
-        // Atualiza apenas campos fornecidos
-        $validationData = [];
-        if (isset($body['name'])) {
-            $validationData['project_name'] = $body['name'];
-        }
-        if (array_key_exists('short_name', $body)) {
-            $validationData['project_short_name'] = $body['short_name'];
-        }
-        if ($hasUnidadeField) {
-            $validationData['project_company'] = $unidadeId;
-        }
-        if (array_key_exists('status', $body)) {
-            $validationData['project_status'] = $body['status'];
-        }
-        if (array_key_exists('percent_complete', $body)) {
-            $validationData['project_percent_complete'] = $body['percent_complete'];
-        }
-        if (array_key_exists('priority', $body)) {
-            $validationData['project_priority'] = $body['priority'];
-        }
-
-        if (!empty($validationData)) {
-            $validation = $this->validation()->validate($validationData);
-
-            if (array_key_exists('project_name', $validationData)) {
-                $validation
-                    ->required('project_name', 'O nome do projeto é obrigatório.')
-                    ->minLength('project_name', 3, 'O nome do projeto deve ter pelo menos 3 caracteres.')
-                    ->maxLength('project_name', 255, 'O nome do projeto deve ter no máximo 255 caracteres.');
-            }
-
-            if (array_key_exists('project_short_name', $validationData) && $validationData['project_short_name'] !== null) {
-                $validation->maxLength('project_short_name', 10, 'O nome curto deve ter no máximo 10 caracteres.');
-            }
-
-            if (array_key_exists('project_company', $validationData)) {
-                $validation->integer('project_company', 'A empresa deve ser um valor numérico.');
-            }
-
-            if (array_key_exists('project_status', $validationData)) {
-                $validation->between('project_status', 0, 7, 'Status inválido.');
-            }
-
-            if (array_key_exists('project_percent_complete', $validationData)) {
-                $validation->between('project_percent_complete', 0, 100, 'Percentual inválido.');
-            }
-
-            if (array_key_exists('project_priority', $validationData)) {
-                $validation->between('project_priority', -1, 5, 'Prioridade inválida.');
-            }
-
-            if ($validation->fails()) {
-                return $this->response->validationError($validation->errors());
-            }
-        }
-
-        $currentStatus = $project->getStatus();
-        $this->normalizeProjectStatusPercent(
-            $body,
-            $currentStatus,
-            $project->getPercentComplete()
-        );
-
-        $targetStatus = null;
-        if (array_key_exists('status', $body)) {
-            $targetStatus = (int) $body['status'];
-            if (!$this->isAllowedProjectStatusTransition($currentStatus, $targetStatus)) {
-                return $this->invalidProjectStatusTransitionResponse($currentStatus, $targetStatus);
-            }
-        }
-
-        if ($hasUnidadeField) {
-            if ($unidadeId === null) {
-                return $this->response->validationError(
-                    $this->unidadeValidationError('A unidade responsavel e obrigatoria.')
-                );
-            }
-            $unidadeExists = $this->db->fetchValue(sprintf(
-                "SELECT unidade_id FROM dotp_unidades_organizacionais WHERE unidade_id = %d%s",
-                $unidadeId,
-                $this->tenantAndCondition('dotp_unidades_organizacionais')
-            ));
-            if ($unidadeExists === null) {
-                return $this->response->validationError(
-                    $this->unidadeValidationError('Unidade responsavel nao encontrada.')
-                );
-            }
-            if ($guard = $this->ensureCanUseTargetUnidade($unidadeId)) {
-                return $guard;
-            }
-        }
-
-        if (array_key_exists('name', $body)) {
-            $project->setName((string) $body['name']);
-        }
-        if (array_key_exists('short_name', $body)) {
-            $project->setShortName($body['short_name'] !== null ? (string) $body['short_name'] : null);
-        }
-        if (array_key_exists('url', $body)) {
-            $project->setUrl($body['url'] !== null ? (string) $body['url'] : null);
-        }
-        if (array_key_exists('start_date', $body)) {
-            $project->setStartDate($body['start_date'] ? new \DateTime((string) $body['start_date']) : null);
-        }
-        if (array_key_exists('end_date', $body)) {
-            $project->setEndDate($body['end_date'] ? new \DateTime((string) $body['end_date']) : null);
-        }
-        if (array_key_exists('status', $body)) {
-            $project->setStatus((int) $body['status']);
-        }
-        if (array_key_exists('percent_complete', $body)) {
-            $project->setPercentComplete((int) $body['percent_complete']);
-        }
-        if (array_key_exists('color', $body)) {
-            $project->setColorIdentifier((string) $body['color']);
-        }
-        if (array_key_exists('description', $body)) {
-            $project->setDescription($body['description'] !== null ? (string) $body['description'] : null);
-        }
-        if (array_key_exists('priority', $body)) {
-            $project->setPriority((int) $body['priority']);
-        }
-
-        if ($hasUnidadeField && $unidadeId !== null) {
-            $project->setCompanyId($unidadeId);
-        }
-
-        if ($this->projectRepository()->save($project) <= 0) {
-            return $this->error('Failed to update project');
-        }
-
-        $legacyUpdates = [];
-        if (array_key_exists('demo_url', $body) && $this->tableHasColumn($this->db->table('projects'), 'project_demo_url')) {
-            $legacyUpdates['project_demo_url'] = $body['demo_url'] !== null ? (string) $body['demo_url'] : '';
-        }
-        if (array_key_exists('budget', $body) && $this->tableHasColumn($this->db->table('projects'), 'project_target_budget')) {
-            $legacyUpdates['project_target_budget'] = (float) ($body['budget'] ?? 0);
-        }
-        if (array_key_exists('type', $body) && $this->tableHasColumn($this->db->table('projects'), 'project_type')) {
-            $legacyUpdates['project_type'] = (int) $body['type'];
-        }
-        if (!$this->updateProjectRow($id, $legacyUpdates)) {
-            return $this->error('Failed to update project');
-        }
-
-        if ($targetStatus !== null && $targetStatus !== $currentStatus) {
-            $this->statusHistoryService()->recordStatusChange(
-                (int) ($project->getId() ?? 0),
-                $currentStatus,
-                $targetStatus,
-                $this->getUserId(),
-                $this->resolveStatusChangeSource($body, 'projects_update')
-            );
-        }
-
-        return $this->json([
-            'id' => $project->getId(),
-            'message' => 'Project updated successfully',
-        ]);
+        $result = $this->projectMutationService()->update($project, $id, $this->request->getBody(), $this->getUserId());
+        return $this->mutationResponse($result);
     }
 
     /**
@@ -500,61 +241,8 @@ class ProjectController extends BaseController
             return $this->notFound('Project not found');
         }
 
-        $body = $this->request->getBody();
-        if (!array_key_exists('status', $body) || $body['status'] === '' || $body['status'] === null) {
-            return $this->response->validationError([
-                'status' => 'Status e obrigatorio.',
-            ]);
-        }
-
-        $targetStatus = (int) $body['status'];
-        if ($targetStatus < 0 || $targetStatus > 7) {
-            return $this->response->validationError([
-                'status' => 'Status invalido.',
-            ]);
-        }
-
-        $currentStatus = $project->getStatus();
-        if (!$this->isAllowedProjectStatusTransition($currentStatus, $targetStatus)) {
-            return $this->invalidProjectStatusTransitionResponse($currentStatus, $targetStatus);
-        }
-
-        $payload = ['status' => $targetStatus];
-        if (array_key_exists('percent_complete', $body)) {
-            $payload['percent_complete'] = $body['percent_complete'];
-        }
-
-        $this->normalizeProjectStatusPercent(
-            $payload,
-            $currentStatus,
-            $project->getPercentComplete()
-        );
-
-        $project->setStatus((int) $payload['status']);
-        if (array_key_exists('percent_complete', $payload)) {
-            $project->setPercentComplete((int) $payload['percent_complete']);
-        }
-
-        if ($this->projectRepository()->save($project) <= 0) {
-            return $this->error('Failed to update project status');
-        }
-
-        if ($currentStatus !== $targetStatus) {
-            $this->statusHistoryService()->recordStatusChange(
-                (int) ($project->getId() ?? 0),
-                $currentStatus,
-                $targetStatus,
-                $this->getUserId(),
-                $this->resolveStatusChangeSource($body, 'projects_status_endpoint')
-            );
-        }
-
-        return $this->json([
-            'id' => $project->getId(),
-            'status' => $project->getStatus(),
-            'percent_complete' => $project->getPercentComplete(),
-            'message' => 'Project status updated successfully',
-        ]);
+        $result = $this->projectMutationService()->updateStatus($project, $this->request->getBody(), $this->getUserId());
+        return $this->mutationResponse($result);
     }
 
     /**
@@ -580,7 +268,7 @@ class ProjectController extends BaseController
         }
 
         // Permite exclusao apenas se nao houver tarefas ativas (limpa tarefas finais automaticamente).
-        $taskStats = $this->projectTaskDeletionStats($id);
+        $taskStats = $this->projectService()->projectTaskDeletionStats($id);
         if ($taskStats['active'] > 0) {
             return $this->error(
                 sprintf(
@@ -594,7 +282,7 @@ class ProjectController extends BaseController
 
         $this->db->beginTransaction();
         try {
-            if ($taskStats['total'] > 0 && !$this->purgeProjectTasks($id)) {
+            if ($taskStats['total'] > 0 && !$this->projectService()->purgeProjectTasks($id)) {
                 $this->db->rollback();
                 return $this->error('Failed to purge project tasks before delete');
             }
@@ -665,7 +353,7 @@ class ProjectController extends BaseController
 
         $rows = $this->db->fetchAll($sql);
 
-        $tasks = array_map(fn($row) => $this->formatTask($row), $rows);
+        $tasks = array_map(fn($row) => $this->projectFormatter()->formatTask($row), $rows);
 
         return $this->response->paginated(
             $tasks,
@@ -711,304 +399,25 @@ class ProjectController extends BaseController
     }
 
     /**
-     * Formata dados do projeto para a API
+     * Backward-compatible wrapper kept for unit tests/reflection callers.
+     *
+     * @param array<string, mixed> $row
+     * @return array<string, mixed>
      */
     private function formatProject(array $row, bool $detailed = false): array
     {
-        $unidadeId = isset($row['project_company']) && (int) $row['project_company'] > 0
-            ? (int) $row['project_company']
-            : null;
-        $companyCompatId = $unidadeId ?? 0;
-        $unidadeNome = isset($row['unidade_nome']) ? trim((string) $row['unidade_nome']) : '';
-        $companyName = isset($row['company_name']) ? trim((string) $row['company_name']) : '';
-        $displayUnidadeNome = $unidadeNome !== '' ? $unidadeNome : ($companyName !== '' ? $companyName : null);
-
-        $data = [
-            'id' => (int) $row['project_id'],
-            'name' => $row['project_name'],
-            'short_name' => $row['project_short_name'] ?? '',
-            'unidade_id' => $unidadeId,
-            'unidade' => [
-                'id' => $unidadeId,
-                'nome' => $displayUnidadeNome,
-            ],
-            'company_id' => $companyCompatId,
-            'company' => [
-                'id' => $companyCompatId,
-                'name' => $displayUnidadeNome,
-            ],
-            'status' => (int) ($row['project_status'] ?? 0),
-            'percent_complete' => (int) ($row['project_percent_complete'] ?? 0),
-            'priority' => (int) ($row['project_priority'] ?? 0),
-            'color' => $row['project_color_identifier'] ?? '#4A90D9',
-            'start_date' => $row['project_start_date'] ?? null,
-            'end_date' => $row['project_end_date'] ?? null,
-        ];
-
-        if ($detailed) {
-            $data['description'] = $row['project_description'] ?? '';
-            $data['url'] = $row['project_url'] ?? '';
-            $data['demo_url'] = $row['project_demo_url'] ?? '';
-            $data['budget'] = (float) ($row['project_target_budget'] ?? 0);
-            $data['actual_budget'] = (float) ($row['project_actual_budget'] ?? 0);
-            $data['owner_id'] = isset($row['project_owner']) && (int) $row['project_owner'] > 0
-                ? (int) $row['project_owner']
-                : null;
-            $data['creator_id'] = isset($row['project_creator']) && (int) $row['project_creator'] > 0
-                ? (int) $row['project_creator']
-                : null;
-            $data['type'] = (int) ($row['project_type'] ?? 0);
-            $data['parent_id'] = isset($row['project_parent']) && (int) $row['project_parent'] > 0
-                ? (int) $row['project_parent']
-                : null;
-        }
-
-        return $data;
+        return $this->projectFormatter()->formatProject($row, $detailed);
     }
 
     /**
-     * Formata dados da tarefa para a API
+     * Backward-compatible wrapper kept for unit tests/reflection callers.
+     *
+     * @param array<string, mixed> $row
+     * @return array<string, mixed>
      */
     private function formatTask(array $row): array
     {
-        return [
-            'id' => (int) $row['task_id'],
-            'name' => $row['task_name'],
-            'description' => $row['task_description'] ?? '',
-            'status' => (int) ($row['task_status'] ?? 0),
-            'priority' => (int) ($row['task_priority'] ?? 0),
-            'percent_complete' => (int) ($row['task_percent_complete'] ?? 0),
-            'start_date' => $row['task_start_date'] ?? null,
-            'end_date' => $row['task_end_date'] ?? null,
-            'duration' => (int) ($row['task_duration'] ?? 0),
-            'owner_id' => $row['task_owner'] ? (int) $row['task_owner'] : null,
-        ];
-    }
-
-    /**
-     * Keep project status/percent coherence for canonical workflow statuses.
-     *
-     * @param array<string, mixed> $payload
-     */
-    private function normalizeProjectStatusPercent(array &$payload, ?int $currentStatus, ?int $currentPercent): void
-    {
-        $hasStatus = array_key_exists('status', $payload)
-            && $payload['status'] !== null
-            && $payload['status'] !== '';
-        $hasPercent = array_key_exists('percent_complete', $payload)
-            && $payload['percent_complete'] !== null
-            && $payload['percent_complete'] !== '';
-
-        if (!$hasStatus && !$hasPercent) {
-            return;
-        }
-
-        $status = $hasStatus ? (int) $payload['status'] : (int) ($currentStatus ?? 0);
-        $percent = $hasPercent ? (int) $payload['percent_complete'] : (int) ($currentPercent ?? 0);
-        $percent = max(0, min(100, $percent));
-
-        if ($status === 5) {
-            $percent = 100;
-        } elseif ($status === 0) {
-            $percent = 0;
-        }
-
-        if ($hasStatus) {
-            $payload['status'] = $status;
-        }
-        if ($hasPercent || in_array($status, [0, 5], true)) {
-            $payload['percent_complete'] = $percent;
-        }
-    }
-
-    /**
-     * Regras explicitas para transicao manual de macrostatus.
-     */
-    private function isAllowedProjectStatusTransition(int $currentStatus, int $targetStatus): bool
-    {
-        if ($currentStatus === $targetStatus) {
-            return true;
-        }
-
-        $allowed = $this->getAllowedProjectStatusTransitions($currentStatus);
-        return in_array($targetStatus, $allowed, true);
-    }
-
-    /**
-     * @return int[]
-     */
-    private function getAllowedProjectStatusTransitions(int $currentStatus): array
-    {
-        return match ($currentStatus) {
-            0 => [1, 2, 3, 4],
-            1 => [0, 2, 3, 4],
-            2 => [0, 1, 3, 4],
-            3 => [4, 5],
-            4 => [3, 5],
-            5 => [3, 6],
-            6 => [],
-            default => [0, 1, 2, 3, 4, 5, 6],
-        };
-    }
-
-    private function projectStatusLabel(int $status): string
-    {
-        return match ($status) {
-            0 => 'Nao definido',
-            1 => 'Proposto',
-            2 => 'Em planejamento',
-            3 => 'Em progresso',
-            4 => 'Em espera',
-            5 => 'Completo',
-            6 => 'Arquivado',
-            default => 'Desconhecido',
-        };
-    }
-
-    private function invalidProjectStatusTransitionResponse(int $currentStatus, int $targetStatus): Response
-    {
-        $allowedTransitions = $this->getAllowedProjectStatusTransitions($currentStatus);
-        $allowedLabels = array_map(
-            fn(int $status): string => $this->projectStatusLabel($status),
-            $allowedTransitions
-        );
-
-        return $this->response->validationError([
-            'status' => sprintf(
-                'Transicao de status invalida de "%s" para "%s". Permitidos: %s.',
-                $this->projectStatusLabel($currentStatus),
-                $this->projectStatusLabel($targetStatus),
-                empty($allowedLabels) ? 'nenhum' : implode(', ', $allowedLabels)
-            ),
-        ]);
-    }
-
-    /**
-     * @return array{total: int, terminal: int, active: int}
-     */
-    private function projectTaskDeletionStats(int $projectId): array
-    {
-        $tasksTable = $this->db->table('tasks');
-        $row = $this->db->fetchOne(
-            sprintf(
-                "SELECT
-                    COUNT(*) AS total,
-                    SUM(CASE WHEN task_status IN (3, 5, 6) THEN 1 ELSE 0 END) AS terminal
-                 FROM %s
-                 WHERE task_project = ?%s",
-                $tasksTable,
-                $this->tenantAndCondition($tasksTable)
-            ),
-            [$projectId]
-        );
-
-        $total = (int) ($row['total'] ?? 0);
-        $terminal = (int) ($row['terminal'] ?? 0);
-        $active = max(0, $total - $terminal);
-
-        return [
-            'total' => $total,
-            'terminal' => $terminal,
-            'active' => $active,
-        ];
-    }
-
-    private function purgeProjectTasks(int $projectId): bool
-    {
-        $tasksTable = $this->db->table('tasks');
-        $taskIdsSql = sprintf(
-            'SELECT task_id FROM %s WHERE task_project = ?%s',
-            $tasksTable,
-            $this->tenantAndCondition($tasksTable)
-        );
-
-        $cleanupSteps = [
-            [
-                'table' => 'task_log',
-                'sql' => sprintf('DELETE FROM %s WHERE task_log_task IN (%s)', $this->db->table('task_log'), $taskIdsSql),
-                'params' => [$projectId],
-            ],
-            [
-                'table' => 'task_contacts',
-                'sql' => sprintf('DELETE FROM %s WHERE task_id IN (%s)', $this->db->table('task_contacts'), $taskIdsSql),
-                'params' => [$projectId],
-            ],
-            [
-                'table' => 'task_departments',
-                'sql' => sprintf('DELETE FROM %s WHERE task_id IN (%s)', $this->db->table('task_departments'), $taskIdsSql),
-                'params' => [$projectId],
-            ],
-            [
-                'table' => 'user_tasks',
-                'sql' => sprintf('DELETE FROM %s WHERE task_id IN (%s)', $this->db->table('user_tasks'), $taskIdsSql),
-                'params' => [$projectId],
-            ],
-            [
-                'table' => 'task_dependencies',
-                'sql' => sprintf(
-                    'DELETE FROM %s WHERE dependencies_task_id IN (%s) OR dependencies_req_task_id IN (%s)',
-                    $this->db->table('task_dependencies'),
-                    $taskIdsSql,
-                    $taskIdsSql
-                ),
-                'params' => [$projectId, $projectId],
-            ],
-        ];
-
-        foreach ($cleanupSteps as $step) {
-            if (!$this->tableExists($step['table'])) {
-                continue;
-            }
-
-            $result = $this->db->execute($step['sql'], $step['params']);
-            if ($result === false) {
-                return false;
-            }
-        }
-
-        $deleted = $this->db->execute(
-            sprintf(
-                'DELETE FROM %s WHERE task_project = ?%s',
-                $tasksTable,
-                $this->tenantAndCondition($tasksTable)
-            ),
-            [$projectId]
-        );
-
-        return $deleted !== false;
-    }
-
-    private function tableExists(string $table): bool
-    {
-        $exists = (int) ($this->db->fetchValue(
-            "SELECT COUNT(*)
-             FROM information_schema.tables
-             WHERE table_schema = DATABASE()
-               AND table_name = ?",
-            [$this->db->table($table)]
-        ) ?? 0);
-
-        return $exists > 0;
-    }
-
-    /**
-     * @param array<string, mixed> $fields
-     */
-    private function updateProjectRow(int $projectId, array $fields): bool
-    {
-        if ($fields === []) {
-            return true;
-        }
-
-        return $this->db->update(
-            'projects',
-            $fields,
-            sprintf(
-                'project_id = %d%s',
-                $projectId,
-                $this->tenantAndCondition($this->db->table('projects'))
-            )
-        );
+        return $this->projectFormatter()->formatTask($row);
     }
 
     private function statusHistoryService(): ProjectStatusHistoryService
@@ -1018,33 +427,6 @@ class ProjectController extends BaseController
         }
 
         return $this->statusHistoryService;
-    }
-
-    /**
-     * @param array<string, mixed> $body
-     */
-    private function resolveStatusChangeSource(array $body, string $defaultSource): string
-    {
-        $source = $defaultSource;
-
-        if (isset($body['status_change_source']) && is_string($body['status_change_source'])) {
-            $source = $body['status_change_source'];
-        } elseif (isset($body['source']) && is_string($body['source'])) {
-            $source = $body['source'];
-        }
-
-        $source = trim($source);
-        if ($source === '') {
-            return 'system';
-        }
-
-        $source = preg_replace('/[^a-zA-Z0-9._-]/', '_', $source) ?? 'system';
-        $source = trim($source, '._-');
-        if ($source === '') {
-            return 'system';
-        }
-
-        return mb_substr($source, 0, 64);
     }
 
     private function resolveUnidadeQueryParam(): ?int
@@ -1064,14 +446,6 @@ class ProjectController extends BaseController
     /**
      * @param array<string, mixed> $body
      */
-    private function hasUnidadeField(array $body): bool
-    {
-        return array_key_exists('unidade_id', $body) || array_key_exists('company_id', $body);
-    }
-
-    /**
-     * @param array<string, mixed> $body
-     */
     private function resolveUnidadeFromBody(array $body): ?int
     {
         if (array_key_exists('unidade_id', $body) && $body['unidade_id'] !== '' && $body['unidade_id'] !== null) {
@@ -1086,147 +460,77 @@ class ProjectController extends BaseController
     }
 
     /**
-     * @return array<string, string>
-     */
-    private function unidadeValidationError(string $message): array
-    {
-        return [
-            'unidade_id' => $message,
-            'company_id' => $message,
-        ];
-    }
-
-    private function ensureCanUseTargetUnidade(int $unidadeId): ?Response
-    {
-        $userId = $this->getUserId();
-        if ($userId === null) {
-            return $this->response->unauthorized();
-        }
-
-        $auth = AuthorizationService::getInstance();
-        if ($auth->isAdmin($userId)) {
-            return null;
-        }
-
-        $perm = new PermissionService();
-        $escopo = $perm->getEscopoDados($userId);
-        if (!$escopo) {
-            return $this->response->forbidden('Access denied');
-        }
-
-        if (in_array(
-            $escopo['role'] ?? '',
-            [PermissionService::ROLE_PREFEITO, PermissionService::ROLE_CONTROLADOR],
-            true
-        )) {
-            return null;
-        }
-
-        $unidadesEscopo = array_map('intval', (array) ($escopo['unidades_escopo'] ?? []));
-        if (in_array($unidadeId, $unidadesEscopo, true)) {
-            return null;
-        }
-
-        return $this->response->forbidden('Access denied');
-    }
-
-    /**
      * Ensure authenticated user can access a project.
      * Allows project owner/creator to proceed.
      */
     private function ensureProjectAccess(int $projectId): ?Response
     {
-        $userId = $this->getUserId();
-        if ($userId === null) {
-            return $this->response->unauthorized();
-        }
-
-        $auth = AuthorizationService::getInstance();
-        if ($auth->isAdmin($userId)) {
-            return null;
-        }
-
-        $perm = new PermissionService();
-
-        $row = $this->db->fetchOne(sprintf(
-            "SELECT project_owner, project_creator, project_company FROM %s WHERE project_id = %d%s",
-            $this->db->table('projects'),
-            $projectId,
-            $this->tenantAndCondition($this->db->table('projects'))
-        ));
-
-        if ($row === null) {
-            return $this->notFound('Project not found');
-        }
-
-        $ownerId = $row['project_owner'] ? (int) $row['project_owner'] : null;
-        $creatorId = $row['project_creator'] ? (int) $row['project_creator'] : null;
-        $companyId = $row['project_company'] ? (int) $row['project_company'] : null;
-
-        $escopo = $perm->getEscopoDados($userId);
-        if ($escopo) {
-            if ($escopo['role'] === PermissionService::ROLE_PREFEITO) {
-                return null;
-            }
-            if ($companyId && in_array($companyId, $escopo['unidades_escopo'], true)) {
-                return null;
-            }
-        }
-
-        if (!$companyId && (($ownerId && $ownerId === $userId) || ($creatorId && $creatorId === $userId))) {
-            return null;
-        }
-
-        return $this->response->forbidden('Access denied');
+        return $this->resolveAuthorizationAccessResponse(
+            AuthorizationService::getInstance()->resolveProjectAccessResult($this->getUserId(), $projectId),
+            'Project not found'
+        );
     }
 
-    private function tenantAndCondition(string $table, ?string $alias = null): string
+    private function resolveAuthorizationAccessResponse(string $result, ?string $notFoundMessage = null): ?Response
     {
-        $tenantId = $this->getTenantId();
-        if ($tenantId === null || !$this->tableHasColumn($table, 'tenant_id')) {
-            return '';
-        }
-
-        $column = $alias !== null && $alias !== ''
-            ? $alias . '.tenant_id'
-            : 'tenant_id';
-
-        return " AND {$column} = {$tenantId}";
+        return match ($result) {
+            AuthorizationService::ACCESS_ALLOWED => null,
+            AuthorizationService::ACCESS_UNAUTHORIZED => $this->response->unauthorized(),
+            AuthorizationService::ACCESS_NOT_FOUND => $notFoundMessage !== null
+                ? $this->notFound($notFoundMessage)
+                : $this->response->forbidden('Access denied'),
+            default => $this->response->forbidden('Access denied'),
+        };
     }
 
-    private function tableHasColumn(string $table, string $column): bool
+    /**
+     * @param array<string, mixed> $result
+     */
+    private function mutationResponse(array $result): Response
     {
-        $tableName = trim($table, '`');
-        $cacheKey = $tableName . ':' . $column;
-        if (array_key_exists($cacheKey, $this->tableHasTenantColumn)) {
-            return $this->tableHasTenantColumn[$cacheKey];
-        }
+        $kind = (string) ($result['kind'] ?? 'error');
 
-        $exists = (int) ($this->db->fetchValue(
-            "SELECT COUNT(*)
-             FROM information_schema.columns
-             WHERE table_schema = DATABASE()
-               AND table_name = ?
-               AND column_name = ?",
-            [$tableName, $column]
-        ) ?? 0);
-
-        $this->tableHasTenantColumn[$cacheKey] = $exists > 0;
-        return $this->tableHasTenantColumn[$cacheKey];
+        return match ($kind) {
+            'created' => $this->created($result['data'] ?? []),
+            'json' => $this->json($result['data'] ?? []),
+            'validation_error' => $this->response->validationError((array) ($result['errors'] ?? [])),
+            'unauthorized' => $this->response->unauthorized(),
+            'forbidden' => $this->response->forbidden((string) ($result['message'] ?? 'Access denied')),
+            'not_found' => $this->notFound((string) ($result['message'] ?? 'Resource not found')),
+            default => $this->error((string) ($result['message'] ?? 'Request failed')),
+        };
     }
 
-    private function getTenantId(): ?int
+    private function projectService(): ProjectService
     {
-        if (!TenantContext::isEnabled()) {
-            return null;
+        if ($this->projectService === null) {
+            $this->projectService = new ProjectService($this->db);
         }
 
-        $tenantId = TenantContext::getTenantId();
-        if ($tenantId === null || $tenantId <= 0) {
-            return null;
+        return $this->projectService;
+    }
+
+    private function projectMutationService(): ProjectMutationService
+    {
+        if ($this->projectMutationService === null) {
+            $this->projectMutationService = new ProjectMutationService($this->db, $this->projectRepository());
         }
 
-        return $tenantId;
+        return $this->projectMutationService;
+    }
+
+    private function projectFormatter(): ProjectFormatter
+    {
+        if ($this->projectFormatter === null) {
+            $this->projectFormatter = new ProjectFormatter();
+        }
+
+        return $this->projectFormatter;
+    }
+
+    protected function getDatabase(): Database
+    {
+        return $this->db;
     }
 
     private function projectRepository(): ProjectRepository
@@ -1238,3 +542,6 @@ class ProjectController extends BaseController
         return $this->projectRepository;
     }
 }
+
+
+

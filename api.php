@@ -16,7 +16,6 @@ if (!isset($GLOBALS['OS_WIN'])) {
     $GLOBALS['OS_WIN'] = (mb_stristr(PHP_OS, 'WIN') !== false);
 }
 
-require_once DP_BASE_DIR . '/classes/csscolor.class.php';
 require_once DP_BASE_DIR . '/includes/main_functions.php';
 require_once DP_BASE_DIR . '/includes/db_adodb.php';
 require_once DP_BASE_DIR . '/includes/db_connect.php';

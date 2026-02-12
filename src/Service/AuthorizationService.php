@@ -53,6 +53,12 @@ class AuthorizationService
     public const ROLE_SUPERVISOR = 4;
     public const ROLE_USER = 5;
     public const ROLE_GUEST = 6;
+
+    /** Access-resolution result constants */
+    public const ACCESS_ALLOWED = 'allowed';
+    public const ACCESS_UNAUTHORIZED = 'unauthorized';
+    public const ACCESS_FORBIDDEN = 'forbidden';
+    public const ACCESS_NOT_FOUND = 'not_found';
     
     private Database $db;
     private Cache $cache;
@@ -307,6 +313,89 @@ class AuthorizationService
         $this->cache->set($cacheKey, $hasAccess, 60);
         
         return $hasAccess;
+    }
+
+    /**
+     * Resolve project access result using the same semantics expected by API controllers.
+     */
+    public function resolveProjectAccessResult(?int $userId, int $projectId): string
+    {
+        if ($userId === null) {
+            return self::ACCESS_UNAUTHORIZED;
+        }
+
+        if ($this->isAdmin($userId)) {
+            return self::ACCESS_ALLOWED;
+        }
+
+        $row = $this->db->fetchOne(sprintf(
+            "SELECT project_owner, project_creator, project_company FROM %s WHERE project_id = %d%s",
+            $this->db->table('projects'),
+            $projectId,
+            $this->tenantAndCondition($this->db->table('projects'))
+        ));
+
+        if ($row === null) {
+            return self::ACCESS_NOT_FOUND;
+        }
+
+        $ownerId = $row['project_owner'] ? (int) $row['project_owner'] : null;
+        $creatorId = $row['project_creator'] ? (int) $row['project_creator'] : null;
+        $companyId = $row['project_company'] ? (int) $row['project_company'] : null;
+
+        $permissionService = new PermissionService();
+        $escopo = $permissionService->getEscopoDados($userId);
+        if ($escopo) {
+            if (($escopo['role'] ?? null) === PermissionService::ROLE_PREFEITO) {
+                return self::ACCESS_ALLOWED;
+            }
+            if ($companyId && in_array($companyId, (array) ($escopo['unidades_escopo'] ?? []), true)) {
+                return self::ACCESS_ALLOWED;
+            }
+        }
+
+        if (!$companyId && (($ownerId && $ownerId === $userId) || ($creatorId && $creatorId === $userId))) {
+            return self::ACCESS_ALLOWED;
+        }
+
+        return self::ACCESS_FORBIDDEN;
+    }
+
+    /**
+     * Resolve whether the user can target a unidade/company in project mutations.
+     */
+    public function resolveTargetUnidadeAccessResult(?int $userId, int $unidadeId): string
+    {
+        if ($userId === null) {
+            return self::ACCESS_UNAUTHORIZED;
+        }
+
+        if ($this->isAdmin($userId)) {
+            return self::ACCESS_ALLOWED;
+        }
+
+        $permissionService = new PermissionService();
+        $escopo = $permissionService->getEscopoDados($userId);
+        if (!$escopo) {
+            return self::ACCESS_FORBIDDEN;
+        }
+
+        if (
+            in_array(
+                $escopo['role'] ?? '',
+                [PermissionService::ROLE_PREFEITO, PermissionService::ROLE_CONTROLADOR],
+                true
+            )
+        ) {
+            return self::ACCESS_ALLOWED;
+        }
+
+        $unidadesEscopo = array_map('intval', (array) ($escopo['unidades_escopo'] ?? []));
+        if (in_array($unidadeId, $unidadesEscopo, true)) {
+            return self::ACCESS_ALLOWED;
+        }
+
+        return self::ACCESS_FORBIDDEN;
     }
     
     /**

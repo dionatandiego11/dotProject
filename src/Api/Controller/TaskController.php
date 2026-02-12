@@ -12,26 +12,35 @@ declare(strict_types=1);
 
 namespace DotProject\Api\Controller;
 
+use DotProject\Api\Formatter\TaskFormatter;
 use DotProject\Api\Request;
 use DotProject\Api\Response;
+use DotProject\Core\Database;
 use DotProject\Core\Logger;
-use DotProject\Core\TenantContext;
+use DotProject\Core\TenantAwareTrait;
 use DotProject\Entity\TaskEntity;
 use DotProject\Repository\TaskRepository;
 use DotProject\Service\AuthorizationService;
 use DotProject\Service\PermissionService;
 use DotProject\Service\ProjectProgressSyncService;
+use DotProject\Service\ScopeFilterService;
+use DotProject\Service\TaskAccessService;
+use DotProject\Service\TaskStatusService;
 
 /**
  * Controller de tarefas
  */
 class TaskController extends BaseController
 {
+    use TenantAwareTrait;
+
     private ?bool $hasTaskAssignedTo = null;
     private ?ProjectProgressSyncService $projectProgressSync = null;
     private ?TaskRepository $taskRepository = null;
-    /** @var array<string, bool> */
-    private array $tableHasTenantColumn = [];
+    private ?TaskFormatter $taskFormatter = null;
+    private ?TaskStatusService $taskStatusService = null;
+    private ?TaskAccessService $taskAccessService = null;
+    private ?ScopeFilterService $scopeFilter = null;
 
     /**
      * GET /v1/tasks
@@ -45,8 +54,6 @@ class TaskController extends BaseController
         }
 
         $userId = $this->getUserId();
-        $auth = AuthorizationService::getInstance();
-        $perm = new PermissionService();
 
         $pagination = $this->getPagination();
 
@@ -62,31 +69,11 @@ class TaskController extends BaseController
         $params = [];
         $where .= $this->tenantAndCondition($this->db->table('tasks'), 't');
 
-        if ($userId !== null && !$auth->isAdmin($userId)) {
-            $escopo = $perm->getEscopoDados($userId);
-            if (!$escopo) {
-                return $this->response->paginated([], 0, $pagination['page'], $pagination['per_page']);
-            }
-            if ($escopo['role'] !== PermissionService::ROLE_PREFEITO) {
-                $unidades = $escopo['unidades_escopo'];
-                if (empty($unidades)) {
-                    return $this->response->paginated([], 0, $pagination['page'], $pagination['per_page']);
-                }
-                $placeholders = implode(',', array_fill(0, count($unidades), '?'));
-                $projectRows = $this->db->fetchAllParams(
-                    "SELECT project_id FROM {$this->db->table('projects')} WHERE project_company IN ({$placeholders})" .
-                    $this->tenantAndCondition($this->db->table('projects')),
-                    $unidades
-                );
-                $accessibleProjects = array_map(fn($row) => (int) $row['project_id'], $projectRows);
-                if (empty($accessibleProjects)) {
-                    return $this->response->paginated([], 0, $pagination['page'], $pagination['per_page']);
-                }
-                $projectPlaceholders = implode(',', array_fill(0, count($accessibleProjects), '?'));
-                $where .= " AND t.task_project IN ({$projectPlaceholders})";
-                $params = array_merge($params, $accessibleProjects);
-            }
+        $scope = $this->scopeFilter()->resolveUserScope($userId);
+        if ($scope['restricted'] && empty($scope['project_ids'])) {
+            return $this->response->paginated([], 0, $pagination['page'], $pagination['per_page']);
         }
+        [$where, $params] = $this->scopeFilter()->applyTaskScope($where, $params, 't.task_project', $scope);
 
         if ($projectId !== null) {
             $where .= ' AND t.task_project = ?';
@@ -141,7 +128,7 @@ class TaskController extends BaseController
             $pagination['offset'],
         ]));
 
-        $tasks = array_map(fn($row) => $this->formatTask($row), $rows);
+        $tasks = array_map(fn($row) => $this->taskFormatter()->format($row), $rows);
 
         return $this->response->paginated(
             $tasks,
@@ -186,7 +173,7 @@ class TaskController extends BaseController
             return $this->notFound('Task not found');
         }
 
-        return $this->json($this->formatTask($row, true));
+        return $this->json($this->taskFormatter()->format($row, true));
     }
 
     /**
@@ -224,7 +211,7 @@ class TaskController extends BaseController
             return $this->response->validationError($validation->errors());
         }
 
-        $this->normalizeTaskStatusPercent($body, null, null);
+        $this->taskStatus()->normalizeStatusPercent($body, null, null);
 
         // Verifica se projeto existe
         $projectExists = $this->db->fetchValue(sprintf(
@@ -359,7 +346,7 @@ class TaskController extends BaseController
         }
         if (array_key_exists('status', $body)) {
             $status = (int) $body['status'];
-            if ($status < 0 || $status > 7) {
+            if (!$this->taskStatus()->isValidStatus($status)) {
                 return $this->response->validationError([
                     'status' => 'Status inválido.'
                 ]);
@@ -394,7 +381,7 @@ class TaskController extends BaseController
             }
         }
 
-        $this->normalizeTaskStatusPercent(
+        $this->taskStatus()->normalizeStatusPercent(
             $body,
             $task->getStatus(),
             $task->getPercentComplete()
@@ -507,93 +494,6 @@ class TaskController extends BaseController
         return $this->response->noContent();
     }
 
-    /**
-     * Formata dados da tarefa para a API
-     */
-    private function formatTask(array $row, bool $detailed = false): array
-    {
-        $ownerId = !empty($row['task_owner']) ? (int) $row['task_owner'] : null;
-        $assigneeId = null;
-        if (array_key_exists('task_assigned_to', $row) && !empty($row['task_assigned_to'])) {
-            $assigneeId = (int) $row['task_assigned_to'];
-        } else {
-            $assigneeId = $ownerId;
-        }
-
-        $data = [
-            'id' => (int) $row['task_id'],
-            'name' => $row['task_name'],
-            'project' => [
-                'id' => (int) ($row['task_project'] ?? 0),
-                'name' => $row['project_name'] ?? null,
-            ],
-            'status' => (int) ($row['task_status'] ?? 0),
-            'priority' => (int) ($row['task_priority'] ?? 0),
-            'percent_complete' => (int) ($row['task_percent_complete'] ?? 0),
-            'start_date' => $row['task_start_date'] ?? null,
-            'end_date' => $row['task_end_date'] ?? null,
-            'duration' => (int) ($row['task_duration'] ?? 0),
-            'owner_id' => $ownerId,
-            'assigned_to' => $assigneeId,
-            'milestone' => (bool) ($row['task_milestone'] ?? false),
-        ];
-
-        if ($detailed) {
-            $data['description'] = $row['task_description'] ?? '';
-            $data['hours_worked'] = (float) ($row['task_hours_worked'] ?? 0);
-            $data['creator_id'] = $row['task_creator'] ? (int) $row['task_creator'] : null;
-            $data['parent_id'] = $row['task_parent'] ? (int) $row['task_parent'] : null;
-            $data['order'] = (int) ($row['task_order'] ?? 0);
-            $data['type'] = (int) ($row['task_type'] ?? 0);
-            $data['access'] = (int) ($row['task_access'] ?? 0);
-            $data['created'] = $row['task_created'] ?? null;
-            $data['updated'] = $row['task_updated'] ?? null;
-        }
-
-        return $data;
-    }
-
-    /**
-     * Keep task status/percent coherence for canonical workflow statuses.
-     *
-     * @param array<string, mixed> $payload
-     */
-    private function normalizeTaskStatusPercent(array &$payload, ?int $currentStatus, ?int $currentPercent): void
-    {
-        $hasStatus = array_key_exists('status', $payload)
-            && $payload['status'] !== null
-            && $payload['status'] !== '';
-        $hasPercent = array_key_exists('percent_complete', $payload)
-            && $payload['percent_complete'] !== null
-            && $payload['percent_complete'] !== '';
-
-        if (!$hasStatus && !$hasPercent) {
-            return;
-        }
-
-        $status = $hasStatus ? (int) $payload['status'] : (int) ($currentStatus ?? 0);
-        $percent = $hasPercent ? (int) $payload['percent_complete'] : (int) ($currentPercent ?? 0);
-        $percent = max(0, min(100, $percent));
-
-        if ($status === 0) {
-            $percent = 0;
-        } elseif ($status === 3) {
-            $percent = 100;
-        } elseif ($status === 1 && ($percent < 0 || $percent > 99)) {
-            $percent = 0;
-        } elseif ($status === 2 && ($percent <= 0 || $percent >= 100)) {
-            $percent = 50;
-        }
-
-        if ($hasStatus) {
-            $payload['status'] = $status;
-        }
-
-        if ($hasPercent || in_array($status, [0, 1, 2, 3], true)) {
-            $payload['percent_complete'] = $percent;
-        }
-    }
-
     private function supportsTaskAssignedToColumn(): bool
     {
         if ($this->hasTaskAssignedTo !== null) {
@@ -601,16 +501,7 @@ class TaskController extends BaseController
         }
 
         try {
-            $tasksTable = $this->db->table('tasks');
-            $count = (int) ($this->db->fetchValue(
-                "SELECT COUNT(*)
-                 FROM information_schema.columns
-                 WHERE table_schema = DATABASE()
-                   AND table_name = ?
-                   AND column_name = 'task_assigned_to'",
-                [$tasksTable]
-            ) ?? 0);
-            $this->hasTaskAssignedTo = $count > 0;
+            $this->hasTaskAssignedTo = $this->tableHasColumn($this->db->table('tasks'), 'task_assigned_to');
         } catch (\Throwable $e) {
             $this->hasTaskAssignedTo = false;
         }
@@ -672,60 +563,10 @@ class TaskController extends BaseController
      */
     private function ensureTaskAccess(int $taskId): ?Response
     {
-        $userId = $this->getUserId();
-        if ($userId === null) {
-            return $this->response->unauthorized();
-        }
-
-        $auth = AuthorizationService::getInstance();
-        if ($auth->isAdmin($userId)) {
-            return null;
-        }
-
-        $perm = new PermissionService();
-
-        $row = $this->db->fetchOne(sprintf(
-            "SELECT t.task_owner, t.task_creator, p.project_owner, p.project_creator, p.project_company
-             FROM %s t
-             LEFT JOIN %s p ON t.task_project = p.project_id%s
-             WHERE t.task_id = %d%s",
-            $this->db->table('tasks'),
-            $this->db->table('projects'),
-            $this->tenantAndCondition($this->db->table('projects'), 'p'),
-            $taskId,
-            $this->tenantAndCondition($this->db->table('tasks'), 't')
-        ));
-
-        if ($row === null) {
-            return $this->notFound('Task not found');
-        }
-
-        $taskOwner = $row['task_owner'] ? (int) $row['task_owner'] : null;
-        $taskCreator = $row['task_creator'] ? (int) $row['task_creator'] : null;
-        $projectOwner = $row['project_owner'] ? (int) $row['project_owner'] : null;
-        $projectCreator = $row['project_creator'] ? (int) $row['project_creator'] : null;
-        $projectCompany = $row['project_company'] ? (int) $row['project_company'] : null;
-
-        $escopo = $perm->getEscopoDados($userId);
-        if ($escopo) {
-            if ($escopo['role'] === PermissionService::ROLE_PREFEITO) {
-                return null;
-            }
-            if ($projectCompany && in_array($projectCompany, $escopo['unidades_escopo'], true)) {
-                return null;
-            }
-        }
-
-        if (
-            ($taskOwner && $taskOwner === $userId) ||
-            ($taskCreator && $taskCreator === $userId) ||
-            ($projectOwner && $projectOwner === $userId) ||
-            ($projectCreator && $projectCreator === $userId)
-        ) {
-            return null;
-        }
-
-        return $this->response->forbidden('Access denied');
+        return $this->resolveAccessResponse(
+            $this->taskAccessService()->resolveTaskAccess($this->getUserId(), $taskId),
+            'Task not found'
+        );
     }
 
     /**
@@ -733,97 +574,61 @@ class TaskController extends BaseController
      */
     private function ensureProjectAccess(int $projectId): ?Response
     {
-        $userId = $this->getUserId();
-        if ($userId === null) {
-            return $this->response->unauthorized();
-        }
-
-        $auth = AuthorizationService::getInstance();
-        if ($auth->isAdmin($userId)) {
-            return null;
-        }
-
-        $perm = new PermissionService();
-
-        $row = $this->db->fetchOne(sprintf(
-            "SELECT project_owner, project_creator, project_company FROM %s WHERE project_id = %d%s",
-            $this->db->table('projects'),
-            $projectId,
-            $this->tenantAndCondition($this->db->table('projects'))
-        ));
-
-        if ($row === null) {
-            return $this->notFound('Project not found');
-        }
-
-        $ownerId = $row['project_owner'] ? (int) $row['project_owner'] : null;
-        $creatorId = $row['project_creator'] ? (int) $row['project_creator'] : null;
-        $companyId = $row['project_company'] ? (int) $row['project_company'] : null;
-
-        $escopo = $perm->getEscopoDados($userId);
-        if ($escopo) {
-            if ($escopo['role'] === PermissionService::ROLE_PREFEITO) {
-                return null;
-            }
-            if ($companyId && in_array($companyId, $escopo['unidades_escopo'], true)) {
-                return null;
-            }
-        }
-
-        if (!$companyId && (($ownerId && $ownerId === $userId) || ($creatorId && $creatorId === $userId))) {
-            return null;
-        }
-
-        return $this->response->forbidden('Access denied');
+        return $this->resolveAccessResponse(
+            $this->taskAccessService()->resolveProjectAccess($this->getUserId(), $projectId),
+            'Project not found'
+        );
     }
 
-    private function tenantAndCondition(string $table, ?string $alias = null): string
+    private function resolveAccessResponse(string $result, string $notFoundMessage): ?Response
     {
-        $tenantId = $this->getTenantId();
-        if ($tenantId === null || !$this->tableHasColumn($table, 'tenant_id')) {
-            return '';
-        }
-
-        $column = $alias !== null && $alias !== ''
-            ? $alias . '.tenant_id'
-            : 'tenant_id';
-
-        return " AND {$column} = {$tenantId}";
+        return match ($result) {
+            TaskAccessService::RESULT_ALLOWED => null,
+            TaskAccessService::RESULT_UNAUTHORIZED => $this->response->unauthorized(),
+            TaskAccessService::RESULT_NOT_FOUND => $this->notFound($notFoundMessage),
+            default => $this->response->forbidden('Access denied'),
+        };
     }
 
-    private function tableHasColumn(string $table, string $column): bool
+    private function taskFormatter(): TaskFormatter
     {
-        $tableName = trim($table, '`');
-        $cacheKey = $tableName . ':' . $column;
-        if (array_key_exists($cacheKey, $this->tableHasTenantColumn)) {
-            return $this->tableHasTenantColumn[$cacheKey];
+        if ($this->taskFormatter === null) {
+            $this->taskFormatter = new TaskFormatter();
         }
 
-        $exists = (int) ($this->db->fetchValue(
-            "SELECT COUNT(*)
-             FROM information_schema.columns
-             WHERE table_schema = DATABASE()
-               AND table_name = ?
-               AND column_name = ?",
-            [$tableName, $column]
-        ) ?? 0);
-
-        $this->tableHasTenantColumn[$cacheKey] = $exists > 0;
-        return $this->tableHasTenantColumn[$cacheKey];
+        return $this->taskFormatter;
     }
 
-    private function getTenantId(): ?int
+    private function taskStatus(): TaskStatusService
     {
-        if (!TenantContext::isEnabled()) {
-            return null;
+        if ($this->taskStatusService === null) {
+            $this->taskStatusService = new TaskStatusService();
         }
 
-        $tenantId = TenantContext::getTenantId();
-        if ($tenantId === null || $tenantId <= 0) {
-            return null;
+        return $this->taskStatusService;
+    }
+
+    private function taskAccessService(): TaskAccessService
+    {
+        if ($this->taskAccessService === null) {
+            $this->taskAccessService = new TaskAccessService($this->db);
         }
 
-        return $tenantId;
+        return $this->taskAccessService;
+    }
+
+    private function scopeFilter(): ScopeFilterService
+    {
+        if ($this->scopeFilter === null) {
+            $this->scopeFilter = new ScopeFilterService($this->db);
+        }
+
+        return $this->scopeFilter;
+    }
+
+    protected function getDatabase(): Database
+    {
+        return $this->db;
     }
 
     private function taskRepository(): TaskRepository
