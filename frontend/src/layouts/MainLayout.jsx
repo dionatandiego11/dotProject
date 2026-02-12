@@ -1,13 +1,12 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
-import { logout, getAdminOnboardingReadiness } from '../services/api'
+import { logout } from '../services/api'
 import useCurrentUser from '../hooks/useCurrentUser'
 import { isAdminUser } from '../utils/userAccess'
 
 function MainLayout() {
     const { user, clear } = useCurrentUser()
     const navigate = useNavigate()
-    const [showSetupEntry, setShowSetupEntry] = useState(true)
 
     async function handleLogout() {
         await logout()
@@ -19,54 +18,11 @@ function MainLayout() {
 
     const isAdmin = isAdminUser(user)
 
-    useEffect(() => {
-        let isActive = true
-
-        if (!isAdmin) {
-            setShowSetupEntry(false)
-            return () => {
-                isActive = false
-            }
-        }
-
-        async function loadReadiness() {
-            try {
-                const response = await getAdminOnboardingReadiness()
-                const progress = response?.data?.progress || {}
-                const completed = Number(progress.completed || 0)
-                const total = Number(progress.total || 0)
-                const pending = total > 0 && completed < total
-
-                if (isActive) {
-                    setShowSetupEntry(pending)
-                }
-            } catch (_) {
-                if (isActive) {
-                    // Mantém acesso ao setup caso a consulta de status falhe.
-                    setShowSetupEntry(true)
-                }
-            }
-        }
-
-        loadReadiness()
-
-        return () => {
-            isActive = false
-        }
-    }, [isAdmin])
-
     const adminItems = useMemo(() => {
-        const items = [
-            { path: '/admin/unidades', label: 'Estrutura' },
-            { path: '/admin/usuarios', label: 'Usuários' },
+        return [
+            { path: '/admin/setup', label: 'Setup inicial' },
         ]
-
-        if (showSetupEntry) {
-            items.unshift({ path: '/admin/setup', label: 'Setup inicial' })
-        }
-
-        return items
-    }, [showSetupEntry])
+    }, [])
 
     return (
         <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#f3f4f6' }}>
@@ -164,26 +120,7 @@ function MainLayout() {
                         <span style={{ fontSize: 14, fontWeight: 500 }}>Tarefas</span>
                     </NavLink>
 
-                    {/* Organograma (visivel para todos) */}
-                    <NavLink
-                        to="/admin/organograma"
-                        style={({ isActive }) => ({
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 12,
-                            padding: '12px 16px',
-                            borderRadius: 8,
-                            color: isActive ? 'white' : '#9ca3af',
-                            backgroundColor: isActive ? '#3b82f6' : 'transparent',
-                            textDecoration: 'none',
-                            marginBottom: 4,
-                            transition: 'all 0.2s'
-                        })}
-                    >
-                        <span style={{ fontSize: 14, fontWeight: 500 }}>Organograma</span>
-                    </NavLink>
-
-                    {/* Unidades Organizacionais - apenas para admins */}
+                    {/* Administração - apenas para admins */}
                     {isAdmin && (
                         <>
                             <div style={{

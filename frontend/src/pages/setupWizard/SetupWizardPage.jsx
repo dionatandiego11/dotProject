@@ -259,6 +259,22 @@ export default function SetupWizardPage() {
                 </div>
 
                 <div className="setup-wizard__body">
+                    <div className="setup-wizard__step-meta">
+                        Etapa {wizard.currentStepNumber} de {wizard.totalSteps}: <strong>{wizard.currentStepLabel}</strong>
+                    </div>
+
+                    <div className="setup-wizard__quick-summary">
+                        <span className="setup-wizard__quick-item">Niveis: {wizard.setupSummary.niveis}</span>
+                        <span className="setup-wizard__quick-item">Secretarias: {wizard.setupSummary.secretarias}</span>
+                        <span className="setup-wizard__quick-item">Departamentos: {wizard.setupSummary.departamentos}</span>
+                        <span className="setup-wizard__quick-item">Convites: {wizard.setupSummary.convites}</span>
+                        {wizard.setupSummary.usuarioPrincipal && (
+                            <span className="setup-wizard__quick-item">
+                                Usuario principal: {wizard.setupSummary.usuarioPrincipal}
+                            </span>
+                        )}
+                    </div>
+
                     {wizard.error && (
                         <div className="setup-wizard__error">{wizard.error}</div>
                     )}
@@ -291,7 +307,7 @@ export default function SetupWizardPage() {
                                 onClick={wizard.nextStep}
                                 disabled={!wizard.canAdvance}
                             >
-                                Avancar {'->'}
+                                Avancar para {wizard.nextStepLabel} {'->'}
                             </button>
                         )}
                     </div>

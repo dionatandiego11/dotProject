@@ -107,6 +107,29 @@ export default function useWizardState() {
 
     const requiresExplicitUnlock = Boolean(readinessError) || hasExistingStructure
     const isLastStep = step === STEP_LABELS.length - 1
+    const currentStepNumber = step + 1
+    const totalSteps = STEP_LABELS.length
+    const currentStepLabel = STEP_LABELS[step] || ''
+    const nextStepLabel = STEP_LABELS[step + 1] || ''
+
+    const setupSummary = useMemo(() => {
+        const secretariasAtivas = secretarias.filter((secretaria) => secretaria.nome.trim())
+        const departamentosAtivos = Object.values(departamentos).reduce((total, deptos) => {
+            if (!Array.isArray(deptos)) {
+                return total
+            }
+
+            return total + deptos.filter((depto) => (depto.nome || '').trim()).length
+        }, 0)
+
+        return {
+            niveis: niveis.length,
+            secretarias: secretariasAtivas.length,
+            departamentos: departamentosAtivos,
+            convites: convites.length,
+            usuarioPrincipal: usuario.username.trim(),
+        }
+    }, [niveis, secretarias, departamentos, convites, usuario.username])
 
     const canAdvance = useMemo(() => {
         switch (step) {
@@ -306,6 +329,11 @@ export default function useWizardState() {
         hasExistingStructure,
         requiresExplicitUnlock,
         isLastStep,
+        currentStepNumber,
+        totalSteps,
+        currentStepLabel,
+        nextStepLabel,
+        setupSummary,
         canAdvance,
         clearError,
         setPrefeituraField,

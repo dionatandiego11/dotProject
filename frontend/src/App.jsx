@@ -19,7 +19,9 @@ const Login = lazy(() => import('./pages/Login'))
 const SetupWizard = lazy(() => import('./pages/SetupWizard'))
 
 // Admin pages
+const AdminLayout = lazy(() => import('./pages/admin/AdminLayout'))
 const DashboardAdmin = lazy(() => import('./pages/admin/DashboardAdmin'))
+const PrefeituraConfig = lazy(() => import('./pages/admin/PrefeituraConfig'))
 const NiveisList = lazy(() => import('./pages/admin/NiveisList'))
 const UnidadesTree = lazy(() => import('./pages/admin/UnidadesTree'))
 const Organograma = lazy(() => import('./pages/admin/Organograma'))
@@ -128,40 +130,50 @@ function App() {
                             </Suspense>
                         } />
 
-                        {/* Admin - Níveis, Unidades, Usuários, Permissões */}
-                        {/* Removido /admin (dashboard redundante) */}
-                        <Route path="admin/niveis" element={
-                            <Suspense fallback={<Loading />}>
-                                <NiveisList />
-                            </Suspense>
-                        } />
-                        <Route path="admin/unidades" element={
-                            <Suspense fallback={<Loading />}>
-                                <UnidadesTree />
-                            </Suspense>
-                        } />
-                        <Route path="admin/usuarios" element={
-                            <Suspense fallback={<Loading />}>
-                                <UsuariosAdmin />
-                            </Suspense>
-                        } />
-                        <Route path="admin/organograma" element={
-                            <Suspense fallback={<Loading />}>
-                                <Organograma />
-                            </Suspense>
-                        } />
-                        <Route path="admin/setup" element={
+                        {/* Admin — Layout com sidebar + sub-rotas */}
+                        <Route path="admin" element={
                             <AdminRoute>
+                                <Suspense fallback={<Loading />}>
+                                    <AdminLayout />
+                                </Suspense>
+                            </AdminRoute>
+                        }>
+                            <Route index element={
+                                <Suspense fallback={<Loading />}>
+                                    <DashboardAdmin />
+                                </Suspense>
+                            } />
+                            <Route path="prefeitura" element={
+                                <Suspense fallback={<Loading />}>
+                                    <PrefeituraConfig />
+                                </Suspense>
+                            } />
+                            <Route path="niveis" element={
+                                <Suspense fallback={<Loading />}>
+                                    <NiveisList />
+                                </Suspense>
+                            } />
+                            <Route path="unidades" element={
+                                <Suspense fallback={<Loading />}>
+                                    <UnidadesTree />
+                                </Suspense>
+                            } />
+                            <Route path="usuarios" element={
+                                <Suspense fallback={<Loading />}>
+                                    <UsuariosAdmin />
+                                </Suspense>
+                            } />
+                            <Route path="organograma" element={
+                                <Suspense fallback={<Loading />}>
+                                    <Organograma />
+                                </Suspense>
+                            } />
+                            <Route path="setup" element={
                                 <Suspense fallback={<Loading />}>
                                     <SetupWizard />
                                 </Suspense>
-                            </AdminRoute>
-                        } />
-
-                        {/* Redirecionar /admin para /admin/unidades */}
-                        <Route path="admin" element={
-                            <Navigate to="/admin/unidades" replace />
-                        } />
+                            } />
+                        </Route>
                     </Route>
 
                     {/* Redirect /dashboard/* to / (todos os dashboards agora são em /) */}
