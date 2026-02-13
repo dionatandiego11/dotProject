@@ -63,6 +63,16 @@ export default function ProjectTable({
                                                 {project.short_name}
                                             </div>
                                         )}
+                                        {(project.programa?.nome || project.programa_id) && (
+                                            <div style={{ fontSize: '0.75rem', color: 'var(--color-primary-600)' }}>
+                                                Programa: {project.programa?.nome || `#${project.programa_id}`}
+                                            </div>
+                                        )}
+                                        {(project.acao?.nome || project.acao_id) && (
+                                            <div style={{ fontSize: '0.75rem', color: 'var(--color-gray-600)' }}>
+                                                Acao: {project.acao?.nome || `#${project.acao_id}`}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </td>

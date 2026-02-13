@@ -57,6 +57,8 @@ class ProjectController extends BaseController
 
         // Filtros opcionais
         $unidadeId = $this->resolveUnidadeQueryParam();
+        $programaId = $this->request->getQueryParam('programa_id');
+        $acaoId = $this->request->getQueryParam('acao_id');
         $status = $this->request->getQueryParam('status');
         $search = $this->request->getQueryParam('search');
 
@@ -85,6 +87,16 @@ class ProjectController extends BaseController
             $params[] = $unidadeId;
         }
 
+        if ($programaId !== null && $programaId !== '' && $this->tableHasColumn($this->db->table('projects'), 'project_programa_id')) {
+            $where .= ' AND project_programa_id = ?';
+            $params[] = (int) $programaId;
+        }
+
+        if ($acaoId !== null && $acaoId !== '' && $this->tableHasColumn($this->db->table('projects'), 'project_acao_id')) {
+            $where .= ' AND project_acao_id = ?';
+            $params[] = (int) $acaoId;
+        }
+
         if ($status !== null) {
             $where .= ' AND project_status = ?';
             $params[] = (int) $status;
@@ -100,6 +112,30 @@ class ProjectController extends BaseController
         $totalWhere = $where . $this->tenantAndCondition($this->db->table('projects'));
         $listWhere = $where . $this->tenantAndCondition($this->db->table('projects'), 'p');
 
+        $programJoin = '';
+        $programSelect = '';
+        if ($this->tableHasColumn($this->db->table('projects'), 'project_programa_id')) {
+            if ($this->tableHasColumn('dotp_programas', 'id')) {
+                $programJoin = ' LEFT JOIN `dotp_programas` prog ON p.project_programa_id = prog.id' . $this->tenantAndCondition('dotp_programas', 'prog');
+                $programSelect = ', prog.nome AS programa_nome';
+            } elseif ($this->tableHasColumn('programas', 'id')) {
+                $programJoin = ' LEFT JOIN `programas` prog ON p.project_programa_id = prog.id' . $this->tenantAndCondition('programas', 'prog');
+                $programSelect = ', prog.nome AS programa_nome';
+            }
+        }
+
+        $acaoJoin = '';
+        $acaoSelect = '';
+        if ($this->tableHasColumn($this->db->table('projects'), 'project_acao_id')) {
+            if ($this->tableHasColumn('dotp_acoes', 'id')) {
+                $acaoJoin = ' LEFT JOIN `dotp_acoes` ac ON p.project_acao_id = ac.id' . $this->tenantAndCondition('dotp_acoes', 'ac');
+                $acaoSelect = ', ac.nome AS acao_nome';
+            } elseif ($this->tableHasColumn('acoes', 'id')) {
+                $acaoJoin = ' LEFT JOIN `acoes` ac ON p.project_acao_id = ac.id' . $this->tenantAndCondition('acoes', 'ac');
+                $acaoSelect = ', ac.nome AS acao_nome';
+            }
+        }
+
         // Conta total
         $totalSql = sprintf(
             "SELECT COUNT(*) as total FROM %s WHERE %s",
@@ -110,17 +146,22 @@ class ProjectController extends BaseController
 
         // Busca projetos
         $sql = sprintf(
-            "SELECT p.*, c.company_name, u.unidade_nome 
+            "SELECT p.*, c.company_name, u.unidade_nome%s%s
              FROM %s p 
              LEFT JOIN %s c ON p.project_company = c.company_id%s
              LEFT JOIN dotp_unidades_organizacionais u ON p.project_company = u.unidade_id%s
+             %s%s
              WHERE %s
              ORDER BY p.project_name ASC
              LIMIT ? OFFSET ?",
+            $programSelect,
+            $acaoSelect,
             $this->db->table('projects'),
             $this->db->table('companies'),
             $this->tenantAndCondition($this->db->table('companies'), 'c'),
             $this->tenantAndCondition('dotp_unidades_organizacionais', 'u'),
+            $programJoin,
+            $acaoJoin,
             $listWhere
         );
         $rows = $this->db->fetchAllParams($sql, array_merge($params, [
@@ -155,16 +196,45 @@ class ProjectController extends BaseController
             return $guard;
         }
 
+        $programJoin = '';
+        $programSelect = '';
+        if ($this->tableHasColumn($this->db->table('projects'), 'project_programa_id')) {
+            if ($this->tableHasColumn('dotp_programas', 'id')) {
+                $programJoin = ' LEFT JOIN `dotp_programas` prog ON p.project_programa_id = prog.id' . $this->tenantAndCondition('dotp_programas', 'prog');
+                $programSelect = ', prog.nome AS programa_nome';
+            } elseif ($this->tableHasColumn('programas', 'id')) {
+                $programJoin = ' LEFT JOIN `programas` prog ON p.project_programa_id = prog.id' . $this->tenantAndCondition('programas', 'prog');
+                $programSelect = ', prog.nome AS programa_nome';
+            }
+        }
+
+        $acaoJoin = '';
+        $acaoSelect = '';
+        if ($this->tableHasColumn($this->db->table('projects'), 'project_acao_id')) {
+            if ($this->tableHasColumn('dotp_acoes', 'id')) {
+                $acaoJoin = ' LEFT JOIN `dotp_acoes` ac ON p.project_acao_id = ac.id' . $this->tenantAndCondition('dotp_acoes', 'ac');
+                $acaoSelect = ', ac.nome AS acao_nome';
+            } elseif ($this->tableHasColumn('acoes', 'id')) {
+                $acaoJoin = ' LEFT JOIN `acoes` ac ON p.project_acao_id = ac.id' . $this->tenantAndCondition('acoes', 'ac');
+                $acaoSelect = ', ac.nome AS acao_nome';
+            }
+        }
+
         $sql = sprintf(
-            "SELECT p.*, c.company_name, u.unidade_nome 
+            "SELECT p.*, c.company_name, u.unidade_nome%s%s
              FROM %s p 
              LEFT JOIN %s c ON p.project_company = c.company_id%s
              LEFT JOIN dotp_unidades_organizacionais u ON p.project_company = u.unidade_id%s
+             %s%s
              WHERE p.project_id = %d%s",
+            $programSelect,
+            $acaoSelect,
             $this->db->table('projects'),
             $this->db->table('companies'),
             $this->tenantAndCondition($this->db->table('companies'), 'c'),
             $this->tenantAndCondition('dotp_unidades_organizacionais', 'u'),
+            $programJoin,
+            $acaoJoin,
             $id,
             $this->tenantAndCondition($this->db->table('projects'), 'p')
         );

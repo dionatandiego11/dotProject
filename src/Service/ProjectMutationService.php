@@ -88,6 +88,24 @@ class ProjectMutationService
             return $this->accessResult($targetUnidadeAccess);
         }
 
+        $programaId = null;
+        if ($this->tableHasColumn($this->db->table('projects'), 'project_programa_id') && array_key_exists('programa_id', $body)) {
+            $programaId = $this->normalizeProgramaId($body['programa_id']);
+            $programaValidation = $this->validateProgramaId($programaId);
+            if ($programaValidation !== null) {
+                return $this->validationResult($programaValidation);
+            }
+        }
+
+        $acaoId = null;
+        if ($this->tableHasColumn($this->db->table('projects'), 'project_acao_id') && array_key_exists('acao_id', $body)) {
+            $acaoId = $this->normalizeAcaoId($body['acao_id']);
+            $acaoValidation = $this->validateAcaoId($acaoId, $programaId);
+            if ($acaoValidation !== null) {
+                return $this->validationResult($acaoValidation);
+            }
+        }
+
         $project = new ProjectEntity();
         $project->setName((string) ($body['name'] ?? ''));
         $project->setShortName($shortName !== '' ? $shortName : null);
@@ -124,6 +142,12 @@ class ProjectMutationService
         }
         if ($this->tableHasColumn($this->db->table('projects'), 'project_type')) {
             $legacyFields['project_type'] = (int) ($body['type'] ?? 0);
+        }
+        if ($this->tableHasColumn($this->db->table('projects'), 'project_programa_id') && array_key_exists('programa_id', $body)) {
+            $legacyFields['project_programa_id'] = $programaId;
+        }
+        if ($this->tableHasColumn($this->db->table('projects'), 'project_acao_id') && array_key_exists('acao_id', $body)) {
+            $legacyFields['project_acao_id'] = $acaoId;
         }
 
         if (!$this->updateProjectRow($projectId, $legacyFields)) {
@@ -243,6 +267,26 @@ class ProjectMutationService
             }
         }
 
+        $programaId = null;
+        $hasProgramaField = array_key_exists('programa_id', $body);
+        if ($hasProgramaField && $this->tableHasColumn($this->db->table('projects'), 'project_programa_id')) {
+            $programaId = $this->normalizeProgramaId($body['programa_id']);
+            $programaValidation = $this->validateProgramaId($programaId);
+            if ($programaValidation !== null) {
+                return $this->validationResult($programaValidation);
+            }
+        }
+
+        $acaoId = null;
+        $hasAcaoField = array_key_exists('acao_id', $body);
+        if ($hasAcaoField && $this->tableHasColumn($this->db->table('projects'), 'project_acao_id')) {
+            $acaoId = $this->normalizeAcaoId($body['acao_id']);
+            $acaoValidation = $this->validateAcaoId($acaoId, $programaId);
+            if ($acaoValidation !== null) {
+                return $this->validationResult($acaoValidation);
+            }
+        }
+
         if (array_key_exists('name', $body)) {
             $project->setName((string) $body['name']);
         }
@@ -291,6 +335,12 @@ class ProjectMutationService
         }
         if (array_key_exists('type', $body) && $this->tableHasColumn($this->db->table('projects'), 'project_type')) {
             $legacyUpdates['project_type'] = (int) $body['type'];
+        }
+        if ($hasProgramaField && $this->tableHasColumn($this->db->table('projects'), 'project_programa_id')) {
+            $legacyUpdates['project_programa_id'] = $programaId;
+        }
+        if ($hasAcaoField && $this->tableHasColumn($this->db->table('projects'), 'project_acao_id')) {
+            $legacyUpdates['project_acao_id'] = $acaoId;
         }
 
         if (!$this->updateProjectRow($projectId, $legacyUpdates)) {
@@ -424,6 +474,143 @@ class ProjectMutationService
         return [
             'unidade_id' => $message,
             'company_id' => $message,
+        ];
+    }
+
+    /**
+     * @return array<string, string>|null
+     */
+    private function validateProgramaId(?int $programaId): ?array
+    {
+        if ($programaId === null) {
+            return null;
+        }
+
+        $programTable = $this->resolveProgramTable();
+        if ($programTable === null) {
+            return $this->programaValidationError('Tabela de programas nao encontrada.');
+        }
+
+        $exists = $this->db->fetchValue(sprintf(
+            'SELECT id FROM `%s` WHERE id = %d%s LIMIT 1',
+            $programTable,
+            $programaId,
+            $this->tenantAndCondition($programTable)
+        ));
+
+        if ($exists === null) {
+            return $this->programaValidationError('Programa informado nao encontrado.');
+        }
+
+        return null;
+    }
+
+    private function normalizeProgramaId(mixed $value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $programaId = (int) $value;
+        return $programaId > 0 ? $programaId : null;
+    }
+
+    /**
+     * @return array<string, string>|null
+     */
+    private function validateAcaoId(?int $acaoId, ?int $programaId): ?array
+    {
+        if ($acaoId === null) {
+            return null;
+        }
+
+        $acaoTable = $this->resolveAcaoTable();
+        if ($acaoTable === null) {
+            return $this->acaoValidationError('Tabela de acoes nao encontrada.');
+        }
+
+        $select = 'SELECT id, programa_id';
+        if (!$this->tableHasColumn($acaoTable, 'programa_id')) {
+            $select = 'SELECT id, NULL AS programa_id';
+        }
+
+        $row = $this->db->fetchOne(sprintf(
+            '%s FROM `%s` WHERE id = %d%s LIMIT 1',
+            $select,
+            $acaoTable,
+            $acaoId,
+            $this->tenantAndCondition($acaoTable)
+        ));
+
+        if ($row === null) {
+            return $this->acaoValidationError('Acao informada nao encontrada.');
+        }
+
+        if (
+            $programaId !== null &&
+            isset($row['programa_id']) &&
+            (int) $row['programa_id'] > 0 &&
+            (int) $row['programa_id'] !== $programaId
+        ) {
+            return $this->acaoValidationError('A acao informada nao pertence ao programa selecionado.');
+        }
+
+        return null;
+    }
+
+    private function normalizeAcaoId(mixed $value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $acaoId = (int) $value;
+        return $acaoId > 0 ? $acaoId : null;
+    }
+
+    private function resolveProgramTable(): ?string
+    {
+        if ($this->tableHasColumn('dotp_programas', 'id')) {
+            return 'dotp_programas';
+        }
+
+        if ($this->tableHasColumn('programas', 'id')) {
+            return 'programas';
+        }
+
+        return null;
+    }
+
+    private function resolveAcaoTable(): ?string
+    {
+        if ($this->tableHasColumn('dotp_acoes', 'id')) {
+            return 'dotp_acoes';
+        }
+
+        if ($this->tableHasColumn('acoes', 'id')) {
+            return 'acoes';
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function programaValidationError(string $message): array
+    {
+        return [
+            'programa_id' => $message,
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function acaoValidationError(string $message): array
+    {
+        return [
+            'acao_id' => $message,
         ];
     }
 

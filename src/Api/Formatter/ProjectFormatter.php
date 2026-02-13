@@ -27,6 +27,20 @@ class ProjectFormatter
         $unidadeNome = isset($row['unidade_nome']) ? trim((string) $row['unidade_nome']) : '';
         $companyName = isset($row['company_name']) ? trim((string) $row['company_name']) : '';
         $displayUnidadeNome = $unidadeNome !== '' ? $unidadeNome : ($companyName !== '' ? $companyName : null);
+        $programaId = isset($row['project_programa_id']) && (int) $row['project_programa_id'] > 0
+            ? (int) $row['project_programa_id']
+            : null;
+        $programaNome = isset($row['programa_nome']) ? trim((string) $row['programa_nome']) : null;
+        if ($programaNome === '') {
+            $programaNome = null;
+        }
+        $acaoId = isset($row['project_acao_id']) && (int) $row['project_acao_id'] > 0
+            ? (int) $row['project_acao_id']
+            : null;
+        $acaoNome = isset($row['acao_nome']) ? trim((string) $row['acao_nome']) : null;
+        if ($acaoNome === '') {
+            $acaoNome = null;
+        }
 
         $data = [
             'id' => (int) $row['project_id'],
@@ -41,6 +55,16 @@ class ProjectFormatter
             'company' => [
                 'id' => $companyCompatId,
                 'name' => $displayUnidadeNome,
+            ],
+            'programa_id' => $programaId,
+            'programa' => [
+                'id' => $programaId,
+                'nome' => $programaNome,
+            ],
+            'acao_id' => $acaoId,
+            'acao' => [
+                'id' => $acaoId,
+                'nome' => $acaoNome,
             ],
             'status' => (int) ($row['project_status'] ?? 0),
             'percent_complete' => (int) ($row['project_percent_complete'] ?? 0),

@@ -9,6 +9,7 @@ import * as notificationsService from './notifications';
 import * as filesService from './files';
 import * as dashboardService from './dashboard';
 import * as adminService from './admin';
+import * as ppaService from './ppa';
 
 export * from './client';
 export * from './auth';
@@ -21,6 +22,7 @@ export * from './notifications';
 export * from './files';
 export * from './dashboard';
 export * from './admin';
+export * from './ppa';
 
 export const services = Object.freeze({
     auth: authService,
@@ -33,6 +35,7 @@ export const services = Object.freeze({
     files: filesService,
     dashboard: dashboardService,
     admin: adminService,
+    ppa: ppaService,
 });
 
 export const api = Object.freeze({
@@ -47,6 +50,7 @@ export const api = Object.freeze({
     ...filesService,
     ...dashboardService,
     ...adminService,
+    ...ppaService,
     client: apiClient,
     services,
 });

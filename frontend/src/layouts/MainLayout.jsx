@@ -84,6 +84,61 @@ function MainLayout() {
 
                     {/* Projetos */}
                     <NavLink
+                        to="/ppa"
+                        style={({ isActive }) => ({
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 12,
+                            padding: '12px 16px',
+                            borderRadius: 8,
+                            color: isActive ? 'white' : '#9ca3af',
+                            backgroundColor: isActive ? '#3b82f6' : 'transparent',
+                            textDecoration: 'none',
+                            marginBottom: 4,
+                            transition: 'all 0.2s'
+                        })}
+                    >
+                        <span style={{ fontSize: 14, fontWeight: 500 }}>PPA</span>
+                    </NavLink>
+
+                    <NavLink
+                        to="/programas"
+                        style={({ isActive }) => ({
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 12,
+                            padding: '12px 16px',
+                            borderRadius: 8,
+                            color: isActive ? 'white' : '#9ca3af',
+                            backgroundColor: isActive ? '#3b82f6' : 'transparent',
+                            textDecoration: 'none',
+                            marginBottom: 4,
+                            transition: 'all 0.2s'
+                        })}
+                    >
+                        <span style={{ fontSize: 14, fontWeight: 500 }}>Programas</span>
+                    </NavLink>
+
+                    <NavLink
+                        to="/acoes"
+                        style={({ isActive }) => ({
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 12,
+                            padding: '12px 16px',
+                            borderRadius: 8,
+                            color: isActive ? 'white' : '#9ca3af',
+                            backgroundColor: isActive ? '#3b82f6' : 'transparent',
+                            textDecoration: 'none',
+                            marginBottom: 4,
+                            transition: 'all 0.2s'
+                        })}
+                    >
+                        <span style={{ fontSize: 14, fontWeight: 500 }}>Acoes</span>
+                    </NavLink>
+
+                    {/* Projetos */}
+                    <NavLink
                         to="/projects"
                         style={({ isActive }) => ({
                             display: 'flex',

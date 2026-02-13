@@ -12,6 +12,9 @@ import MainLayout from './layouts/MainLayout'
 
 // Lazy loading das páginas
 const Dashboard = lazy(() => import('./pages/Dashboard'))
+const Ppa = lazy(() => import('./pages/Ppa'))
+const Programas = lazy(() => import('./pages/Programas'))
+const Acoes = lazy(() => import('./pages/Acoes'))
 const Projects = lazy(() => import('./pages/Projects'))
 const ProjectDetails = lazy(() => import('./pages/ProjectDetails'))
 const Kanban = lazy(() => import('./pages/Kanban'))
@@ -108,6 +111,23 @@ function App() {
                         <Route index element={
                             <Suspense fallback={<Loading />}>
                                 <Dashboard />
+                            </Suspense>
+                        } />
+
+                        {/* Projects */}
+                        <Route path="ppa" element={
+                            <Suspense fallback={<Loading />}>
+                                <Ppa />
+                            </Suspense>
+                        } />
+                        <Route path="programas" element={
+                            <Suspense fallback={<Loading />}>
+                                <Programas />
+                            </Suspense>
+                        } />
+                        <Route path="acoes" element={
+                            <Suspense fallback={<Loading />}>
+                                <Acoes />
                             </Suspense>
                         } />
 

@@ -6,6 +6,8 @@ import {
     updateProjectStatus,
     deleteProject,
     getUnidades,
+    getProgramas,
+    getAcoes,
 } from '../../services/api'
 import Modal from '../../components/ui/Modal'
 import Button from '../../components/ui/Button'
@@ -35,6 +37,10 @@ export default function ProjectsPage() {
     const [error, setError] = useState(null)
     const [unidades, setUnidades] = useState([])
     const [unidadesLoading, setUnidadesLoading] = useState(false)
+    const [programas, setProgramas] = useState([])
+    const [programasLoading, setProgramasLoading] = useState(false)
+    const [acoes, setAcoes] = useState([])
+    const [acoesLoading, setAcoesLoading] = useState(false)
     const [quickStatusSelectionByProjectId, setQuickStatusSelectionByProjectId] = useState({})
     const [quickStatusLoadingByProjectId, setQuickStatusLoadingByProjectId] = useState({})
 
@@ -107,12 +113,24 @@ export default function ProjectsPage() {
     async function loadUnidades() {
         try {
             setUnidadesLoading(true)
-            const data = await getUnidades({ escopo: 1 })
-            setUnidades(data.data || [])
+            setProgramasLoading(true)
+            setAcoesLoading(true)
+            const [unidadesData, programasData, acoesData] = await Promise.all([
+                getUnidades({ escopo: 1 }),
+                getProgramas(),
+                getAcoes(),
+            ])
+            setUnidades(unidadesData.data || [])
+            setProgramas(programasData.data || [])
+            setAcoes(acoesData.data || [])
         } catch (err) {
             console.error('Erro ao carregar unidades:', err)
+            setProgramas([])
+            setAcoes([])
         } finally {
             setUnidadesLoading(false)
+            setProgramasLoading(false)
+            setAcoesLoading(false)
         }
     }
 
@@ -154,6 +172,8 @@ export default function ProjectsPage() {
                 end_date: formData.end_date || null,
                 unidade_id: unidadeId,
                 company_id: unidadeId,
+                programa_id: formData.programa_id ? parseInt(formData.programa_id, 10) : null,
+                acao_id: formData.acao_id ? parseInt(formData.acao_id, 10) : null,
                 status: statusValue,
             })
 
@@ -202,6 +222,8 @@ export default function ProjectsPage() {
                 end_date: formData.end_date || null,
                 unidade_id: unidadeId,
                 company_id: unidadeId,
+                programa_id: formData.programa_id ? parseInt(formData.programa_id, 10) : null,
+                acao_id: formData.acao_id ? parseInt(formData.acao_id, 10) : null,
             })
             if (currentStatus !== nextStatus) {
                 await updateProjectStatus(editingProject.id, { status: nextStatus })
@@ -354,6 +376,10 @@ export default function ProjectsPage() {
                     validation={validation}
                     groupedUnidades={groupedUnidades}
                     unidadesLoading={unidadesLoading}
+                    programas={programas}
+                    programasLoading={programasLoading}
+                    acoes={acoes}
+                    acoesLoading={acoesLoading}
                     statusOptions={createStatusOptions}
                     onSubmit={handleCreateProject}
                 />
@@ -382,6 +408,10 @@ export default function ProjectsPage() {
                     validation={validation}
                     groupedUnidades={groupedUnidades}
                     unidadesLoading={unidadesLoading}
+                    programas={programas}
+                    programasLoading={programasLoading}
+                    acoes={acoes}
+                    acoesLoading={acoesLoading}
                     statusOptions={editStatusOptions}
                     statusHint={editStatusHint}
                     onStatusChange={handleEditStatusSelection}

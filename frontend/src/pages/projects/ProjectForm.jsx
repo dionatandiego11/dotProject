@@ -1,5 +1,5 @@
 /**
- * ProjectForm — shared form for creating and editing projects.
+ * ProjectForm - shared form for creating and editing projects.
  */
 
 import Input from '../../components/ui/Input'
@@ -11,27 +11,36 @@ export default function ProjectForm({
     validation,
     groupedUnidades,
     unidadesLoading,
+    programas = [],
+    programasLoading = false,
+    acoes = [],
+    acoesLoading = false,
     statusOptions,
     statusHint,
     onStatusChange,
-    onSubmit
+    onSubmit,
 }) {
-    const handleChange = (field) => (e) => {
-        onChange(field, e.target.value)
+    const handleChange = (field) => (event) => {
+        onChange(field, event.target.value)
         validation.clearFieldError(field)
     }
 
-    const handleStatusChange = (e) => {
+    const handleStatusChange = (event) => {
         if (onStatusChange) {
-            onStatusChange(e.target.value)
-        } else {
-            onChange('status', e.target.value)
+            onStatusChange(event.target.value)
+            return
         }
+
+        onChange('status', event.target.value)
     }
+
+    const programaSelecionado = formData.programa_id ? Number(formData.programa_id) : null
+    const acoesFiltradas = programaSelecionado === null
+        ? acoes
+        : acoes.filter((acao) => Number(acao.programa_id) === programaSelecionado)
 
     return (
         <form onSubmit={onSubmit}>
-            {/* Nome do Projeto */}
             <div style={{ marginBottom: 'var(--spacing-4)' }}>
                 <label style={{ display: 'block', marginBottom: 'var(--spacing-2)', fontWeight: 500 }}>
                     Nome do Projeto *
@@ -49,7 +58,6 @@ export default function ProjectForm({
                 )}
             </div>
 
-            {/* Nome Curto */}
             <div style={{ marginBottom: 'var(--spacing-4)' }}>
                 <label style={{ display: 'block', marginBottom: 'var(--spacing-2)', fontWeight: 500 }}>
                     Nome Curto
@@ -58,7 +66,7 @@ export default function ProjectForm({
                             fontSize: '0.75rem',
                             color: formData.short_name.length > 8 ? 'var(--color-warning-500)' : 'var(--color-gray-400)',
                             marginLeft: 'var(--spacing-2)',
-                            fontWeight: 'normal'
+                            fontWeight: 'normal',
                         }}>
                             ({formData.short_name.length}/10)
                         </span>
@@ -67,7 +75,7 @@ export default function ProjectForm({
                 <Input
                     value={formData.short_name}
                     onChange={handleChange('short_name')}
-                    placeholder="Ex: PROJ-2024"
+                    placeholder="Ex: PROJ-2026"
                     style={validation.errors.short_name ? { borderColor: 'var(--color-danger-500)' } : {}}
                 />
                 {validation.errors.short_name && (
@@ -77,16 +85,15 @@ export default function ProjectForm({
                 )}
             </div>
 
-            {/* Descrição */}
             <div style={{ marginBottom: 'var(--spacing-4)' }}>
                 <label style={{ display: 'block', marginBottom: 'var(--spacing-2)', fontWeight: 500 }}>
-                    Descrição
+                    Descricao
                     {formData.description && (
                         <span style={{
                             fontSize: '0.75rem',
                             color: formData.description.length > 900 ? 'var(--color-warning-500)' : 'var(--color-gray-400)',
                             marginLeft: 'var(--spacing-2)',
-                            fontWeight: 'normal'
+                            fontWeight: 'normal',
                         }}>
                             ({formData.description.length}/1000)
                         </span>
@@ -95,7 +102,7 @@ export default function ProjectForm({
                 <textarea
                     value={formData.description}
                     onChange={handleChange('description')}
-                    placeholder="Descrição do projeto"
+                    placeholder="Descricao do projeto"
                     rows={3}
                     style={{
                         width: '100%',
@@ -103,7 +110,7 @@ export default function ProjectForm({
                         border: validation.errors.description ? '1px solid var(--color-danger-500)' : '1px solid var(--color-gray-300)',
                         borderRadius: 'var(--radius-md)',
                         fontSize: '0.875rem',
-                        fontFamily: 'inherit'
+                        fontFamily: 'inherit',
                     }}
                 />
                 {validation.errors.description && (
@@ -113,17 +120,16 @@ export default function ProjectForm({
                 )}
             </div>
 
-            {/* Datas */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--spacing-4)' }}>
                 <div>
                     <label style={{ display: 'block', marginBottom: 'var(--spacing-2)', fontWeight: 500 }}>
-                        Data de Início
+                        Data de Inicio
                     </label>
                     <Input
                         type="date"
                         value={formData.start_date}
-                        onChange={(e) => {
-                            onChange('start_date', e.target.value)
+                        onChange={(event) => {
+                            onChange('start_date', event.target.value)
                             validation.clearFieldError('dates')
                         }}
                         style={{ width: '100%' }}
@@ -132,19 +138,19 @@ export default function ProjectForm({
 
                 <div>
                     <label style={{ display: 'block', marginBottom: 'var(--spacing-2)', fontWeight: 500 }}>
-                        Data de Término
+                        Data de Termino
                     </label>
                     <Input
                         type="date"
                         value={formData.end_date}
-                        onChange={(e) => {
-                            onChange('end_date', e.target.value)
+                        onChange={(event) => {
+                            onChange('end_date', event.target.value)
                             validation.clearFieldError('dates')
                         }}
                         min={formData.start_date || undefined}
                         style={{
                             width: '100%',
-                            ...(validation.errors.dates ? { borderColor: 'var(--color-danger-500)' } : {})
+                            ...(validation.errors.dates ? { borderColor: 'var(--color-danger-500)' } : {}),
                         }}
                     />
                 </div>
@@ -155,16 +161,15 @@ export default function ProjectForm({
                 </span>
             )}
 
-            {/* Unidade + Status */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--spacing-4)', marginTop: 'var(--spacing-4)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 'var(--spacing-4)', marginTop: 'var(--spacing-4)' }}>
                 <div>
                     <label style={{ display: 'block', marginBottom: 'var(--spacing-2)', fontWeight: 500 }}>
-                        Unidade Responsável {groupedUnidades.length > 0 ? '*' : ''}
+                        Unidade Responsavel {groupedUnidades.length > 0 ? '*' : ''}
                     </label>
                     <select
                         value={formData.company_id}
-                        onChange={(e) => {
-                            onChange('company_id', e.target.value)
+                        onChange={(event) => {
+                            onChange('company_id', event.target.value)
                             validation.clearFieldError('company_id')
                         }}
                         disabled={unidadesLoading}
@@ -174,7 +179,7 @@ export default function ProjectForm({
                             border: validation.errors.company_id ? '1px solid var(--color-danger-500)' : '1px solid var(--color-gray-300)',
                             borderRadius: 'var(--radius-md)',
                             fontSize: '0.875rem',
-                            background: 'white'
+                            background: 'white',
                         }}
                     >
                         <option value="">
@@ -199,6 +204,71 @@ export default function ProjectForm({
 
                 <div>
                     <label style={{ display: 'block', marginBottom: 'var(--spacing-2)', fontWeight: 500 }}>
+                        Programa
+                    </label>
+                    <select
+                        value={formData.programa_id}
+                        onChange={(event) => {
+                            const nextProgramaId = event.target.value
+                            onChange('programa_id', nextProgramaId)
+                            if (formData.acao_id) {
+                                const acaoAtual = acoes.find((acao) => String(acao.id) === String(formData.acao_id))
+                                if (acaoAtual && String(acaoAtual.programa_id) !== nextProgramaId) {
+                                    onChange('acao_id', '')
+                                }
+                            }
+                        }}
+                        disabled={programasLoading}
+                        style={{
+                            width: '100%',
+                            padding: 'var(--spacing-2) var(--spacing-3)',
+                            border: '1px solid var(--color-gray-300)',
+                            borderRadius: 'var(--radius-md)',
+                            fontSize: '0.875rem',
+                            background: 'white',
+                        }}
+                    >
+                        <option value="">
+                            {programasLoading ? 'Carregando programas...' : 'Sem vinculo'}
+                        </option>
+                        {programas.map((programa) => (
+                            <option key={programa.id} value={String(programa.id)}>
+                                {programa.codigo ? `${programa.codigo} - ` : ''}{programa.nome}
+                            </option>
+                        ))}
+                    </select>
+                </div>
+
+                <div>
+                    <label style={{ display: 'block', marginBottom: 'var(--spacing-2)', fontWeight: 500 }}>
+                        Acao
+                    </label>
+                    <select
+                        value={formData.acao_id}
+                        onChange={(event) => onChange('acao_id', event.target.value)}
+                        disabled={acoesLoading}
+                        style={{
+                            width: '100%',
+                            padding: 'var(--spacing-2) var(--spacing-3)',
+                            border: '1px solid var(--color-gray-300)',
+                            borderRadius: 'var(--radius-md)',
+                            fontSize: '0.875rem',
+                            background: 'white',
+                        }}
+                    >
+                        <option value="">
+                            {acoesLoading ? 'Carregando acoes...' : 'Sem vinculo'}
+                        </option>
+                        {acoesFiltradas.map((acao) => (
+                            <option key={acao.id} value={String(acao.id)}>
+                                {acao.codigo ? `${acao.codigo} - ` : ''}{acao.nome}
+                            </option>
+                        ))}
+                    </select>
+                </div>
+
+                <div>
+                    <label style={{ display: 'block', marginBottom: 'var(--spacing-2)', fontWeight: 500 }}>
                         {onStatusChange ? 'Status do Projeto' : 'Status Inicial'}
                     </label>
                     <select
@@ -210,7 +280,7 @@ export default function ProjectForm({
                             border: '1px solid var(--color-gray-300)',
                             borderRadius: 'var(--radius-md)',
                             fontSize: '0.875rem',
-                            background: 'white'
+                            background: 'white',
                         }}
                     >
                         {statusOptions.map((status) => (

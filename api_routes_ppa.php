@@ -11,6 +11,7 @@ use DotProject\Api\Response;
 use DotProject\Api\Controller\ProjetoController;
 use DotProject\Api\Controller\ProgramaController;
 use DotProject\Api\Controller\PpaController;
+use DotProject\Api\Controller\AcaoController;
 use DotProject\Api\Controller\Dashboard\PrefeitoDashboardController;
 use DotProject\Api\Controller\Dashboard\SecretarioDashboardController;
 use DotProject\Api\Controller\Dashboard\CoordenadorDashboardController;
@@ -52,17 +53,27 @@ $router->get('/v1/dashboard/projetos-risco', function (Request $req, Response $r
 
 $router->get('/v1/ppas', function (Request $req, Response $res) {
     $controller = new PpaController($req, $res);
-    $controller->index();
+    return $controller->index();
 });
 
 $router->get('/v1/ppas/{id}', function (Request $req, Response $res) {
     $controller = new PpaController($req, $res);
-    $controller->show();
+    return $controller->show();
 });
 
 $router->post('/v1/ppas', function (Request $req, Response $res) {
     $controller = new PpaController($req, $res);
-    $controller->store();
+    return $controller->store();
+});
+
+$router->put('/v1/ppas/{id}', function (Request $req, Response $res) {
+    $controller = new PpaController($req, $res);
+    return $controller->update();
+});
+
+$router->delete('/v1/ppas/{id}', function (Request $req, Response $res) {
+    $controller = new PpaController($req, $res);
+    return $controller->destroy();
 });
 
 // ===========================================
@@ -71,22 +82,56 @@ $router->post('/v1/ppas', function (Request $req, Response $res) {
 
 $router->get('/v1/programas', function (Request $req, Response $res) {
     $controller = new ProgramaController($req, $res);
-    $controller->index();
+    return $controller->index();
 });
 
 $router->get('/v1/programas/{id}', function (Request $req, Response $res) {
     $controller = new ProgramaController($req, $res);
-    $controller->show();
+    return $controller->show();
 });
 
 $router->post('/v1/programas', function (Request $req, Response $res) {
     $controller = new ProgramaController($req, $res);
-    $controller->store();
+    return $controller->store();
 });
 
 $router->put('/v1/programas/{id}', function (Request $req, Response $res) {
     $controller = new ProgramaController($req, $res);
-    $controller->update();
+    return $controller->update();
+});
+
+$router->delete('/v1/programas/{id}', function (Request $req, Response $res) {
+    $controller = new ProgramaController($req, $res);
+    return $controller->destroy();
+});
+
+// ===========================================
+// ROTAS DE ACOES
+// ===========================================
+
+$router->get('/v1/acoes', function (Request $req, Response $res) {
+    $controller = new AcaoController($req, $res);
+    return $controller->index();
+});
+
+$router->get('/v1/acoes/{id}', function (Request $req, Response $res) {
+    $controller = new AcaoController($req, $res);
+    return $controller->show();
+});
+
+$router->post('/v1/acoes', function (Request $req, Response $res) {
+    $controller = new AcaoController($req, $res);
+    return $controller->store();
+});
+
+$router->put('/v1/acoes/{id}', function (Request $req, Response $res) {
+    $controller = new AcaoController($req, $res);
+    return $controller->update();
+});
+
+$router->delete('/v1/acoes/{id}', function (Request $req, Response $res) {
+    $controller = new AcaoController($req, $res);
+    return $controller->destroy();
 });
 
 // ===========================================

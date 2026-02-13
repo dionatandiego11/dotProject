@@ -1,0 +1,1250 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>STELLARIS — Gestão de Projetos para Prefeituras</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --navy: #0f1b3d;
+            --blue: #1e3a6e;
+            --accent: #2979ff;
+            --accent-light: #82b1ff;
+            --gold: #f0a500;
+            --green: #00c853;
+            --red-soft: #ff5252;
+            --bg: #f8fafc;
+            --card-bg: #ffffff;
+            --text: #1a1a2e;
+            --text-muted: #64748b;
+            --gradient: linear-gradient(135deg, #0f1b3d 0%, #1e3a6e 50%, #2979ff 100%);
+            --gradient-gold: linear-gradient(135deg, #f0a500 0%, #ff8f00 100%);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            color: var(--text);
+            background: var(--bg);
+            line-height: 1.6;
+        }
+
+        /* ==================== PRINT STYLES ==================== */
+        @media print {
+            body {
+                background: white;
+            }
+
+            .page {
+                page-break-after: always;
+                box-shadow: none !important;
+                border-radius: 0 !important;
+                margin: 0 !important;
+                min-height: 100vh;
+            }
+
+            .page:last-child {
+                page-break-after: avoid;
+            }
+
+            .no-print {
+                display: none !important;
+            }
+        }
+
+        @page {
+            size: A4;
+            margin: 0;
+        }
+
+        /* ==================== PAGE LAYOUT ==================== */
+        .page {
+            width: 210mm;
+            min-height: 297mm;
+            margin: 20px auto;
+            background: var(--card-bg);
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+            border-radius: 8px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* ==================== PAGE 1 — CAPA ==================== */
+        .cover {
+            background: var(--gradient);
+            min-height: 297mm;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            color: white;
+            position: relative;
+            overflow: hidden;
+            padding: 40px;
+        }
+
+        .cover::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -30%;
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, rgba(41, 121, 255, 0.3) 0%, transparent 70%);
+            border-radius: 50%;
+        }
+
+        .cover::after {
+            content: '';
+            position: absolute;
+            bottom: -40%;
+            left: -20%;
+            width: 500px;
+            height: 500px;
+            background: radial-gradient(circle, rgba(240, 165, 0, 0.15) 0%, transparent 70%);
+            border-radius: 50%;
+        }
+
+        .cover-content {
+            position: relative;
+            z-index: 1;
+        }
+
+        .cover-brand {
+            margin-bottom: 50px;
+        }
+
+        .cover-brand h1 {
+            font-size: 38px;
+            font-weight: 900;
+            letter-spacing: 5px;
+            text-transform: uppercase;
+            margin-bottom: 6px;
+        }
+
+        .cover-brand .brand-sub {
+            font-size: 14px;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            color: var(--accent-light);
+            font-weight: 400;
+        }
+
+        .cover h1 {
+            font-size: 42px;
+            font-weight: 900;
+            letter-spacing: 6px;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+
+        .cover .tagline {
+            font-size: 14px;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            color: var(--accent-light);
+            margin-bottom: 50px;
+            font-weight: 400;
+        }
+
+        .cover .main-message {
+            font-size: 28px;
+            font-weight: 300;
+            line-height: 1.4;
+            max-width: 550px;
+            margin-bottom: 60px;
+        }
+
+        .cover .main-message strong {
+            font-weight: 700;
+            color: var(--gold);
+        }
+
+        .cover-footer {
+            position: absolute;
+            bottom: 40px;
+            left: 0;
+            right: 0;
+            text-align: center;
+            z-index: 1;
+        }
+
+        .cover-footer p {
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.6);
+            letter-spacing: 1px;
+        }
+
+        /* ==================== COMMON PAGE STYLES ==================== */
+        .page-header {
+            background: var(--gradient);
+            padding: 24px 40px;
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .page-header h2 {
+            font-size: 22px;
+            font-weight: 700;
+        }
+
+        .page-header .page-num {
+            font-size: 13px;
+            opacity: 0.6;
+            letter-spacing: 2px;
+        }
+
+        .page-body {
+            padding: 36px 40px;
+        }
+
+        .section-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--navy);
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 3px solid var(--accent);
+            display: inline-block;
+        }
+
+        .section-subtitle {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--blue);
+            margin: 24px 0 12px;
+        }
+
+        /* ==================== PAGE 2 — O PROBLEMA ==================== */
+        .problem-card {
+            background: linear-gradient(135deg, #fff5f5 0%, #fef2f2 100%);
+            border-left: 4px solid var(--red-soft);
+            padding: 20px 24px;
+            border-radius: 0 12px 12px 0;
+            margin-bottom: 16px;
+        }
+
+        .problem-card .icon {
+            font-size: 24px;
+            margin-bottom: 8px;
+        }
+
+        .problem-card h4 {
+            font-size: 15px;
+            font-weight: 700;
+            color: #c62828;
+            margin-bottom: 6px;
+        }
+
+        .problem-card p {
+            font-size: 13px;
+            color: #5f4545;
+            line-height: 1.5;
+        }
+
+        .impact-box {
+            background: var(--gradient);
+            color: white;
+            border-radius: 16px;
+            padding: 28px;
+            text-align: center;
+            margin-top: 28px;
+        }
+
+        .impact-box .big-number {
+            font-size: 52px;
+            font-weight: 900;
+            color: var(--gold);
+            line-height: 1;
+        }
+
+        .impact-box .label {
+            font-size: 14px;
+            margin-top: 8px;
+            opacity: 0.9;
+        }
+
+        /* ==================== PAGE 3 — SOLUÇÃO ==================== */
+        .feature-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-top: 20px;
+        }
+
+        .feature-card {
+            background: white;
+            border: 1px solid #e8ecf0;
+            border-radius: 12px;
+            padding: 20px;
+            transition: all 0.2s;
+        }
+
+        .feature-card:hover {
+            border-color: var(--accent);
+            box-shadow: 0 4px 16px rgba(41, 121, 255, 0.1);
+        }
+
+        .feature-card .feat-icon {
+            width: 44px;
+            height: 44px;
+            background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            margin-bottom: 12px;
+        }
+
+        .feature-card h4 {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--navy);
+            margin-bottom: 6px;
+        }
+
+        .feature-card p {
+            font-size: 12px;
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
+
+        /* ==================== PAGE 4 — COMO FUNCIONA ==================== */
+        .step-flow {
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+            margin-top: 20px;
+        }
+
+        .step-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 20px;
+            position: relative;
+            padding-bottom: 24px;
+        }
+
+        .step-item:not(:last-child)::after {
+            content: '';
+            position: absolute;
+            left: 24px;
+            top: 52px;
+            width: 2px;
+            height: calc(100% - 52px);
+            background: linear-gradient(to bottom, var(--accent), var(--accent-light));
+        }
+
+        .step-number {
+            width: 50px;
+            height: 50px;
+            min-width: 50px;
+            background: var(--gradient);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            font-weight: 800;
+        }
+
+        .step-content h4 {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--navy);
+            margin-bottom: 4px;
+        }
+
+        .step-content p {
+            font-size: 13px;
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
+
+        .step-content .time-badge {
+            display: inline-block;
+            background: #e3f2fd;
+            color: var(--accent);
+            font-size: 11px;
+            font-weight: 600;
+            padding: 3px 10px;
+            border-radius: 20px;
+            margin-top: 6px;
+        }
+
+        /* ==================== PAGE 5 — DASHBOARDS ==================== */
+        .dashboard-showcase {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 14px;
+            margin-top: 16px;
+        }
+
+        .dash-card {
+            border-radius: 12px;
+            padding: 18px;
+            color: white;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .dash-card::before {
+            content: '';
+            position: absolute;
+            top: -30px;
+            right: -30px;
+            width: 80px;
+            height: 80px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+        }
+
+        .dash-card .dash-icon {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        .dash-card h4 {
+            font-size: 15px;
+            font-weight: 700;
+            margin-bottom: 6px;
+        }
+
+        .dash-card p {
+            font-size: 12px;
+            opacity: 0.9;
+            line-height: 1.4;
+        }
+
+        .dash-prefeito {
+            background: linear-gradient(135deg, #1a237e 0%, #283593 100%);
+        }
+
+        .dash-secretario {
+            background: linear-gradient(135deg, #004d40 0%, #00695c 100%);
+        }
+
+        .dash-coordenador {
+            background: linear-gradient(135deg, #4a148c 0%, #6a1b9a 100%);
+        }
+
+        .dash-tecnico {
+            background: linear-gradient(135deg, #bf360c 0%, #d84315 100%);
+        }
+
+        .dash-geral {
+            background: linear-gradient(135deg, #0d47a1 0%, #1565c0 100%);
+        }
+
+        /* Full-width card for the 5th dashboard */
+        .dash-full {
+            grid-column: 1 / -1;
+        }
+
+        /* ==================== PAGE 6 — INVESTIMENTO ==================== */
+        .pricing-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            margin-top: 16px;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+        }
+
+        .pricing-table thead th {
+            background: var(--navy);
+            color: white;
+            padding: 14px 16px;
+            font-size: 13px;
+            font-weight: 600;
+            text-align: left;
+        }
+
+        .pricing-table tbody td {
+            padding: 12px 16px;
+            font-size: 13px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .pricing-table tbody tr:nth-child(even) {
+            background: #f8fafc;
+        }
+
+        .pricing-table .highlight-row {
+            background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%) !important;
+            font-weight: 600;
+        }
+
+        .pricing-table .price {
+            color: var(--accent);
+            font-weight: 700;
+            font-size: 15px;
+        }
+
+        .legal-badge {
+            display: inline-block;
+            background: #e8f5e9;
+            color: #2e7d32;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 4px 10px;
+            border-radius: 20px;
+            margin-top: 4px;
+        }
+
+        .includes-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-top: 20px;
+        }
+
+        .includes-box {
+            background: #f8fafc;
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid #e8ecf0;
+        }
+
+        .includes-box h4 {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--navy);
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .includes-box ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        .includes-box li {
+            font-size: 12px;
+            color: var(--text);
+            padding: 4px 0;
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+        }
+
+        .includes-box li::before {
+            content: '✓';
+            color: var(--green);
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+
+        /* ==================== PAGE 7 — POR QUE NÓS ==================== */
+        .differ-list {
+            margin-top: 16px;
+        }
+
+        .differ-item {
+            display: flex;
+            gap: 16px;
+            padding: 16px 0;
+            border-bottom: 1px solid #f0f0f0;
+            align-items: flex-start;
+        }
+
+        .differ-item:last-child {
+            border-bottom: none;
+        }
+
+        .differ-icon {
+            width: 48px;
+            height: 48px;
+            min-width: 48px;
+            background: linear-gradient(135deg, #e3f2fd, #bbdefb);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+        }
+
+        .differ-item h4 {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--navy);
+            margin-bottom: 4px;
+        }
+
+        .differ-item p {
+            font-size: 12px;
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
+
+        /* ==================== PAGE 8 — CONTATO ==================== */
+        .contact-page {
+            background: var(--gradient);
+            min-height: 297mm;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            color: white;
+            padding: 40px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .contact-page::before {
+            content: '';
+            position: absolute;
+            top: -40%;
+            right: -20%;
+            width: 500px;
+            height: 500px;
+            background: radial-gradient(circle, rgba(240, 165, 0, 0.15) 0%, transparent 70%);
+            border-radius: 50%;
+        }
+
+        .contact-page .cta-title {
+            font-size: 36px;
+            font-weight: 800;
+            margin-bottom: 12px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .contact-page .cta-subtitle {
+            font-size: 18px;
+            font-weight: 300;
+            opacity: 0.9;
+            margin-bottom: 50px;
+            max-width: 500px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .contact-cards {
+            display: flex;
+            gap: 24px;
+            position: relative;
+            z-index: 1;
+            margin-bottom: 50px;
+        }
+
+        .contact-card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 16px;
+            padding: 28px 32px;
+            text-align: center;
+            min-width: 220px;
+        }
+
+        .contact-card .avatar {
+            width: 64px;
+            height: 64px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            margin: 0 auto 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 26px;
+        }
+
+        .contact-card .name {
+            font-size: 16px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .contact-card .role {
+            font-size: 12px;
+            opacity: 0.7;
+            margin-bottom: 12px;
+        }
+
+        .contact-card .contact-info {
+            font-size: 12px;
+            opacity: 0.9;
+            line-height: 1.8;
+        }
+
+        .legal-note {
+            position: absolute;
+            bottom: 30px;
+            left: 0;
+            right: 0;
+            text-align: center;
+            z-index: 1;
+        }
+
+        .legal-note p {
+            font-size: 11px;
+            opacity: 0.5;
+            line-height: 1.6;
+        }
+
+        /* ==================== PRINT BUTTON ==================== */
+        .print-btn {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: var(--gradient);
+            color: white;
+            border: none;
+            padding: 14px 28px;
+            border-radius: 50px;
+            font-family: 'Inter', sans-serif;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 4px 20px rgba(41, 121, 255, 0.4);
+            z-index: 100;
+            transition: all 0.2s;
+        }
+
+        .print-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 28px rgba(41, 121, 255, 0.5);
+        }
+
+        /* Stat grid used in multiple pages */
+        .stat-row {
+            display: flex;
+            gap: 16px;
+            margin-top: 16px;
+        }
+
+        .stat-box {
+            flex: 1;
+            background: #f8fafc;
+            border-radius: 12px;
+            padding: 18px;
+            text-align: center;
+            border: 1px solid #e8ecf0;
+        }
+
+        .stat-box .stat-value {
+            font-size: 28px;
+            font-weight: 800;
+            color: var(--accent);
+        }
+
+        .stat-box .stat-label {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- ==================== PAGE 1 — CAPA ==================== -->
+    <div class="page">
+        <div class="cover">
+            <div class="cover-content">
+                <div class="cover-brand">
+                    <h1>STELLARIS</h1>
+                    <p class="brand-sub">Tecnologia e Sistemas LTDA</p>
+                </div>
+
+                <p
+                    style="font-size: 22px; font-weight: 300; color: var(--gold); letter-spacing: 2px; margin-bottom: 50px;">
+                    dotProject For Public</p>
+
+                <p class="main-message">
+                    Gestão de projetos e <strong>PPA</strong> feita para <strong>prefeituras</strong> brasileiras
+                </p>
+            </div>
+
+            <div class="cover-footer">
+                <p>STELLARIS TECNOLOGIA E SISTEMAS LTDA</p>
+                <p style="margin-top: 4px; font-size: 11px; opacity: 0.4;">Apresentação Comercial — 2026</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== PAGE 2 — O PROBLEMA ==================== -->
+    <div class="page">
+        <div class="page-header">
+            <h2>O Desafio da Gestão Municipal</h2>
+            <span class="page-num">02 / 08</span>
+        </div>
+        <div class="page-body">
+            <p class="section-title">O que acontece hoje na maioria das prefeituras?</p>
+
+            <div class="problem-card">
+                <div class="icon">📋</div>
+                <h4>PPA na gaveta</h4>
+                <p>O Plano Plurianual é elaborado, aprovado na Câmara... e esquecido. Ninguém sabe se as ações estão
+                    sendo executadas, quanto do orçamento foi consumido, ou quais projetos estão parados.</p>
+            </div>
+
+            <div class="problem-card">
+                <div class="icon">📊</div>
+                <h4>Planilhas desconectadas</h4>
+                <p>Cada secretaria controla seus projetos em planilhas próprias. O Prefeito não tem visão consolidada —
+                    só descobre os problemas quando é tarde demais.</p>
+            </div>
+
+            <div class="problem-card">
+                <div class="icon">🔍</div>
+                <h4>Zero rastreabilidade</h4>
+                <p>Quem é responsável por cada obra? Qual o prazo? Qual o status? Sem um sistema, essas perguntas não
+                    têm resposta rápida.</p>
+            </div>
+
+            <div class="problem-card">
+                <div class="icon">⏰</div>
+                <h4>Prazos perdidos</h4>
+                <p>Convênios e emendas vencem sem que ninguém perceba. Recursos federais são devolvidos por falta de
+                    acompanhamento.</p>
+            </div>
+
+            <div class="impact-box">
+                <div class="big-number">853</div>
+                <div class="label">municípios em Minas Gerais — o estado com mais prefeituras do Brasil.<br>A grande
+                    maioria enfrenta esses desafios todos os dias.</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== PAGE 3 — A SOLUÇÃO ==================== -->
+    <div class="page">
+        <div class="page-header">
+            <h2>A Solução</h2>
+            <span class="page-num">03 / 08</span>
+        </div>
+        <div class="page-body">
+            <p class="section-title">dotProject Prefeituras</p>
+            <p style="font-size: 14px; color: var(--text-muted); margin-bottom: 8px; max-width: 90%;">
+                Uma plataforma de gestão que conecta o <strong style="color: var(--navy);">PPA ao dia a dia</strong> da
+                prefeitura.
+                Cada programa, ação e projeto é vinculado à secretaria responsável — e o prefeito acompanha tudo em
+                tempo real.
+            </p>
+
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <div class="feat-icon">📊</div>
+                    <h4>Dashboards por Perfil</h4>
+                    <p>Cada nível hierárquico vê o que precisa: Prefeito tem visão geral, Secretário vê sua pasta,
+                        Técnico vê suas tarefas.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feat-icon">🏛️</div>
+                    <h4>Organograma Interativo</h4>
+                    <p>Visualização da estrutura da prefeitura com secretarias, departamentos e coordenações — editável
+                        e navegável.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feat-icon">📋</div>
+                    <h4>Kanban de Projetos</h4>
+                    <p>Quadro visual para acompanhar obras e projetos com colunas de status, drag-and-drop e filtros por
+                        secretaria.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feat-icon">🔗</div>
+                    <h4>PPA Vinculado</h4>
+                    <p>Programas e ações do PPA conectados diretamente aos projetos em execução. Visibilidade total do
+                        planejamento à entrega.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feat-icon">👥</div>
+                    <h4>Gestão de Equipes</h4>
+                    <p>Cada servidor tem perfil com permissões. Responsabilidades claras por departamento e projeto.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feat-icon">🔔</div>
+                    <h4>Alertas Automáticos</h4>
+                    <p>Notificações sobre prazos vencendo, projetos parados e tarefas atrasadas. O sistema cuida para
+                        que nada seja esquecido.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== PAGE 4 — COMO FUNCIONA ==================== -->
+    <div class="page">
+        <div class="page-header">
+            <h2>Como Funciona a Implantação</h2>
+            <span class="page-num">04 / 08</span>
+        </div>
+        <div class="page-body">
+            <p class="section-title">Nós fazemos tudo por você</p>
+            <p style="font-size: 14px; color: var(--text-muted); margin-bottom: 24px;">
+                A prefeitura não precisa de equipe de TI. A STELLARIS cuida de toda a configuração,
+                cadastro de dados e treinamento. Em <strong style="color: var(--navy);">uma semana</strong>, o sistema
+                está rodando.
+            </p>
+
+            <div class="step-flow">
+                <div class="step-item">
+                    <div class="step-number">1</div>
+                    <div class="step-content">
+                        <h4>Mapeamento do Organograma</h4>
+                        <p>Visitamos a prefeitura e mapeamos toda a estrutura: secretarias, departamentos, coordenações
+                            e responsáveis.</p>
+                        <span class="time-badge">📍 1 dia (presencial ou remoto)</span>
+                    </div>
+                </div>
+
+                <div class="step-item">
+                    <div class="step-number">2</div>
+                    <div class="step-content">
+                        <h4>Configuração do Sistema</h4>
+                        <p>Cadastramos a estrutura organizacional, criamos os níveis hierárquicos e configuramos
+                            permissões por perfil.</p>
+                        <span class="time-badge">⚙️ 1 dia</span>
+                    </div>
+                </div>
+
+                <div class="step-item">
+                    <div class="step-number">3</div>
+                    <div class="step-content">
+                        <h4>Cadastro do PPA</h4>
+                        <p>Incluímos o PPA vigente no sistema, vinculando cada programa e ação à secretaria/departamento
+                            responsável.</p>
+                        <span class="time-badge">📋 1–2 dias</span>
+                    </div>
+                </div>
+
+                <div class="step-item">
+                    <div class="step-number">4</div>
+                    <div class="step-content">
+                        <h4>Criação de Projetos e Tarefas</h4>
+                        <p>Transformamos as ações do PPA em projetos gerenciáveis com prazos, responsáveis e indicadores
+                            de progresso.</p>
+                        <span class="time-badge">🔨 1–2 dias</span>
+                    </div>
+                </div>
+
+                <div class="step-item">
+                    <div class="step-number">5</div>
+                    <div class="step-content">
+                        <h4>Treinamento da Equipe</h4>
+                        <p>Sessão prática de 4 horas com os gestores e técnicos que vão usar o sistema no dia a dia.</p>
+                        <span class="time-badge">🎓 4 horas</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stat-row" style="margin-top: 28px;">
+                <div class="stat-box">
+                    <div class="stat-value">5</div>
+                    <div class="stat-label">Dias de implantação</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value">0</div>
+                    <div class="stat-label">Equipe de TI necessária</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value">100%</div>
+                    <div class="stat-label">Na nuvem</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== PAGE 5 — DASHBOARDS ==================== -->
+    <div class="page">
+        <div class="page-header">
+            <h2>Visibilidade Total</h2>
+            <span class="page-num">05 / 08</span>
+        </div>
+        <div class="page-body">
+            <p class="section-title">5 Dashboards Personalizados</p>
+            <p style="font-size: 14px; color: var(--text-muted); margin-bottom: 8px;">
+                Cada nível da administração vê exatamente o que precisa. Sem excesso de informação, sem falta de dados.
+            </p>
+
+            <div class="dashboard-showcase">
+                <div class="dash-card dash-prefeito">
+                    <div class="dash-icon">👔</div>
+                    <h4>Dashboard do Prefeito</h4>
+                    <p>Visão 360° de toda a administração. Projetos por secretaria, execução do PPA, alertas críticos e
+                        indicadores de performance.</p>
+                </div>
+
+                <div class="dash-card dash-secretario">
+                    <div class="dash-icon">🏢</div>
+                    <h4>Dashboard do Secretário</h4>
+                    <p>Desempenho da sua secretaria. Projetos em andamento, equipe, prazos e metas do PPA sob sua
+                        responsabilidade.</p>
+                </div>
+
+                <div class="dash-card dash-coordenador">
+                    <div class="dash-icon">📂</div>
+                    <h4>Dashboard do Coordenador</h4>
+                    <p>Gestão do departamento. Tarefas da equipe, progresso dos projetos vinculados e gargalos
+                        operacionais.</p>
+                </div>
+
+                <div class="dash-card dash-tecnico">
+                    <div class="dash-icon">⚙️</div>
+                    <h4>Dashboard do Técnico</h4>
+                    <p>Minhas tarefas do dia, prazos e prioridades. Interface simples e focada para quem executa.</p>
+                </div>
+
+                <div class="dash-card dash-geral dash-full">
+                    <div class="dash-icon">📊</div>
+                    <h4>Dashboard Geral</h4>
+                    <p>Panorama completo: total de projetos, tarefas, distribuição por status, tendências e métricas
+                        consolidadas de toda a prefeitura.</p>
+                </div>
+            </div>
+
+            <div
+                style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 18px; margin-top: 20px; display: flex; align-items: center; gap: 14px;">
+                <span style="font-size: 28px;">📱</span>
+                <div>
+                    <strong style="font-size: 14px; color: #166534;">Acesse de qualquer lugar</strong>
+                    <p style="font-size: 12px; color: #3f6212; margin-top: 2px;">O sistema é acessível pelo navegador do
+                        celular, tablet ou computador. Sem instalação.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== PAGE 6 — INVESTIMENTO ==================== -->
+    <div class="page">
+        <div class="page-header">
+            <h2>Investimento</h2>
+            <span class="page-num">06 / 08</span>
+        </div>
+        <div class="page-body">
+            <p class="section-title">Serviço de Implantação + Suporte</p>
+
+            <table class="pricing-table">
+                <thead>
+                    <tr>
+                        <th>Porte do Município</th>
+                        <th>Implantação (Setup)</th>
+                        <th>Mensalidade (Suporte + Cloud)</th>
+                        <th>Contrato Anual</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Até 10 mil habitantes</td>
+                        <td>R$ 8.000,00</td>
+                        <td><span class="price">R$ 1.500,00</span></td>
+                        <td>R$ 26.000,00</td>
+                    </tr>
+                    <tr class="highlight-row">
+                        <td>10 a 30 mil habitantes</td>
+                        <td>R$ 15.000,00</td>
+                        <td><span class="price">R$ 2.500,00</span></td>
+                        <td>R$ 45.000,00</td>
+                    </tr>
+                    <tr>
+                        <td>30 a 100 mil habitantes</td>
+                        <td>R$ 25.000,00</td>
+                        <td><span class="price">R$ 4.500,00</span></td>
+                        <td>R$ 79.000,00</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div style="display: flex; gap: 12px; margin-top: 16px; flex-wrap: wrap;">
+                <span class="legal-badge">✅ Dispensa de licitação — Art. 75, II, Lei 14.133/2021 (até R$
+                    65.492,11)</span>
+                <span class="legal-badge">✅ Marco Legal das Startups — LC 182/2021 (até R$ 1,6 milhão)</span>
+            </div>
+
+            <div class="includes-grid">
+                <div class="includes-box">
+                    <h4>🚀 Implantação inclui</h4>
+                    <ul>
+                        <li>Mapeamento completo do organograma</li>
+                        <li>Configuração de secretarias e departamentos</li>
+                        <li>Cadastro do PPA com ações vinculadas</li>
+                        <li>Criação de até 20 usuários</li>
+                        <li>Treinamento presencial de 4 horas</li>
+                        <li>Configuração de dashboards por perfil</li>
+                    </ul>
+                </div>
+                <div class="includes-box">
+                    <h4>🛡️ Suporte mensal inclui</h4>
+                    <ul>
+                        <li>Hospedagem na nuvem STELLARIS</li>
+                        <li>Domínio personalizado + SSL</li>
+                        <li>Backup diário automatizado</li>
+                        <li>Suporte via WhatsApp (horário comercial)</li>
+                        <li>Atualizações e correções do sistema</li>
+                        <li>Atualização do PPA a cada LOA</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div
+                style="background: linear-gradient(135deg, #fffbeb, #fef3c7); border: 1px solid #fde68a; border-radius: 12px; padding: 16px 20px; margin-top: 20px; display: flex; align-items: center; gap: 14px;">
+                <span style="font-size: 24px;">💡</span>
+                <p style="font-size: 13px; color: #92400e; line-height: 1.5;">
+                    <strong>A partir de R$ 1.500/mês — menos que um salário de servidor.</strong> O retorno vem na forma
+                    de visibilidade,
+                    cumprimento de prazos e convênios salvos.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== PAGE 7 — POR QUE NÓS ==================== -->
+    <div class="page">
+        <div class="page-header">
+            <h2>Por que a STELLARIS?</h2>
+            <span class="page-num">07 / 08</span>
+        </div>
+        <div class="page-body">
+            <p class="section-title">Diferenciais</p>
+
+            <div class="differ-list">
+                <div class="differ-item">
+                    <div class="differ-icon">🏛️</div>
+                    <div>
+                        <h4>Feito para prefeituras</h4>
+                        <p>Não é um sistema genérico adaptado. Foi construído do zero com a linguagem, hierarquia e
+                            processos da administração pública municipal brasileira.</p>
+                    </div>
+                </div>
+
+                <div class="differ-item">
+                    <div class="differ-icon">🔗</div>
+                    <div>
+                        <h4>PPA como espinha dorsal</h4>
+                        <p>O único sistema que conecta o planejamento estratégico (PPA) à execução diária (projetos e
+                            tarefas), dando visibilidade real ao prefeito.</p>
+                    </div>
+                </div>
+
+                <div class="differ-item">
+                    <div class="differ-icon">🤝</div>
+                    <div>
+                        <h4>Nós fazemos a implantação</h4>
+                        <p>A prefeitura não precisa de equipe de TI. Mapeamos o organograma, cadastramos o PPA e
+                            treinamos a equipe. Pronto em uma semana.</p>
+                    </div>
+                </div>
+
+                <div class="differ-item">
+                    <div class="differ-icon">📊</div>
+                    <div>
+                        <h4>Visão por perfil</h4>
+                        <p>5 dashboards diferentes: cada nível hierárquico (do Prefeito ao Técnico) vê exatamente o que
+                            precisa para tomar decisões.</p>
+                    </div>
+                </div>
+
+                <div class="differ-item">
+                    <div class="differ-icon">💰</div>
+                    <div>
+                        <h4>Cabe no orçamento</h4>
+                        <p>Contratos anuais abaixo de R$ 65 mil — dispensa de licitação. Sem burocracia para contratar,
+                            sem surpresas no valor.</p>
+                    </div>
+                </div>
+
+                <div class="differ-item">
+                    <div class="differ-icon">🔐</div>
+                    <div>
+                        <h4>Seguro e em conformidade</h4>
+                        <p>Dados criptografados, backup diário, hospedagem em nuvem certificada e total conformidade com
+                            a LGPD.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div
+                style="background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 12px; padding: 18px; margin-top: 16px;">
+                <p style="font-size: 13px; color: #0c4a6e; text-align: center;">
+                    <strong>Já em operação na Prefeitura de Brumadinho-MG</strong><br>
+                    <span style="font-size: 12px; opacity: 0.8;">Integrado ao Departamento de Projetos — validado com
+                        dados reais.</span>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== PAGE 8 — CONTATO ==================== -->
+    <div class="page">
+        <div class="contact-page">
+            <h1
+                style="font-size: 32px; font-weight: 900; letter-spacing: 5px; margin-bottom: 4px; position: relative; z-index: 1;">
+                STELLARIS</h1>
+            <p
+                style="font-size: 12px; letter-spacing: 3px; opacity: 0.7; text-transform: uppercase; margin-bottom: 6px; position: relative; z-index: 1;">
+                Tecnologia e Sistemas LTDA</p>
+            <p
+                style="font-size: 16px; color: var(--gold); letter-spacing: 2px; margin-bottom: 40px; position: relative; z-index: 1;">
+                dotProject For Public</p>
+
+            <p class="cta-title" style="color: var(--gold);">Vamos conversar?</p>
+            <p class="cta-subtitle">
+                Agende uma demonstração gratuita e veja como sua prefeitura pode ter visibilidade total sobre projetos e
+                PPA.
+            </p>
+
+            <div class="contact-cards">
+                <div class="contact-card">
+                    <div class="avatar">👨‍💻</div>
+                    <div class="name">Dionatan Resende</div>
+                    <div class="role">Diretor de Tecnologia</div>
+                    <div class="contact-info">
+                        📧 dionatan@stellaris.tech<br>
+                        📱 (31) XXXXX-XXXX
+                    </div>
+                </div>
+
+                <div class="contact-card">
+                    <div class="avatar">⚖️</div>
+                    <div class="name">Raquel Lousada</div>
+                    <div class="role">Diretora Jurídica e Comercial</div>
+                    <div class="contact-info">
+                        📧 raquel@stellaris.tech<br>
+                        📱 (31) XXXXX-XXXX
+                    </div>
+                </div>
+            </div>
+
+            <div class="legal-note">
+                <p>
+                    STELLARIS TECNOLOGIA E SISTEMAS LTDA<br>
+                    CNPJ: XX.XXX.XXX/0001-XX — Minas Gerais, Brasil<br>
+                    Contratação por dispensa de licitação (Lei 14.133/2021) ou Marco Legal das Startups (LC 182/2021)
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Print Button (hidden when printing) -->
+    <button class="print-btn no-print" onclick="window.print()">
+        🖨️ Salvar como PDF
+    </button>
+
+</body>
+
+</html>

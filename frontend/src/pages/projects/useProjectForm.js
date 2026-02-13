@@ -8,11 +8,23 @@ const EMPTY_PROJECT = {
     start_date: '',
     end_date: '',
     company_id: '',
+    programa_id: '',
+    acao_id: '',
     status: '1',
 }
 
 function getProjectUnitId(project) {
     const value = project?.unidade_id ?? project?.unidade?.id ?? project?.company_id ?? project?.company?.id ?? null
+    return value !== null && value !== undefined ? String(value) : ''
+}
+
+function getProjectProgramaId(project) {
+    const value = project?.programa_id ?? project?.programa?.id ?? null
+    return value !== null && value !== undefined ? String(value) : ''
+}
+
+function getProjectAcaoId(project) {
+    const value = project?.acao_id ?? project?.acao?.id ?? null
     return value !== null && value !== undefined ? String(value) : ''
 }
 
@@ -49,6 +61,8 @@ export default function useProjectForm({ loadUnidades, validation }) {
             start_date: normalizeDateValue(project.start_date),
             end_date: normalizeDateValue(project.end_date),
             company_id: getProjectUnitId(project),
+            programa_id: getProjectProgramaId(project),
+            acao_id: getProjectAcaoId(project),
             status: project.status != null ? String(project.status) : '1',
         })
         validation.clearErrors()
