@@ -105,18 +105,18 @@ export async function getProjetosPpa(params = {}) {
 }
 
 export async function getProjetoEtapas(projetoId) {
-    return apiRequest(`/projetos/${projetoId}/etapas`)
+    return apiRequest(`/projects/${projetoId}/etapas`)
 }
 
 export async function updateProjetoEtapa(projetoId, etapaId, data) {
-    return apiRequest(`/projetos/${projetoId}/etapas/${etapaId}`, {
+    return apiRequest(`/projects/${projetoId}/etapas/${etapaId}`, {
         method: 'PUT',
         body: JSON.stringify(data),
     })
 }
 
 export async function concluirProjetoEtapa(projetoId, etapaId, data = {}) {
-    return apiRequest(`/projetos/${projetoId}/etapas/${etapaId}/concluir`, {
+    return apiRequest(`/projects/${projetoId}/etapas/${etapaId}/concluir`, {
         method: 'POST',
         body: JSON.stringify(data),
     })

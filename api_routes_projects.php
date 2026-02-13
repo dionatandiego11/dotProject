@@ -45,6 +45,21 @@ $router->get('/v1/projects/{id}/tasks', function (Request $req, Response $res) {
     return $controller->tasks();
 });
 
+$router->get('/v1/projects/{id}/etapas', function (Request $req, Response $res) {
+    $controller = new ProjectController($req, $res);
+    return $controller->etapas();
+});
+
+$router->put('/v1/projects/{id}/etapas/{etapaId}', function (Request $req, Response $res) {
+    $controller = new ProjectController($req, $res);
+    return $controller->atualizarEtapa();
+});
+
+$router->post('/v1/projects/{id}/etapas/{etapaId}/concluir', function (Request $req, Response $res) {
+    $controller = new ProjectController($req, $res);
+    return $controller->concluirEtapa();
+});
+
 $router->get('/v1/projects/{id}/status-history', function (Request $req, Response $res) {
     $controller = new ProjectController($req, $res);
     return $controller->statusHistory();

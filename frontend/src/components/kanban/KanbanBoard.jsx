@@ -81,7 +81,7 @@ function KanbanBoard({ boardId, onTaskClick, onTaskMove, refreshKey = 0 }) {
       adjustedOrder = Math.max(0, targetOrder - 1)
     }
 
-    // Se soltou no mesmo lugar, nÃ£o faz nada
+    // Se soltou no mesmo lugar, nao faz nada
     if (sourceColumnId === normalizedTargetColumnId && currentIndex === adjustedOrder) {
       handleDragEnd()
       return
