@@ -31,35 +31,50 @@ class TaskEntity
     private int $percentComplete = 0;
     private ?float $estimatedHours = null;
     private ?float $actualHours = null;
-    
+
     // Novos campos do PPA
     private ?int $etapaId = null; // FK opcional para etapa
     private string $estado = 'A_Fazer'; // Backlog, A_Fazer, Em_Andamento, Pausada, Bloqueada, Em_Revisao, Concluida, Cancelada
     private ?string $evidenciaAnexo = null; // URL do arquivo
+    private float $peso = 1.00;
     private ?DateTime $createdAt = null;
     private ?DateTime $updatedAt = null;
-    
+
+    public function getPeso(): float
+    {
+        return $this->peso;
+    }
+
+    public function setPeso(float $peso): self
+    {
+        if ($peso <= 0) {
+            throw new \InvalidArgumentException('Peso deve ser maior que zero.');
+        }
+        $this->peso = $peso;
+        return $this;
+    }
+
     public function __construct()
     {
         $this->createdAt = new DateTime();
     }
-    
+
     public function getId(): ?int
     {
         return $this->id;
     }
-    
+
     public function setId(int $id): self
     {
         $this->id = $id;
         return $this;
     }
-    
+
     public function getName(): string
     {
         return $this->name;
     }
-    
+
     public function setName(string $name): self
     {
         $this->name = $name;
@@ -76,23 +91,23 @@ class TaskEntity
         $this->description = $description;
         return $this;
     }
-    
+
     public function getProjectId(): int
     {
         return $this->projectId;
     }
-    
+
     public function setProjectId(int $id): self
     {
         $this->projectId = $id;
         return $this;
     }
-    
+
     public function getProject(): ?ProjetoEntity
     {
         return $this->project;
     }
-    
+
     public function setProject(?ProjetoEntity $project): self
     {
         $this->project = $project;
@@ -101,12 +116,12 @@ class TaskEntity
         }
         return $this;
     }
-    
+
     public function getAssignedTo(): ?int
     {
         return $this->assignedTo;
     }
-    
+
     public function setAssignedTo(?int $userId): self
     {
         $this->assignedTo = $userId;
@@ -134,60 +149,60 @@ class TaskEntity
         $this->ownerId = $ownerId;
         return $this;
     }
-    
+
     public function getEtapaId(): ?int
     {
         return $this->etapaId;
     }
-    
+
     public function setEtapaId(?int $id): self
     {
         $this->etapaId = $id;
         return $this;
     }
-    
+
     public function getEstado(): string
     {
         return $this->estado;
     }
-    
+
     public function setEstado(string $estado): self
     {
         $this->estado = $estado;
         $this->updatedAt = new DateTime();
-        
+
         // Atualiza percentual baseado no estado
-        $this->percentComplete = match($estado) {
+        $this->percentComplete = match ($estado) {
             'Concluida' => 100,
             'Em_Andamento' => max(50, $this->percentComplete),
             'A_Fazer', 'Backlog' => 0,
             default => $this->percentComplete,
         };
-        
+
         return $this;
     }
-    
+
     public function getPriority(): int
     {
         return $this->priority;
     }
-    
+
     public function setPriority(int $priority): self
     {
         $this->priority = max(0, min(4, $priority));
         return $this;
     }
-    
+
     public function getPriorityLabel(): string
     {
-        return match($this->priority) {
+        return match ($this->priority) {
             0 => 'Baixa',
             2 => 'Alta',
             3 => 'Urgente',
             default => 'Normal',
         };
     }
-    
+
     public function getEndDate(): ?DateTime
     {
         return $this->endDate;
@@ -203,7 +218,7 @@ class TaskEntity
         $this->startDate = $date;
         return $this;
     }
-    
+
     public function setEndDate(?DateTime $date): self
     {
         $this->endDate = $date;
@@ -286,23 +301,23 @@ class TaskEntity
         $this->updatedAt = $updatedAt;
         return $this;
     }
-    
+
     public function getEvidenciaAnexo(): ?string
     {
         return $this->evidenciaAnexo;
     }
-    
+
     public function setEvidenciaAnexo(?string $url): self
     {
         $this->evidenciaAnexo = $url;
         return $this;
     }
-    
+
     public function isConcluida(): bool
     {
         return $this->estado === 'Concluida';
     }
-    
+
     public function isAtrasada(): bool
     {
         if ($this->isConcluida() || $this->isCompleted() || !$this->endDate) {
@@ -339,7 +354,7 @@ class TaskEntity
 
         return $diff->invert ? -$diff->days : $diff->days;
     }
-    
+
     /**
      * Inicia execução da tarefa
      */
@@ -351,7 +366,7 @@ class TaskEntity
         }
         $this->updatedAt = new DateTime();
     }
-    
+
     /**
      * Conclui a tarefa
      */
@@ -361,13 +376,13 @@ class TaskEntity
         $this->percentComplete = 100;
         $this->evidenciaAnexo = $evidencia ?? $this->evidenciaAnexo;
         $this->updatedAt = new DateTime();
-        
+
         // Atualiza last_update do projeto
         if ($this->project) {
             $this->project->touch();
         }
     }
-    
+
     /**
      * Bloqueia a tarefa
      */
@@ -377,7 +392,7 @@ class TaskEntity
         $this->updatedAt = new DateTime();
         // TODO: Registrar motivo do bloqueio em tabela separada
     }
-    
+
     public function toArray(): array
     {
         return [

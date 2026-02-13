@@ -17,7 +17,10 @@ const Programas = lazy(() => import('./pages/Programas'))
 const Acoes = lazy(() => import('./pages/Acoes'))
 const Projects = lazy(() => import('./pages/Projects'))
 const ProjectDetails = lazy(() => import('./pages/ProjectDetails'))
+const Etapas = lazy(() => import('./pages/Etapas'))
+const Tarefas = lazy(() => import('./pages/Tarefas'))
 const Kanban = lazy(() => import('./pages/Kanban'))
+const Metas = lazy(() => import('./pages/metas/MetasPage'))
 const Login = lazy(() => import('./pages/Login'))
 const SetupWizard = lazy(() => import('./pages/SetupWizard'))
 
@@ -143,10 +146,32 @@ function App() {
                             </Suspense>
                         } />
 
+                        {/* Etapas (CRUD macro por projeto) */}
+                        <Route path="etapas" element={
+                            <Suspense fallback={<Loading />}>
+                                <Etapas />
+                            </Suspense>
+                        } />
+
+                        {/* Tarefas (lista com filtros) */}
+                        <Route path="tarefas" element={
+                            <Suspense fallback={<Loading />}>
+                                <Tarefas />
+                            </Suspense>
+                        } />
+                        <Route path="tasks" element={<Navigate to="/tarefas" replace />} />
+
                         {/* Kanban */}
                         <Route path="kanban" element={
                             <Suspense fallback={<Loading />}>
                                 <Kanban />
+                            </Suspense>
+                        } />
+
+                        {/* Metas / Indicadores */}
+                        <Route path="metas" element={
+                            <Suspense fallback={<Loading />}>
+                                <Metas />
                             </Suspense>
                         } />
 

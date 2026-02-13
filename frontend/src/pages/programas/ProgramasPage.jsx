@@ -27,6 +27,32 @@ const EMPTY_FORM = {
 
 const ESTADOS_PROGRAMA = ['Planejamento', 'Em execucao', 'Concluido', 'Suspenso', 'Cancelado']
 
+const SAUDE_CONFIG = {
+    em_dia: { label: 'Em dia', color: '#16a34a', bg: '#f0fdf4' },
+    atencao: { label: 'Atenção', color: '#d97706', bg: '#fffbeb' },
+    critico: { label: 'Crítico', color: '#dc2626', bg: '#fef2f2' },
+    impedido: { label: 'Impedido', color: '#6b7280', bg: '#f3f4f6' },
+}
+
+function SaudeBadge({ status }) {
+    const cfg = SAUDE_CONFIG[status] || SAUDE_CONFIG.em_dia
+    return (
+        <span style={{
+            display: 'inline-block',
+            padding: '2px 10px',
+            borderRadius: 12,
+            fontSize: 12,
+            fontWeight: 600,
+            color: cfg.color,
+            background: cfg.bg,
+            border: `1px solid ${cfg.color}22`,
+            whiteSpace: 'nowrap',
+        }}>
+            {cfg.label}
+        </span>
+    )
+}
+
 function extractList(payload) {
     if (Array.isArray(payload?.data)) {
         return payload.data
@@ -322,9 +348,9 @@ export default function ProgramasPage() {
 
                 <div className="card" style={{ marginBottom: 'var(--spacing-4)' }}>
                     <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <h2 className="card-title">Gestao de Programas</h2>
+                        <h2 className="card-title">Gestão de Programas</h2>
                         <span style={{ fontSize: '0.875rem', color: 'var(--color-gray-500)' }}>
-                            {programas.length} programas | {totalAcoes} acoes | {totalProjetos} projetos vinculados
+                            {programas.length} programas | {totalAcoes} ações | {totalProjetos} projetos vinculados
                         </span>
                     </div>
                     <div className="card-body" style={{ padding: 0 }}>
@@ -343,10 +369,11 @@ export default function ProgramasPage() {
                                         <th>PPA</th>
                                         <th>Secretaria</th>
                                         <th>Estado</th>
-                                        <th>Execucao</th>
-                                        <th>Acoes</th>
+                                        <th>Saúde</th>
+                                        <th>Execução</th>
+                                        <th>Ações</th>
                                         <th>Projetos</th>
-                                        <th>Gestao</th>
+                                        <th>Gestão</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -368,6 +395,7 @@ export default function ProgramasPage() {
                                                 <td>{ppa?.nome || '-'}</td>
                                                 <td>{programa.unidade_nome || '-'}</td>
                                                 <td>{programa.estado || '-'}</td>
+                                                <td><SaudeBadge status={programa.status_saude || 'em_dia'} /></td>
                                                 <td>{formatPercent(programa.percent_execucao)}</td>
                                                 <td>{Number(programa.total_acoes || 0)}</td>
                                                 <td>{Number(programa.total_projetos || 0)}</td>
@@ -381,7 +409,7 @@ export default function ProgramasPage() {
                                                             navigate(`/acoes?programa_id=${programa.id}`)
                                                         }}
                                                     >
-                                                        Ver Acoes
+                                                        Ver Ações
                                                     </button>
                                                     <button
                                                         type="button"
@@ -564,7 +592,7 @@ export default function ProgramasPage() {
                                 </select>
                             </div>
                             <Input
-                                label="Execucao (%)"
+                                label="Execução (%)"
                                 type="number"
                                 min="0"
                                 max="100"

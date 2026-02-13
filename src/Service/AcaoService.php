@@ -16,13 +16,16 @@ class AcaoService
 {
     private AcaoRepository $repository;
     private ?ProgramaRepository $programaRepository;
+    private ?AuditService $auditService;
 
     public function __construct(
         ?AcaoRepository $repository = null,
-        ?ProgramaRepository $programaRepository = null
+        ?ProgramaRepository $programaRepository = null,
+        ?AuditService $auditService = null
     ) {
         $this->repository = $repository ?? new AcaoRepository();
         $this->programaRepository = $programaRepository;
+        $this->auditService = $auditService;
     }
 
     /**
@@ -46,7 +49,7 @@ class AcaoService
      * @param array<string, mixed> $data
      * @return array<string, mixed>
      */
-    public function create(array $data): array
+    public function create(array $data, ?int $userId = null): array
     {
         $payload = $this->normalizePayload($data, true);
         $this->assertProgramaExiste((int) ($payload['programa_id'] ?? 0));
@@ -57,6 +60,14 @@ class AcaoService
             throw new \RuntimeException('Acao criada, mas nao foi possivel recarregar o registro.');
         }
 
+        $this->auditValorExecutadoChange(
+            (int) ($created['id'] ?? $id),
+            null,
+            $created['valor_executado'] ?? null,
+            $userId,
+            'acao_create'
+        );
+
         return $created;
     }
 
@@ -64,7 +75,7 @@ class AcaoService
      * @param array<string, mixed> $data
      * @return array<string, mixed>|null
      */
-    public function update(int $id, array $data): ?array
+    public function update(int $id, array $data, ?int $userId = null): ?array
     {
         $existing = $this->repository->find($id);
         if ($existing === null) {
@@ -81,7 +92,20 @@ class AcaoService
         }
 
         $this->repository->update($id, $payload);
-        return $this->repository->find($id);
+        $updated = $this->repository->find($id);
+        if ($updated === null) {
+            return $existing;
+        }
+
+        $this->auditValorExecutadoChange(
+            $id,
+            $existing['valor_executado'] ?? null,
+            $updated['valor_executado'] ?? null,
+            $userId,
+            'acao_update'
+        );
+
+        return $updated;
     }
 
     public function delete(int $id): bool
@@ -146,8 +170,19 @@ class AcaoService
             $payload['percent_execucao'] = $percent;
         }
 
+        if (array_key_exists('tipo', $data)) {
+            $tipo = trim((string) $data['tipo']);
+            if ($tipo !== '') {
+                $payload['tipo'] = $tipo;
+            }
+        }
+
         if (array_key_exists('valor_orcamentario', $data)) {
             $payload['valor_orcamentario'] = (float) $data['valor_orcamentario'];
+        }
+
+        if (array_key_exists('valor_executado', $data)) {
+            $payload['valor_executado'] = (float) $data['valor_executado'];
         }
 
         if (array_key_exists('data_inicio', $data)) {
@@ -192,6 +227,35 @@ class AcaoService
         }
 
         return $this->programaRepository;
+    }
+
+    private function getAuditService(): AuditService
+    {
+        if ($this->auditService === null) {
+            $this->auditService = new AuditService();
+        }
+
+        return $this->auditService;
+    }
+
+    private function auditValorExecutadoChange(
+        int $acaoId,
+        mixed $valorAnterior,
+        mixed $valorNovo,
+        ?int $userId,
+        string $origem
+    ): void {
+        $anterior = $valorAnterior !== null ? (float) $valorAnterior : null;
+        $novo = $valorNovo !== null ? (float) $valorNovo : null;
+
+        $this->getAuditService()->logValorExecutadoChange(
+            'acao',
+            $acaoId,
+            $anterior,
+            $novo,
+            $userId,
+            $origem
+        );
     }
 
     private function normalizeNullableString(mixed $value): ?string

@@ -1,5 +1,6 @@
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useState, useEffect } from 'react'
+import ErrorBoundary from '../../components/ErrorBoundary'
 
 const menuItems = [
     { path: '/admin', label: 'Painel', icon: '📊', end: true },
@@ -173,7 +174,9 @@ function AdminLayout() {
                 padding: isSetup ? 0 : '24px 32px',
                 overflowY: 'auto',
             }}>
-                <Outlet />
+                <ErrorBoundary>
+                    <Outlet />
+                </ErrorBoundary>
             </main>
         </div>
     )

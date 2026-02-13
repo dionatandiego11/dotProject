@@ -494,6 +494,189 @@ class TaskController extends BaseController
         return $this->response->noContent();
     }
 
+    /**
+     * GET /v1/projetos/{id}/tarefas
+     *
+     * Compatibilidade com rota do módulo PPA.
+     */
+    public function porProjeto(): Response
+    {
+        $projectId = (int) $this->request->getParam('id');
+        $pagination = $this->getPagination();
+
+        if (!$this->checkPermission('tasks', 'view')) {
+            return $this->response->forbidden('Insufficient permissions');
+        }
+
+        if ($guard = $this->ensureProjectAccess($projectId)) {
+            return $guard;
+        }
+
+        $where = 't.task_project = ?' . $this->tenantAndCondition($this->db->table('tasks'), 't');
+        $params = [$projectId];
+
+        $totalSql = sprintf(
+            'SELECT COUNT(*) AS total FROM %s t WHERE %s',
+            $this->db->table('tasks'),
+            $where
+        );
+        $total = (int) ($this->db->fetchValueParams($totalSql, $params) ?? 0);
+
+        $sql = sprintf(
+            "SELECT t.*, p.project_name
+             FROM %s t
+             LEFT JOIN %s p ON t.task_project = p.project_id%s
+             WHERE %s
+             ORDER BY t.task_order ASC, t.task_start_date ASC
+             LIMIT ? OFFSET ?",
+            $this->db->table('tasks'),
+            $this->db->table('projects'),
+            $this->tenantAndCondition($this->db->table('projects'), 'p'),
+            $where
+        );
+        $rows = $this->db->fetchAllParams($sql, array_merge($params, [
+            $pagination['per_page'],
+            $pagination['offset'],
+        ]));
+
+        $tasks = array_map(fn($row) => $this->taskFormatter()->format($row), $rows);
+
+        return $this->response->paginated(
+            $tasks,
+            $total,
+            $pagination['page'],
+            $pagination['per_page']
+        );
+    }
+
+    /**
+     * GET /v1/projetos/{id}/etapas/{etapaId}/tarefas
+     *
+     * Compatibilidade com rota do módulo PPA.
+     */
+    public function porEtapa(): Response
+    {
+        $projectId = (int) $this->request->getParam('id');
+        $etapaId = (int) $this->request->getParam('etapaId');
+        $pagination = $this->getPagination();
+
+        if (!$this->checkPermission('tasks', 'view')) {
+            return $this->response->forbidden('Insufficient permissions');
+        }
+
+        if ($guard = $this->ensureProjectAccess($projectId)) {
+            return $guard;
+        }
+
+        $tasksTable = $this->db->table('tasks');
+        if (!$this->tableHasColumn($tasksTable, 'task_etapa_id')) {
+            return $this->response->paginated([], 0, $pagination['page'], $pagination['per_page']);
+        }
+
+        $where = 't.task_project = ? AND t.task_etapa_id = ?' . $this->tenantAndCondition($tasksTable, 't');
+        $params = [$projectId, $etapaId];
+
+        $totalSql = sprintf(
+            'SELECT COUNT(*) AS total FROM %s t WHERE %s',
+            $tasksTable,
+            $where
+        );
+        $total = (int) ($this->db->fetchValueParams($totalSql, $params) ?? 0);
+
+        $sql = sprintf(
+            "SELECT t.*, p.project_name
+             FROM %s t
+             LEFT JOIN %s p ON t.task_project = p.project_id%s
+             WHERE %s
+             ORDER BY t.task_order ASC, t.task_start_date ASC
+             LIMIT ? OFFSET ?",
+            $tasksTable,
+            $this->db->table('projects'),
+            $this->tenantAndCondition($this->db->table('projects'), 'p'),
+            $where
+        );
+        $rows = $this->db->fetchAllParams($sql, array_merge($params, [
+            $pagination['per_page'],
+            $pagination['offset'],
+        ]));
+
+        $tasks = array_map(fn($row) => $this->taskFormatter()->format($row), $rows);
+
+        return $this->response->paginated(
+            $tasks,
+            $total,
+            $pagination['page'],
+            $pagination['per_page']
+        );
+    }
+
+    /**
+     * PUT /v1/tarefas/{id}/estado
+     *
+     * Atualização rápida de estado para compatibilidade com o fluxo PPA.
+     */
+    public function atualizarEstado(): Response
+    {
+        $id = (int) $this->request->getParam('id');
+
+        if (!$this->checkPermission('tasks', 'edit')) {
+            return $this->response->forbidden('Insufficient permissions');
+        }
+
+        if ($guard = $this->ensureTaskAccess($id)) {
+            return $guard;
+        }
+
+        $task = $this->taskRepository()->find($id);
+        if ($task === null) {
+            return $this->notFound('Task not found');
+        }
+
+        $body = $this->request->getBody();
+        $statusRaw = $body['status'] ?? $body['estado'] ?? null;
+        if ($statusRaw === null || $statusRaw === '') {
+            return $this->response->validationError([
+                'status' => 'Status é obrigatório.',
+            ]);
+        }
+
+        $status = $this->normalizeQuickStatus($statusRaw);
+        if ($status === null || !$this->taskStatus()->isValidStatus($status)) {
+            return $this->response->validationError([
+                'status' => 'Status inválido.',
+            ]);
+        }
+
+        $payload = ['status' => $status];
+        if (array_key_exists('percent_complete', $body)) {
+            $payload['percent_complete'] = $body['percent_complete'];
+        }
+
+        $this->taskStatus()->normalizeStatusPercent(
+            $payload,
+            $task->getStatus(),
+            $task->getPercentComplete()
+        );
+
+        $task->setStatus((int) $payload['status']);
+        if (array_key_exists('percent_complete', $payload)) {
+            $task->setPercentComplete((int) $payload['percent_complete']);
+        }
+
+        if ($this->taskRepository()->save($task) <= 0) {
+            return $this->error('Failed to update task status');
+        }
+
+        $this->syncProjectProgress($task->getProjectId());
+
+        return $this->json([
+            'id' => $task->getId(),
+            'status' => $task->getStatus(),
+            'percent_complete' => $task->getPercentComplete(),
+            'message' => 'Task status updated successfully',
+        ]);
+    }
+
     private function supportsTaskAssignedToColumn(): bool
     {
         if ($this->hasTaskAssignedTo !== null) {
@@ -507,6 +690,41 @@ class TaskController extends BaseController
         }
 
         return $this->hasTaskAssignedTo;
+    }
+
+    private function normalizeQuickStatus(mixed $statusRaw): ?int
+    {
+        if (is_numeric($statusRaw)) {
+            return (int) $statusRaw;
+        }
+
+        $normalized = mb_strtolower(trim((string) $statusRaw));
+        if ($normalized === '') {
+            return null;
+        }
+
+        $map = [
+            'backlog' => 0,
+            'a_fazer' => 1,
+            'a fazer' => 1,
+            'todo' => 1,
+            'em_andamento' => 2,
+            'em andamento' => 2,
+            'doing' => 2,
+            'concluida' => 3,
+            'concluido' => 3,
+            'done' => 3,
+            'em_espera' => 4,
+            'em espera' => 4,
+            'cancelado' => 5,
+            'cancelada' => 5,
+            'arquivado' => 6,
+            'arquivada' => 6,
+            'revisao' => 7,
+            'revisão' => 7,
+        ];
+
+        return $map[$normalized] ?? null;
     }
 
     private function syncProjectProgress(int $projectId): void

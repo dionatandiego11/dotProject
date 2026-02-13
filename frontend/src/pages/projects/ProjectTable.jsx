@@ -91,7 +91,7 @@ export default function ProjectTable({
                                         )}
                                         {projectActions.length > 0 && (
                                             <div style={{ fontSize: '0.75rem', color: 'var(--color-gray-600)' }}>
-                                                Acoes: {projectActionPreview.map((acao) => acao.nome || `#${acao.id}`).join(', ')}
+                                                Ações: {projectActionPreview.map((acao) => acao.nome || `#${acao.id}`).join(', ')}
                                                 {projectActionOverflow > 0 ? ` (+${projectActionOverflow})` : ''}
                                             </div>
                                         )}
@@ -128,6 +128,14 @@ export default function ProjectTable({
                                     onClick={() => navigate(`/projects/${project.id}`)}
                                 >
                                     Ver
+                                </button>
+                                <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    style={{ padding: 'var(--spacing-1) var(--spacing-2)', marginLeft: 'var(--spacing-2)' }}
+                                    onClick={() => navigate(`/etapas?project=${project.id}`)}
+                                >
+                                    Etapas
                                 </button>
                                 <button
                                     type="button"

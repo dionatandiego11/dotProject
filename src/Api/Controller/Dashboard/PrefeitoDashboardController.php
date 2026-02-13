@@ -12,6 +12,8 @@ namespace DotProject\Api\Controller\Dashboard;
 use DotProject\Api\Controller\BaseController;
 use DotProject\Api\Request;
 use DotProject\Api\Response;
+use DotProject\Service\RollupService;
+use DotProject\Service\SaudeCalculator;
 
 class PrefeitoDashboardController extends BaseController
 {
@@ -162,6 +164,54 @@ class PrefeitoDashboardController extends BaseController
             WHERE estado != 'Cancelado'{$tenantProjetos}"
         )[0] ?? [];
 
+        // --- Saúde Resumo (distribuição de status_saude por entidade) ---
+        $saudeResumo = [];
+        $entidadesSaude = [
+            ['table' => 'dotp_ppas', 'label' => 'PPAs', 'tenant' => $this->tenantAndCondition('dotp_ppas')],
+            ['table' => 'dotp_programas', 'label' => 'Programas', 'tenant' => $tenantProgramas],
+            ['table' => 'dotp_acoes', 'label' => 'Ações', 'tenant' => $this->tenantAndCondition('dotp_acoes')],
+            ['table' => 'dotp_projetos_prefeitura', 'label' => 'Projetos', 'tenant' => $tenantProjetos],
+        ];
+
+        foreach ($entidadesSaude as $ent) {
+            try {
+                $rows = $db->fetchAll(
+                    "SELECT
+                        COALESCE(status_saude, 'em_dia') as status_saude,
+                        COUNT(*) as total
+                    FROM {$ent['table']}
+                    WHERE 1=1{$ent['tenant']}
+                    GROUP BY status_saude"
+                );
+                $dist = ['em_dia' => 0, 'atencao' => 0, 'critico' => 0, 'impedido' => 0];
+                foreach ($rows as $row) {
+                    $key = $row['status_saude'] ?? 'em_dia';
+                    $dist[$key] = (int) $row['total'];
+                }
+                $saudeResumo[$ent['label']] = $dist;
+            } catch (\Throwable $e) {
+                $saudeResumo[$ent['label']] = ['em_dia' => 0, 'atencao' => 0, 'critico' => 0, 'impedido' => 0];
+            }
+        }
+
+        // --- PPA Rollup (execução ponderada cascata) ---
+        $ppaRollup = [];
+        try {
+            $rollupService = new RollupService($db, new \DotProject\Core\TenantContext());
+            $ppas = $db->fetchAll(
+                "SELECT id, nome FROM dotp_ppas WHERE 1=1{$this->tenantAndCondition('dotp_ppas')}"
+            );
+            foreach ($ppas as $ppa) {
+                $ppaRollup[] = [
+                    'id' => (int) $ppa['id'],
+                    'nome' => $ppa['nome'],
+                    'rollup' => $rollupService->calcularPercentPpa((int) $ppa['id']),
+                ];
+            }
+        } catch (\Throwable $e) {
+            // rollup indisponível, continua sem
+        }
+
         return [
             'perfil' => 'prefeito',
             'source' => 'modern_tables',
@@ -186,6 +236,8 @@ class PrefeitoDashboardController extends BaseController
                     ? round((($orcamento['pago'] ?? 0) / $orcamento['previsto']) * 100, 2)
                     : 0,
             ],
+            'saude_resumo' => $saudeResumo,
+            'ppa_rollup' => $ppaRollup,
         ];
     }
 

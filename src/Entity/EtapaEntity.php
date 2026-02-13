@@ -31,34 +31,49 @@ class EtapaEntity
     private ?string $justificativaAtraso = null;
     private ?string $evidenciaUrl = null;
     private float $percentConclusao = 0.0;
-    
+    private float $peso = 1.00;
+
+    public function getPeso(): float
+    {
+        return $this->peso;
+    }
+
+    public function setPeso(float $peso): self
+    {
+        if ($peso <= 0) {
+            throw new \InvalidArgumentException('Peso deve ser maior que zero.');
+        }
+        $this->peso = $peso;
+        return $this;
+    }
+
     public function getId(): ?int
     {
         return $this->id;
     }
-    
+
     public function setId(int $id): self
     {
         $this->id = $id;
         return $this;
     }
-    
+
     public function getProjetoId(): int
     {
         return $this->projetoId;
     }
-    
+
     public function setProjetoId(int $id): self
     {
         $this->projetoId = $id;
         return $this;
     }
-    
+
     public function getProjeto(): ?ProjetoEntity
     {
         return $this->projeto;
     }
-    
+
     public function setProjeto(?ProjetoEntity $projeto): self
     {
         $this->projeto = $projeto;
@@ -67,34 +82,34 @@ class EtapaEntity
         }
         return $this;
     }
-    
+
     public function getNumero(): int
     {
         return $this->numero;
     }
-    
+
     public function setNumero(int $numero): self
     {
         $this->numero = $numero;
         return $this;
     }
-    
+
     public function getNome(): string
     {
         return $this->nome;
     }
-    
+
     public function setNome(string $nome): self
     {
         $this->nome = $nome;
         return $this;
     }
-    
+
     public function getEstado(): string
     {
         return $this->estado;
     }
-    
+
     public function setEstado(string $estado): self
     {
         $this->estado = $estado;
@@ -106,7 +121,7 @@ class EtapaEntity
         $this->dataPrevistaInicio = $data;
         return $this;
     }
-    
+
     public function getDataPrevistaFim(): ?DateTime
     {
         return $this->dataPrevistaFim;
@@ -116,24 +131,24 @@ class EtapaEntity
     {
         return $this->dataPrevistaInicio;
     }
-    
+
     public function setDataPrevistaFim(?DateTime $data): self
     {
         $this->dataPrevistaFim = $data;
         return $this;
     }
-    
+
     public function getDataRealFim(): ?DateTime
     {
         return $this->dataRealFim;
     }
-    
+
     public function setDataRealFim(?DateTime $data): self
     {
         $this->dataRealFim = $data;
         return $this;
     }
-    
+
     public function getDataRealInicio(): ?DateTime
     {
         return $this->dataRealInicio;
@@ -143,7 +158,7 @@ class EtapaEntity
     {
         return $this->responsavelId;
     }
-    
+
     public function setDataRealInicio(?DateTime $data): self
     {
         $this->dataRealInicio = $data;
@@ -155,18 +170,18 @@ class EtapaEntity
         $this->responsavelId = $id;
         return $this;
     }
-    
+
     public function getDiasAtraso(): int
     {
         return $this->diasAtraso;
     }
-    
+
     public function setDiasAtraso(int $dias): self
     {
         $this->diasAtraso = $dias;
         return $this;
     }
-    
+
     public function getJustificativaAtraso(): ?string
     {
         return $this->justificativaAtraso;
@@ -176,7 +191,7 @@ class EtapaEntity
     {
         return $this->evidenciaUrl;
     }
-    
+
     public function setJustificativaAtraso(?string $justificativa): self
     {
         $this->justificativaAtraso = $justificativa;
@@ -188,18 +203,18 @@ class EtapaEntity
         $this->evidenciaUrl = $url;
         return $this;
     }
-    
+
     public function getPercentConclusao(): float
     {
         return $this->percentConclusao;
     }
-    
+
     public function setPercentConclusao(float $percent): self
     {
         $this->percentConclusao = max(0, min(100, $percent));
         return $this;
     }
-    
+
     /**
      * Inicia a etapa
      */
@@ -209,7 +224,7 @@ class EtapaEntity
         $this->estado = 'Em_Andamento';
         $this->getStateObject()->onEnter($this);
     }
-    
+
     /**
      * Finaliza a etapa
      */
@@ -218,19 +233,19 @@ class EtapaEntity
         if (!$this->justificativaAtraso && $this->estaAtrasada()) {
             throw new \DomainException('Justificativa de atraso é obrigatória');
         }
-        
+
         $this->dataRealFim = new DateTime();
-        
+
         if ($this->estaAtrasada()) {
             $this->estado = 'Concluida_Com_Atraso';
         } else {
             $this->estado = 'Concluida';
         }
-        
+
         $this->percentConclusao = 100.0;
         $this->getStateObject()->onEnter($this);
     }
-    
+
     /**
      * Verifica automaticamente o prazo e atualiza estado
      */
@@ -238,7 +253,7 @@ class EtapaEntity
     {
         $estado = $this->getStateObject();
         $diasAtraso = $estado->verificarAtraso($this);
-        
+
         if ($diasAtraso !== null) {
             $this->diasAtraso = $diasAtraso;
             $this->estado = $diasAtraso > 30 ? 'Critica' : 'Atrasada';
@@ -247,7 +262,7 @@ class EtapaEntity
             if ($this->dataPrevistaFim) {
                 $hoje = new DateTime();
                 $limite = (clone $hoje)->modify('+7 days');
-                
+
                 if ($this->dataPrevistaFim <= $limite && $this->dataPrevistaFim >= $hoje) {
                     $this->estado = 'Proximo_Prazo';
                 } elseif ($this->dataPrevistaFim > $limite) {
@@ -256,40 +271,40 @@ class EtapaEntity
             }
         }
     }
-    
+
     /**
      * Transiciona para novo estado
      */
     public function transicionarEstado(string $novoEstado): void
     {
         $estadoAtual = $this->getStateObject();
-        
+
         if (!$estadoAtual->canTransitionTo($novoEstado)) {
             throw new \InvalidArgumentException(
                 "Transição de '{$this->estado}' para '{$novoEstado}' não permitida"
             );
         }
-        
+
         $estadoAtual->onExit($this);
         $this->estado = $novoEstado;
         $this->getStateObject()->onEnter($this);
     }
-    
+
     public function isConcluida(): bool
     {
         return $this->getStateObject()->isConcluida();
     }
-    
+
     public function estaAtrasada(): bool
     {
         if (!$this->dataPrevistaFim || $this->isConcluida()) {
             return false;
         }
-        
+
         $hoje = new DateTime();
         return $hoje > $this->dataPrevistaFim;
     }
-    
+
     /**
      * Retorna cor para UI
      */
@@ -297,12 +312,12 @@ class EtapaEntity
     {
         return $this->getStateObject()->getColor();
     }
-    
+
     public function getStateObject(): EtapaStateInterface
     {
         return StateFactory::createEtapaState($this->estado);
     }
-    
+
     /**
      * Conta tarefas vinculadas a esta etapa
      */
@@ -313,7 +328,7 @@ class EtapaEntity
         }
         return count($this->projeto->getTarefasPorEtapa($this->numero));
     }
-    
+
     /**
      * Conta tarefas concluídas
      */
@@ -325,7 +340,7 @@ class EtapaEntity
         $tarefas = $this->projeto->getTarefasPorEtapa($this->numero);
         return count(array_filter($tarefas, fn($t) => $t->isConcluida()));
     }
-    
+
     public function toArray(): array
     {
         return [

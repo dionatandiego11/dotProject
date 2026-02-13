@@ -14,7 +14,7 @@ final class TenantContext
     private static ?string $tenantHost = null;
     private static string $tenantSource = 'unset';
 
-    private function __construct()
+    public function __construct()
     {
     }
 

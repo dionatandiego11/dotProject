@@ -209,3 +209,62 @@ $router->put('/v1/tarefas/{id}/estado', function (Request $req, Response $res) {
     $controller = new \DotProject\Api\Controller\TaskController($req, $res);
     $controller->atualizarEstado();
 });
+
+// ===========================================
+// METAS (Indicadores TCE)
+// ===========================================
+
+use DotProject\Api\Controller\MetaController;
+
+$router->get('/v1/metas', function (Request $req, Response $res) {
+    $controller = new MetaController($req, $res);
+    return $controller->index();
+});
+
+$router->get('/v1/metas/resumo/{acaoId}', function (Request $req, Response $res) {
+    $controller = new MetaController($req, $res);
+    return $controller->resumo();
+});
+
+$router->get('/v1/metas/{id}', function (Request $req, Response $res) {
+    $controller = new MetaController($req, $res);
+    return $controller->show();
+});
+
+$router->post('/v1/metas', function (Request $req, Response $res) {
+    $controller = new MetaController($req, $res);
+    return $controller->store();
+});
+
+$router->put('/v1/metas/{id}', function (Request $req, Response $res) {
+    $controller = new MetaController($req, $res);
+    return $controller->update();
+});
+
+$router->delete('/v1/metas/{id}', function (Request $req, Response $res) {
+    $controller = new MetaController($req, $res);
+    return $controller->destroy();
+});
+
+// ===========================================
+// ADMIN: Reprocessamento de Rollup + Saúde
+// ===========================================
+
+$router->post('/v1/admin/recomputar-rollup', function (Request $req, Response $res) {
+    $db = \DotProject\Core\Database::getInstance();
+    $tenant = \DotProject\Core\TenantContext::getInstance();
+
+    $rollup = new \DotProject\Service\RollupService($db, $tenant);
+    $saude = new \DotProject\Service\SaudeCalculator($db, $tenant);
+
+    $statsRollup = $rollup->recomputarTudo();
+    $statsSaude = $saude->recomputarSaudeGlobal();
+
+    $res->json([
+        'message' => 'Recomputação concluída.',
+        'rollup' => $statsRollup,
+        'saude' => $statsSaude,
+    ]);
+    return $res;
+});
+

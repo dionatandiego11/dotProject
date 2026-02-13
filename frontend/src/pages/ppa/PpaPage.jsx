@@ -21,6 +21,32 @@ const EMPTY_FORM = {
 
 const ESTADOS_PPA = ['Rascunho', 'Aprovado', 'Publicado', 'Encerrado']
 
+const SAUDE_CONFIG = {
+    em_dia: { label: 'Em dia', color: '#16a34a', bg: '#f0fdf4' },
+    atencao: { label: 'Atenção', color: '#d97706', bg: '#fffbeb' },
+    critico: { label: 'Crítico', color: '#dc2626', bg: '#fef2f2' },
+    impedido: { label: 'Impedido', color: '#6b7280', bg: '#f3f4f6' },
+}
+
+function SaudeBadge({ status }) {
+    const cfg = SAUDE_CONFIG[status] || SAUDE_CONFIG.em_dia
+    return (
+        <span style={{
+            display: 'inline-block',
+            padding: '2px 10px',
+            borderRadius: 12,
+            fontSize: 12,
+            fontWeight: 600,
+            color: cfg.color,
+            background: cfg.bg,
+            border: `1px solid ${cfg.color}22`,
+            whiteSpace: 'nowrap',
+        }}>
+            {cfg.label}
+        </span>
+    )
+}
+
 function formatPeriodo(ppa) {
     if (!ppa?.periodo_inicio && !ppa?.periodo_fim) {
         return '-'
@@ -266,7 +292,7 @@ export default function PpaPage() {
 
                 <div className="card" style={{ marginBottom: 'var(--spacing-4)' }}>
                     <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <h2 className="card-title">Gestao do PPA</h2>
+                        <h2 className="card-title">Gestão do PPA</h2>
                         <span style={{ fontSize: '0.875rem', color: 'var(--color-gray-500)' }}>
                             {ppas.length} planos | {totalProgramas} programas
                         </span>
@@ -285,9 +311,10 @@ export default function PpaPage() {
                                         <th>Nome</th>
                                         <th>Periodo</th>
                                         <th>Estado</th>
+                                        <th>Saúde</th>
                                         <th>Programas</th>
-                                        <th>Execucao</th>
-                                        <th>Acoes</th>
+                                        <th>Execução</th>
+                                        <th>Ações</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -305,6 +332,7 @@ export default function PpaPage() {
                                             </td>
                                             <td>{formatPeriodo(ppa)}</td>
                                             <td>{ppa.estado || '-'}</td>
+                                            <td><SaudeBadge status={ppa.status_saude || 'em_dia'} /></td>
                                             <td>{Number(ppa.total_programas || 0)}</td>
                                             <td>{Number(ppa.percent_execucao || 0).toFixed(2)}%</td>
                                             <td>
@@ -367,7 +395,8 @@ export default function PpaPage() {
                                         <th>Nome</th>
                                         <th>Secretaria</th>
                                         <th>Estado</th>
-                                        <th>Execucao</th>
+                                        <th>Saúde</th>
+                                        <th>Execução</th>
                                         <th>Projetos</th>
                                     </tr>
                                 </thead>
@@ -378,6 +407,7 @@ export default function PpaPage() {
                                             <td>{programa.nome}</td>
                                             <td>{programa.unidade_nome || '-'}</td>
                                             <td>{programa.estado || '-'}</td>
+                                            <td><SaudeBadge status={programa.status_saude || 'em_dia'} /></td>
                                             <td>{Number(programa.percent_execucao || 0).toFixed(2)}%</td>
                                             <td>{Number(programa.total_projetos || 0)}</td>
                                         </tr>

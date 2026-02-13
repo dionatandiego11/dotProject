@@ -20,6 +20,10 @@ class AcaoEntity
     private ?string $objetivo = null;
     private string $estado = 'Planejamento';
     private float $percentExecucao = 0.0;
+    private string $tipo = 'Projeto';
+    private string $statusSaude = 'em_dia';
+    private float $valorOrcamentario = 0.0;
+    private float $valorExecutado = 0.0;
 
     /** @var ProjetoEntity[] */
     private array $projetos = [];
@@ -104,6 +108,50 @@ class AcaoEntity
         return $this;
     }
 
+    public function getTipo(): string
+    {
+        return $this->tipo;
+    }
+
+    public function setTipo(string $tipo): self
+    {
+        $this->tipo = $tipo;
+        return $this;
+    }
+
+    public function getStatusSaude(): string
+    {
+        return $this->statusSaude;
+    }
+
+    public function setStatusSaude(string $statusSaude): self
+    {
+        $this->statusSaude = $statusSaude;
+        return $this;
+    }
+
+    public function getValorOrcamentario(): float
+    {
+        return $this->valorOrcamentario;
+    }
+
+    public function setValorOrcamentario(float $valor): self
+    {
+        $this->valorOrcamentario = $valor;
+        return $this;
+    }
+
+    public function getValorExecutado(): float
+    {
+        return $this->valorExecutado;
+    }
+
+    public function setValorExecutado(float $valor): self
+    {
+        $this->valorExecutado = $valor;
+        return $this;
+    }
+
     public function getPercentExecucao(): float
     {
         return $this->percentExecucao;
@@ -155,6 +203,10 @@ class AcaoEntity
             'nome' => $this->nome,
             'objetivo' => $this->objetivo,
             'estado' => $this->estado,
+            'tipo' => $this->tipo,
+            'status_saude' => $this->statusSaude,
+            'valor_orcamentario' => $this->valorOrcamentario,
+            'valor_executado' => $this->valorExecutado,
             'percent_execucao' => $this->percentExecucao,
             'total_projetos' => count($this->projetos),
         ];

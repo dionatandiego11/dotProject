@@ -295,7 +295,7 @@ function UsuariosAdmin() {
         },
         {
             key: 'actions',
-            label: 'Acoes',
+            label: 'Ações',
             sortable: false,
             render: (user) => (
                 <>

@@ -292,6 +292,75 @@ function DashboardPrefeito() {
                 />
             </div>
 
+            {/* Saúde dos Projetos */}
+            {data?.saude_resumo && (
+                <div style={{
+                    backgroundColor: 'white',
+                    borderRadius: 12,
+                    padding: 24,
+                    marginBottom: 24,
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+                }}>
+                    <SectionHeader titulo="Saúde dos Projetos" icone="💊" />
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                        gap: 16
+                    }}>
+                        {Object.entries(data.saude_resumo).map(([entidade, dist]) => {
+                            const total = (dist.em_dia || 0) + (dist.atencao || 0) + (dist.critico || 0) + (dist.impedido || 0)
+                            return (
+                                <div key={entidade} style={{
+                                    border: '1px solid #e5e7eb',
+                                    borderRadius: 8,
+                                    padding: 16
+                                }}>
+                                    <div style={{ fontWeight: 600, marginBottom: 12, fontSize: 14 }}>
+                                        {entidade} ({total})
+                                    </div>
+                                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                        {[
+                                            { key: 'em_dia', label: 'Em dia', color: '#16a34a', bg: '#f0fdf4' },
+                                            { key: 'atencao', label: 'Atenção', color: '#d97706', bg: '#fffbeb' },
+                                            { key: 'critico', label: 'Crítico', color: '#dc2626', bg: '#fef2f2' },
+                                            { key: 'impedido', label: 'Impedido', color: '#6b7280', bg: '#f3f4f6' },
+                                        ].map(s => (
+                                            <span key={s.key} style={{
+                                                display: 'inline-block',
+                                                padding: '4px 10px',
+                                                borderRadius: 12,
+                                                fontSize: 12,
+                                                fontWeight: 600,
+                                                color: s.color,
+                                                background: s.bg,
+                                                border: `1px solid ${s.color}22`
+                                            }}>
+                                                {s.label}: {dist[s.key] || 0}
+                                            </span>
+                                        ))}
+                                    </div>
+                                    {total > 0 && (
+                                        <div style={{
+                                            marginTop: 8,
+                                            height: 6,
+                                            backgroundColor: '#f3f4f6',
+                                            borderRadius: 3,
+                                            display: 'flex',
+                                            overflow: 'hidden'
+                                        }}>
+                                            <div style={{ width: `${((dist.em_dia || 0) / total) * 100}%`, backgroundColor: '#16a34a' }} />
+                                            <div style={{ width: `${((dist.atencao || 0) / total) * 100}%`, backgroundColor: '#d97706' }} />
+                                            <div style={{ width: `${((dist.critico || 0) / total) * 100}%`, backgroundColor: '#dc2626' }} />
+                                            <div style={{ width: `${((dist.impedido || 0) / total) * 100}%`, backgroundColor: '#6b7280' }} />
+                                        </div>
+                                    )}
+                                </div>
+                            )
+                        })}
+                    </div>
+                </div>
+            )}
+
             {/* Grid de duas colunas */}
             <div style={{
                 display: 'grid',

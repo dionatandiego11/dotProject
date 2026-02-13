@@ -39,19 +39,22 @@ class ProjetoEntity
     private ?DateTime $dataAtualizacao = null;
     private ?string $justificativaAtraso = null;
     private ?string $impedimentoDescricao = null;
-    
+    private string $statusFluxo = 'Planejamento';
+    private string $statusSaude = 'em_dia';
+    private float $valorExecutado = 0.0;
+
     /** @var EtapaEntity[] */
     private array $etapas = [];
-    
+
     /** @var TaskEntity[] */
     private array $tarefas = [];
-    
+
     public function __construct()
     {
         $this->dataCriacao = new DateTime();
         $this->criarEtapasPadrao();
     }
-    
+
     /**
      * Cria as 5 etapas padrão do projeto
      */
@@ -59,12 +62,12 @@ class ProjetoEntity
     {
         $nomes = [
             1 => 'Planejamento',
-            2 => 'Licitação', 
+            2 => 'Licitação',
             3 => 'Execução',
             4 => 'Medição',
             5 => 'Pagamento',
         ];
-        
+
         for ($i = 1; $i <= 5; $i++) {
             $etapa = new EtapaEntity();
             $etapa->setNumero($i);
@@ -73,42 +76,42 @@ class ProjetoEntity
             $this->etapas[$i] = $etapa;
         }
     }
-    
+
     // Getters e Setters principais
-    
+
     public function getId(): ?int
     {
         return $this->id;
     }
-    
+
     public function setId(int $id): self
     {
         $this->id = $id;
         return $this;
     }
-    
+
     public function getNome(): string
     {
         return $this->nome;
     }
-    
+
     public function setNome(string $nome): self
     {
         $this->nome = $nome;
         return $this;
     }
-    
+
     public function getTipo(): string
     {
         return $this->tipo;
     }
-    
+
     public function setTipo(string $tipo): self
     {
         $this->tipo = $tipo;
         return $this;
     }
-    
+
     public function getEstado(): string
     {
         return $this->estado;
@@ -128,25 +131,58 @@ class ProjetoEntity
         $this->etapaAtualNumero = $numero;
         return $this;
     }
-    
+
     public function getEstadoAnterior(): ?string
     {
         return $this->estadoAnterior;
     }
-    
+
     public function getEtapaAtualNumero(): int
     {
         return $this->etapaAtualNumero;
     }
-    
+
     public function getEtapaAtual(): EtapaEntity
     {
         return $this->etapas[$this->etapaAtualNumero];
     }
-    
+
     public function getPercentExecucao(): float
     {
         return $this->percentExecucao;
+    }
+
+    public function getStatusFluxo(): string
+    {
+        return $this->statusFluxo;
+    }
+
+    public function setStatusFluxo(string $status): self
+    {
+        $this->statusFluxo = $status;
+        return $this;
+    }
+
+    public function getStatusSaude(): string
+    {
+        return $this->statusSaude;
+    }
+
+    public function setStatusSaude(string $statusSaude): self
+    {
+        $this->statusSaude = $statusSaude;
+        return $this;
+    }
+
+    public function getValorExecutado(): float
+    {
+        return $this->valorExecutado;
+    }
+
+    public function setValorExecutado(float $valor): self
+    {
+        $this->valorExecutado = $valor;
+        return $this;
     }
 
     public function getDescricao(): ?string
@@ -188,7 +224,7 @@ class ProjetoEntity
     {
         return $this->impedimentoDescricao;
     }
-    
+
     public function setPercentExecucao(float $percent): self
     {
         $this->percentExecucao = $percent;
@@ -260,29 +296,29 @@ class ProjetoEntity
         $this->impedimentoDescricao = $descricao;
         return $this;
     }
-    
+
     public function getUnidadeId(): int
     {
         return $this->unidadeId;
     }
-    
+
     public function setUnidadeId(int $id): self
     {
         $this->unidadeId = $id;
         return $this;
     }
-    
+
     public function getCoordenadorId(): int
     {
         return $this->coordenadorId;
     }
-    
+
     public function setCoordenadorId(int $id): self
     {
         $this->coordenadorId = $id;
         return $this;
     }
-    
+
     public function getPrograma(): ?ProgramaEntity
     {
         return $this->programa;
@@ -292,7 +328,7 @@ class ProjetoEntity
     {
         return $this->programaId;
     }
-    
+
     public function setPrograma(?ProgramaEntity $programa): self
     {
         $this->programa = $programa;
@@ -301,13 +337,13 @@ class ProjetoEntity
         }
         return $this;
     }
-    
+
     public function getDiasAtraso(): int
     {
         $etapa = $this->getEtapaAtual();
         return $etapa->getDiasAtraso();
     }
-    
+
     /**
      * Transiciona para novo estado
      * 
@@ -316,7 +352,7 @@ class ProjetoEntity
     public function transicionarEstado(string $novoEstado, ?array $contexto = null): void
     {
         $estadoAtual = $this->getStateObject();
-        
+
         // Valida transição
         if (!$estadoAtual->canTransitionTo($novoEstado)) {
             throw new InvalidArgumentException(
@@ -324,59 +360,59 @@ class ProjetoEntity
                 "Transições permitidas: " . implode(', ', $estadoAtual->getAllowedTransitions())
             );
         }
-        
+
         // Executa onExit
         $estadoAtual->onExit($this);
-        
+
         // Armazena estado anterior
         $this->estadoAnterior = $this->estado;
         $this->estado = $novoEstado;
-        
+
         // Executa onEnter do novo estado
         $novoEstadoObj = $this->getStateObject();
         $novoEstadoObj->onEnter($this);
-        
+
         // Recalcula percentual
         $this->percentExecucao = $novoEstadoObj->calcularPercentualExecucao($this);
-        
+
         // Atualiza timestamp
         $this->dataAtualizacao = new DateTime();
-        
+
         // Se é estado de etapa, atualiza número
         $numeroEtapa = $novoEstadoObj->getEtapaNumero();
         if ($numeroEtapa > 0) {
             $this->etapaAtualNumero = $numeroEtapa;
         }
     }
-    
+
     /**
      * Avança para próxima etapa
      */
     public function avancarEtapa(): void
     {
         $estadoAtual = $this->getStateObject();
-        
+
         if (!$estadoAtual->podeAvancarEtapa($this)) {
             throw new InvalidArgumentException(
                 'Não é possível avançar etapa. Etapa atual não está concluída.'
             );
         }
-        
+
         if ($this->etapaAtualNumero >= 5) {
             // Última etapa - conclui projeto
             $this->transicionarEstado('Concluido');
             return;
         }
-        
+
         // Finaliza etapa atual
         $etapaAtual = $this->getEtapaAtual();
         $etapaAtual->finalizar();
-        
+
         // Avança número
         $this->etapaAtualNumero++;
-        
+
         // Transiciona estado baseado na nova etapa
-        $novoEstado = match($this->etapaAtualNumero) {
+        $novoEstado = match ($this->etapaAtualNumero) {
             1 => 'Planejamento',
             2 => 'Licitacao',
             3 => 'Execucao',
@@ -384,14 +420,14 @@ class ProjetoEntity
             5 => 'Pagamento',
             default => 'Execucao',
         };
-        
+
         $this->transicionarEstado($novoEstado);
-        
+
         // Inicia nova etapa
         $novaEtapa = $this->getEtapaAtual();
         $novaEtapa->iniciar();
     }
-    
+
     /**
      * Retorna objeto de estado atual
      */
@@ -399,7 +435,7 @@ class ProjetoEntity
     {
         return StateFactory::createProjetoState($this->estado);
     }
-    
+
     /**
      * Verifica e atualiza estado automaticamente (chamado por job)
      */
@@ -408,14 +444,14 @@ class ProjetoEntity
         // Verifica atraso na etapa atual
         $etapa = $this->getEtapaAtual();
         $etapa->verificarPrazo();
-        
+
         if (in_array($etapa->getEstado(), ['Atrasada', 'Critica'], true)) {
             if ($this->estado !== 'Atrasado') {
                 $this->transicionarEstado('Atrasado');
             }
         }
     }
-    
+
     /**
      * Atualiza last_update (chamado quando tarefa é modificada)
      */
@@ -423,7 +459,7 @@ class ProjetoEntity
     {
         $this->dataAtualizacao = new DateTime();
     }
-    
+
     /**
      * Conta tarefas pendentes do projeto
      */
@@ -431,38 +467,38 @@ class ProjetoEntity
     {
         return count(array_filter($this->tarefas, fn($t) => !$t->isConcluida()));
     }
-    
+
     public function addEtapa(EtapaEntity $etapa): void
     {
         $this->etapas[$etapa->getNumero()] = $etapa;
     }
-    
+
     public function getEtapas(): array
     {
         return $this->etapas;
     }
-    
+
     public function addTarefa(TaskEntity $tarefa): void
     {
         $this->tarefas[] = $tarefa;
     }
-    
+
     public function getTarefas(): array
     {
         return $this->tarefas;
     }
-    
+
     public function getTarefasPorEtapa(int $etapaNumero): array
     {
         return array_filter($this->tarefas, fn($t) => $t->getEtapaId() === $etapaNumero);
     }
-    
+
     public function setDataConclusao(?DateTime $data): self
     {
         $this->dataConclusao = $data;
         return $this;
     }
-    
+
     public function toArray(): array
     {
         return [

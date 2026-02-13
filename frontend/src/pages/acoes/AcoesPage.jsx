@@ -19,12 +19,47 @@ const EMPTY_FORM = {
     nome: '',
     programa_id: '',
     estado: 'Planejamento',
+    tipo: 'Projeto',
     objetivo: '',
     descricao: '',
     percent_execucao: '0',
+    valor_orcamentario: '',
+    valor_executado: '',
 }
 
 const ESTADOS_ACAO = ['Planejamento', 'Em execucao', 'Concluido', 'Suspenso', 'Cancelado']
+const TIPOS_ACAO = ['Projeto', 'Atividade', 'Operação Especial']
+
+const SAUDE_CONFIG = {
+    em_dia: { label: 'Em dia', color: '#16a34a', bg: '#f0fdf4' },
+    atencao: { label: 'Atenção', color: '#d97706', bg: '#fffbeb' },
+    critico: { label: 'Crítico', color: '#dc2626', bg: '#fef2f2' },
+    impedido: { label: 'Impedido', color: '#6b7280', bg: '#f3f4f6' },
+}
+
+function SaudeBadge({ status }) {
+    const cfg = SAUDE_CONFIG[status] || SAUDE_CONFIG.em_dia
+    return (
+        <span style={{
+            display: 'inline-block',
+            padding: '2px 10px',
+            borderRadius: 12,
+            fontSize: 12,
+            fontWeight: 600,
+            color: cfg.color,
+            background: cfg.bg,
+            border: `1px solid ${cfg.color}22`,
+            whiteSpace: 'nowrap',
+        }}>
+            {cfg.label}
+        </span>
+    )
+}
+
+function formatCurrency(value) {
+    if (value === null || value === undefined || value === '') return '—'
+    return Number(value).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+}
 
 function extractList(payload) {
     if (Array.isArray(payload?.data)) {
@@ -152,7 +187,7 @@ export default function AcoesPage() {
             const refreshed = rows.find((item) => Number(item.id) === Number(selectedAcao.id))
             setSelectedAcao(refreshed || rows[0])
         } catch (err) {
-            setError(err?.message || 'Falha ao carregar acoes.')
+            setError(err?.message || 'Falha ao carregar ações.')
         } finally {
             setLoading(false)
         }
@@ -186,9 +221,12 @@ export default function AcoesPage() {
             nome: acao.nome || '',
             programa_id: acao.programa_id ? String(acao.programa_id) : '',
             estado: acao.estado || 'Planejamento',
+            tipo: acao.tipo || 'Projeto',
             objetivo: acao.objetivo || '',
             descricao: acao.descricao || '',
             percent_execucao: String(Number(acao.percent_execucao || 0)),
+            valor_orcamentario: String(Number(acao.valor_orcamentario || 0)),
+            valor_executado: String(Number(acao.valor_executado || 0)),
         })
         setFormOpen(true)
     }
@@ -208,18 +246,18 @@ export default function AcoesPage() {
 
     function validateForm() {
         if (!formData.nome.trim()) {
-            toast.error('Informe o nome da acao.')
+            toast.error('Informe o nome da ação.')
             return false
         }
 
         if (!formData.programa_id) {
-            toast.error('Selecione o programa da acao.')
+            toast.error('Selecione o programa da ação.')
             return false
         }
 
         const percent = Number(formData.percent_execucao || 0)
         if (Number.isNaN(percent) || percent < 0 || percent > 100) {
-            toast.error('Percentual de execucao deve ficar entre 0 e 100.')
+            toast.error('Percentual de execução deve ficar entre 0 e 100.')
             return false
         }
 
@@ -237,25 +275,28 @@ export default function AcoesPage() {
             nome: formData.nome.trim(),
             programa_id: Number(formData.programa_id),
             estado: formData.estado,
+            tipo: formData.tipo,
             objetivo: formData.objetivo.trim() || null,
             descricao: formData.descricao.trim() || null,
             percent_execucao: Number(formData.percent_execucao || 0),
+            valor_orcamentario: Number(formData.valor_orcamentario || 0),
+            valor_executado: Number(formData.valor_executado || 0),
         }
 
         try {
             setSaving(true)
             if (editingAcao?.id) {
                 await updateAcao(editingAcao.id, payload)
-                toast.success('Acao atualizada com sucesso.')
+                toast.success('Ação atualizada com sucesso.')
             } else {
                 await createAcao(payload)
-                toast.success('Acao criada com sucesso.')
+                toast.success('Ação criada com sucesso.')
             }
 
             closeModal()
             await loadAcoes()
         } catch (err) {
-            toast.error(err?.message || 'Falha ao salvar acao.')
+            toast.error(err?.message || 'Falha ao salvar ação.')
         } finally {
             setSaving(false)
         }
@@ -275,7 +316,7 @@ export default function AcoesPage() {
             toast.success('Acao removida com sucesso.')
             await loadAcoes()
         } catch (err) {
-            toast.error(err?.message || 'Falha ao remover acao.')
+            toast.error(err?.message || 'Falha ao remover ação.')
         }
     }
 
@@ -289,7 +330,7 @@ export default function AcoesPage() {
                             <Input
                                 value={search}
                                 onChange={(event) => setSearch(event.target.value)}
-                                placeholder="Nome ou codigo da acao"
+                                placeholder="Nome ou código da ação"
                             />
                         </div>
                         <div style={{ minWidth: 180 }}>
@@ -360,7 +401,7 @@ export default function AcoesPage() {
                             Filtrar
                         </Button>
                         <Button onClick={openCreateModal}>
-                            Nova Acao
+                            Nova Ação
                         </Button>
                     </div>
                 </div>
@@ -375,36 +416,38 @@ export default function AcoesPage() {
 
                 <div className="card" style={{ marginBottom: 'var(--spacing-4)' }}>
                     <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <h2 className="card-title">Gestao de Acoes</h2>
+                        <h2 className="card-title">Gestão de Ações</h2>
                         <span style={{ fontSize: '0.875rem', color: 'var(--color-gray-500)' }}>
-                            {acoes.length} acoes | {totalProjetos} projetos vinculados
+                            {acoes.length} ações | {totalProjetos} projetos vinculados
                         </span>
                     </div>
                     <div className="card-body" style={{ padding: 0 }}>
                         {loading ? (
-                            <div style={{ padding: 'var(--spacing-6)' }}>Carregando acoes...</div>
+                            <div style={{ padding: 'var(--spacing-6)' }}>Carregando ações...</div>
                         ) : acoes.length === 0 ? (
                             <div style={{ padding: 'var(--spacing-6)', color: 'var(--color-gray-500)' }}>
-                                Nenhuma acao encontrada.
+                                Nenhuma ação encontrada.
                             </div>
                         ) : (
                             <table className="table">
                                 <thead>
                                     <tr>
-                                        <th>Codigo</th>
-                                        <th>Acao</th>
+                                        <th>C�digo</th>
+                                        <th>A��o</th>
+                                        <th>Tipo</th>
                                         <th>Programa</th>
-                                        <th>PPA</th>
                                         <th>Estado</th>
-                                        <th>Execucao</th>
+                                        <th>Sa�de</th>
+                                        <th>Or�amento</th>
+                                        <th>Executado</th>
+                                        <th>Execu��o</th>
                                         <th>Projetos</th>
-                                        <th>Acoes</th>
+                                        <th>A��es</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {acoes.map((acao) => {
                                         const programa = programasById.get(Number(acao.programa_id))
-                                        const ppaNome = acao.ppa_nome || ppas.find((item) => Number(item.id) === Number(acao.ppa_id))?.nome || '-'
                                         const isSelected = Number(selectedAcao?.id) === Number(acao.id)
 
                                         return (
@@ -418,9 +461,12 @@ export default function AcoesPage() {
                                             >
                                                 <td>{acao.codigo || '-'}</td>
                                                 <td><strong>{acao.nome}</strong></td>
+                                                <td style={{ fontSize: '0.8rem', color: 'var(--color-gray-600)' }}>{acao.tipo || 'Projeto'}</td>
                                                 <td>{acao.programa_nome || programa?.nome || '-'}</td>
-                                                <td>{ppaNome}</td>
                                                 <td>{acao.estado || '-'}</td>
+                                                <td><SaudeBadge status={acao.status_saude || 'em_dia'} /></td>
+                                                <td style={{ fontSize: '0.85rem', whiteSpace: 'nowrap' }}>{formatCurrency(acao.valor_orcamentario)}</td>
+                                                <td style={{ fontSize: '0.85rem', whiteSpace: 'nowrap' }}>{formatCurrency(acao.valor_executado)}</td>
                                                 <td>{formatPercent(acao.percent_execucao)}</td>
                                                 <td>{Number(acao.total_projetos || 0)}</td>
                                                 <td>
@@ -463,7 +509,7 @@ export default function AcoesPage() {
                 <div className="card">
                     <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <h2 className="card-title">
-                            Projetos da Acao {selectedAcao ? `"${selectedAcao.nome}"` : ''}
+                            Projetos da Ação {selectedAcao ? `"${selectedAcao.nome}"` : ''}
                         </h2>
                         <span style={{ fontSize: '0.875rem', color: 'var(--color-gray-500)' }}>
                             {projects.length} projetos
@@ -472,11 +518,11 @@ export default function AcoesPage() {
                     <div className="card-body" style={{ padding: 0 }}>
                         {!selectedAcao ? (
                             <div style={{ padding: 'var(--spacing-6)', color: 'var(--color-gray-500)' }}>
-                                Selecione uma acao para visualizar os projetos.
+                                Selecione uma ação para visualizar os projetos.
                             </div>
                         ) : !selectedAcao.link_projetos_habilitado ? (
                             <div style={{ padding: 'var(--spacing-6)', color: 'var(--color-gray-500)' }}>
-                                Vinculo Acao - Projeto ainda nao habilitado neste banco (tabela ponte ou coluna legada ausente).
+                                Vínculo Ação - Projeto ainda não habilitado neste banco (tabela ponte ou coluna legada ausente).
                             </div>
                         ) : loadingProjects ? (
                             <div style={{ padding: 'var(--spacing-6)' }}>Carregando projetos...</div>
@@ -513,13 +559,13 @@ export default function AcoesPage() {
             <Modal
                 isOpen={formOpen}
                 onClose={closeModal}
-                title={editingAcao ? 'Editar Acao' : 'Nova Acao'}
+                title={editingAcao ? 'Editar Ação' : 'Nova Ação'}
                 size="lg"
                 footer={(
                     <>
                         <Button variant="secondary" onClick={closeModal}>Cancelar</Button>
                         <Button onClick={handleSubmit} loading={saving}>
-                            {editingAcao ? 'Salvar' : 'Criar acao'}
+                            {editingAcao ? 'Salvar' : 'Criar ação'}
                         </Button>
                     </>
                 )}
@@ -528,20 +574,20 @@ export default function AcoesPage() {
                     <div style={{ display: 'grid', gap: 'var(--spacing-4)' }}>
                         <div style={{ display: 'grid', gap: 'var(--spacing-4)', gridTemplateColumns: '180px 1fr' }}>
                             <Input
-                                label="Codigo"
+                                label="Código"
                                 value={formData.codigo}
                                 onChange={(event) => setField('codigo', event.target.value)}
                                 placeholder="ACA-2026-0001"
                             />
                             <Input
-                                label="Nome da acao *"
+                                label="Nome da ação *"
                                 value={formData.nome}
                                 onChange={(event) => setField('nome', event.target.value)}
-                                placeholder="Acao de urbanizacao de vias"
+                                placeholder="Ação de urbanização de vias"
                             />
                         </div>
 
-                        <div style={{ display: 'grid', gap: 'var(--spacing-4)', gridTemplateColumns: '1fr 180px' }}>
+                        <div style={{ display: 'grid', gap: 'var(--spacing-4)', gridTemplateColumns: '1fr 180px 180px' }}>
                             <div>
                                 <label style={{ display: 'block', marginBottom: 'var(--spacing-1)', fontWeight: 600 }}>
                                     Programa vinculado *
@@ -566,6 +612,24 @@ export default function AcoesPage() {
                                 </select>
                             </div>
                             <div>
+                                <label style={{ display: 'block', marginBottom: 'var(--spacing-1)', fontWeight: 600 }}>Tipo</label>
+                                <select
+                                    value={formData.tipo}
+                                    onChange={(event) => setField('tipo', event.target.value)}
+                                    style={{
+                                        width: '100%',
+                                        height: 40,
+                                        borderRadius: 'var(--radius-md)',
+                                        border: '1px solid var(--color-gray-300)',
+                                        padding: '0 var(--spacing-3)',
+                                    }}
+                                >
+                                    {TIPOS_ACAO.map((tipo) => (
+                                        <option key={tipo} value={tipo}>{tipo}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
                                 <label style={{ display: 'block', marginBottom: 'var(--spacing-1)', fontWeight: 600 }}>Estado</label>
                                 <select
                                     value={formData.estado}
@@ -585,8 +649,29 @@ export default function AcoesPage() {
                             </div>
                         </div>
 
+                        <div style={{ display: 'grid', gap: 'var(--spacing-4)', gridTemplateColumns: '1fr 1fr' }}>
+                            <Input
+                                label="Orçamento (R$)"
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={formData.valor_orcamentario}
+                                onChange={(event) => setField('valor_orcamentario', event.target.value)}
+                                placeholder="0.00"
+                            />
+                            <Input
+                                label="Valor Executado (R$)"
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={formData.valor_executado}
+                                onChange={(event) => setField('valor_executado', event.target.value)}
+                                placeholder="0.00"
+                            />
+                        </div>
+
                         <Input
-                            label="Execucao (%)"
+                            label="Execução (%)"
                             type="number"
                             min="0"
                             max="100"
@@ -637,3 +722,5 @@ export default function AcoesPage() {
         </>
     )
 }
+
+

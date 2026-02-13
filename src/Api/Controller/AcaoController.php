@@ -70,7 +70,7 @@ class AcaoController extends BaseController
     public function store(): Response
     {
         try {
-            $created = $this->service->create($this->request->getJsonBody());
+            $created = $this->service->create($this->request->getJsonBody(), $this->getUserId());
 
             return $this->created([
                 'message' => 'Acao criada com sucesso',
@@ -90,7 +90,7 @@ class AcaoController extends BaseController
     {
         try {
             $id = (int) $this->request->getParam('id');
-            $updated = $this->service->update($id, $this->request->getJsonBody());
+            $updated = $this->service->update($id, $this->request->getJsonBody(), $this->getUserId());
             if ($updated === null) {
                 return $this->notFound('Acao nao encontrada');
             }

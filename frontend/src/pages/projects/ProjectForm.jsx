@@ -249,7 +249,7 @@ export default function ProjectForm({
 
                 <div>
                     <label style={{ display: 'block', marginBottom: 'var(--spacing-2)', fontWeight: 500 }}>
-                        Acoes
+                        Ações
                         {acaoIdsSelecionadas.length > 0 && (
                             <span style={{ marginLeft: 'var(--spacing-2)', fontSize: '0.75rem', color: 'var(--color-gray-500)', fontWeight: 400 }}>
                                 ({acaoIdsSelecionadas.length} selecionada(s))
@@ -268,11 +268,11 @@ export default function ProjectForm({
                     >
                         {acoesLoading ? (
                             <div style={{ fontSize: '0.875rem', color: 'var(--color-gray-500)' }}>
-                                Carregando acoes...
+                                Carregando ações...
                             </div>
                         ) : acoesFiltradas.length === 0 ? (
                             <div style={{ fontSize: '0.875rem', color: 'var(--color-gray-500)' }}>
-                                Nenhuma acao disponivel para o programa selecionado.
+                                Nenhuma ação disponível para o programa selecionado.
                             </div>
                         ) : (
                             acoesFiltradas.map((acao) => {
