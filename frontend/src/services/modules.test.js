@@ -96,13 +96,15 @@ describe('Service modules', () => {
     });
 
     it('calls dashboard alert actions', async () => {
+        await dashboardService.getDashboardStatus();
         await dashboardService.marcarAlertaLido(17);
         await dashboardService.marcarTodosAlertasLidos();
 
-        expect(apiRequest).toHaveBeenNthCalledWith(1, '/dashboard/alertas/17/lido', {
+        expect(apiRequest).toHaveBeenNthCalledWith(1, '/dashboard/status');
+        expect(apiRequest).toHaveBeenNthCalledWith(2, '/dashboard/alertas/17/lido', {
             method: 'PUT',
         });
-        expect(apiRequest).toHaveBeenNthCalledWith(2, '/dashboard/alertas/lidos', {
+        expect(apiRequest).toHaveBeenNthCalledWith(3, '/dashboard/alertas/lidos', {
             method: 'PUT',
         });
     });

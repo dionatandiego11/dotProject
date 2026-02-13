@@ -8,6 +8,13 @@ export async function getDashboardByProfile() {
 }
 
 /**
+ * Dashboard runtime status and resolved profile.
+ */
+export async function getDashboardStatus() {
+    return apiRequest('/dashboard/status');
+}
+
+/**
  * Mayor dashboard.
  */
 export async function getDashboardPrefeito() {

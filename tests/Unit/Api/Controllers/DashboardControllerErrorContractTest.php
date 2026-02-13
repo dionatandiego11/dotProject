@@ -9,12 +9,30 @@ use DotProject\Api\Controller\Dashboard\CoordenadorDashboardController;
 use DotProject\Api\Controller\Dashboard\SecretarioDashboardController;
 use DotProject\Api\Request;
 use DotProject\Api\Response;
+use DotProject\Core\Database;
 use DotProject\Repository\AlertaRepository;
 use DotProject\Service\PermissionService;
 use PHPUnit\Framework\TestCase;
 
 class DashboardControllerErrorContractTest extends TestCase
 {
+    private static ?Database $originalDatabaseInstance = null;
+
+    public static function setUpBeforeClass(): void
+    {
+        self::$originalDatabaseInstance = self::getDatabaseInstance();
+    }
+
+    public static function tearDownAfterClass(): void
+    {
+        self::setDatabaseInstance(self::$originalDatabaseInstance);
+    }
+
+    protected function setUp(): void
+    {
+        self::setDatabaseInstance(new FakeDashboardErrorDatabase());
+    }
+
     public function testSecretarioWithoutScopeReturnsCanonicalForbiddenError(): void
     {
         $request = $this->createRequestWithUserId(321);
@@ -123,5 +141,44 @@ class DashboardControllerErrorContractTest extends TestCase
         $prop->setAccessible(true);
 
         return (int) $prop->getValue($response);
+    }
+
+    private static function getDatabaseInstance(): ?Database
+    {
+        $property = new \ReflectionProperty(Database::class, 'instance');
+        $property->setAccessible(true);
+
+        $instance = $property->getValue();
+        return $instance instanceof Database ? $instance : null;
+    }
+
+    private static function setDatabaseInstance(?Database $instance): void
+    {
+        $property = new \ReflectionProperty(Database::class, 'instance');
+        $property->setAccessible(true);
+        $property->setValue(null, $instance);
+    }
+}
+
+class FakeDashboardErrorDatabase extends Database
+{
+    public function __construct()
+    {
+        // noop
+    }
+
+    public function fetchAll(string $sql, array $params = []): array
+    {
+        return [];
+    }
+
+    public function fetchValue(string $sql, array $params = []): mixed
+    {
+        return 0;
+    }
+
+    public function fetchColumn(string $sql, array $params = []): mixed
+    {
+        return 0;
     }
 }

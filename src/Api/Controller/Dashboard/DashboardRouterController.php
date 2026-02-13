@@ -50,8 +50,14 @@ class DashboardRouterController extends BaseController
      */
     public function status(): Response
     {
+        $userId = $this->getUserId();
+        $perfil = $userId !== null
+            ? $this->permissionService->getDashboardType($userId)
+            : null;
+
         return $this->json([
             'status' => 'ok',
+            'perfil' => $perfil,
             'modern_tables' => (new class ($this->request, $this->response) extends BaseController{
             use DashboardHelperTrait;
             public function check(): bool

@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import {
     getProjects,
     createProject,
@@ -40,7 +41,97 @@ function normalizeSelectedAcaoIds(formData) {
     return [...new Set(ids)]
 }
 
+function toPositiveInt(value) {
+    const parsed = Number.parseInt(String(value ?? ''), 10)
+    if (Number.isNaN(parsed) || parsed <= 0) return null
+    return parsed
+}
+
+function toProjectStatus(value) {
+    const parsed = Number.parseInt(String(value ?? ''), 10)
+    if (Number.isNaN(parsed) || parsed < 0 || parsed > 6) return null
+    return parsed
+}
+
+function parseProjectRouteFilters(searchString = '') {
+    const params = new URLSearchParams(searchString)
+    const parsed = {}
+
+    const status = toProjectStatus(params.get('status'))
+    if (status !== null) parsed.status = status
+
+    const unidadeId = toPositiveInt(params.get('unidade_id'))
+    if (unidadeId !== null) parsed.unidade_id = unidadeId
+
+    const companyId = toPositiveInt(params.get('company_id'))
+    if (companyId !== null && unidadeId === null) parsed.company_id = companyId
+
+    const programaId = toPositiveInt(params.get('programa_id'))
+    if (programaId !== null) parsed.programa_id = programaId
+
+    const acaoId = toPositiveInt(params.get('acao_id'))
+    if (acaoId !== null) parsed.acao_id = acaoId
+
+    const search = (params.get('search') || '').trim()
+    if (search) parsed.search = search
+
+    const page = toPositiveInt(params.get('page'))
+    if (page !== null) parsed.page = page
+
+    const perPage = toPositiveInt(params.get('per_page'))
+    if (perPage !== null) parsed.per_page = perPage
+
+    return parsed
+}
+
+function normalizeProjectQueryParams(params = {}) {
+    const normalized = {}
+
+    if (params.status !== undefined) {
+        const status = toProjectStatus(params.status)
+        if (status !== null) normalized.status = status
+    }
+
+    if (params.unidade_id !== undefined) {
+        const unidadeId = toPositiveInt(params.unidade_id)
+        if (unidadeId !== null) normalized.unidade_id = unidadeId
+    }
+
+    if (params.company_id !== undefined && normalized.unidade_id === undefined) {
+        const companyId = toPositiveInt(params.company_id)
+        if (companyId !== null) normalized.company_id = companyId
+    }
+
+    if (params.programa_id !== undefined) {
+        const programaId = toPositiveInt(params.programa_id)
+        if (programaId !== null) normalized.programa_id = programaId
+    }
+
+    if (params.acao_id !== undefined) {
+        const acaoId = toPositiveInt(params.acao_id)
+        if (acaoId !== null) normalized.acao_id = acaoId
+    }
+
+    if (params.search !== undefined) {
+        const search = String(params.search || '').trim()
+        if (search) normalized.search = search
+    }
+
+    if (params.page !== undefined) {
+        const page = toPositiveInt(params.page)
+        if (page !== null) normalized.page = page
+    }
+
+    if (params.per_page !== undefined) {
+        const perPage = toPositiveInt(params.per_page)
+        if (perPage !== null) normalized.per_page = perPage
+    }
+
+    return normalized
+}
+
 export default function ProjectsPage() {
+    const location = useLocation()
     const toast = useToast()
     const validation = useValidation()
     const [projects, setProjects] = useState([])
@@ -55,8 +146,29 @@ export default function ProjectsPage() {
     const [acoesLoading, setAcoesLoading] = useState(false)
     const [quickStatusSelectionByProjectId, setQuickStatusSelectionByProjectId] = useState({})
     const [quickStatusLoadingByProjectId, setQuickStatusLoadingByProjectId] = useState({})
+    const activeFiltersRef = useRef({})
 
     const groupedUnidades = useMemo(() => buildGroupedUnidades(unidades), [unidades])
+    const loadProjects = useCallback(async (params = {}, options = {}) => {
+        const baseFilters = options.replace ? {} : activeFiltersRef.current
+        const nextFilters = normalizeProjectQueryParams({
+            ...baseFilters,
+            ...params,
+        })
+        activeFiltersRef.current = nextFilters
+
+        try {
+            setError(null)
+            setLoading(true)
+            const data = await getProjects(nextFilters)
+            setProjects(data.data || [])
+            setMeta(data.meta || {})
+        } catch (err) {
+            setError(err.message)
+        } finally {
+            setLoading(false)
+        }
+    }, [])
 
     const filters = useProjectFilters({ onSearch: loadProjects })
     const {
@@ -106,21 +218,10 @@ export default function ProjectsPage() {
     }, [editCurrentStatus])
 
     useEffect(() => {
-        loadProjects()
-    }, [])
-
-    async function loadProjects(params = {}) {
-        try {
-            setLoading(true)
-            const data = await getProjects(params)
-            setProjects(data.data || [])
-            setMeta(data.meta || {})
-        } catch (err) {
-            setError(err.message)
-        } finally {
-            setLoading(false)
-        }
-    }
+        const routeFilters = parseProjectRouteFilters(location.search)
+        setSearch(routeFilters.search || '')
+        loadProjects(routeFilters, { replace: true })
+    }, [location.search, loadProjects, setSearch])
 
     async function loadUnidades() {
         try {

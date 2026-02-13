@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import useCurrentUser from '../hooks/useCurrentUser'
 import Loading from '../components/Loading'
-import { getAdminOnboardingReadiness } from '../services/api'
+import { getAdminOnboardingReadiness, getDashboardStatus } from '../services/api'
 import { detectProfile, isAdminUser } from '../utils/userAccess'
 
 // Lazy load dos dashboards específicos
@@ -12,11 +12,18 @@ const DashboardCoordenador = lazy(() => import('./dashboard/DashboardCoordenador
 const DashboardTecnico = lazy(() => import('./dashboard/DashboardTecnico'))
 const DashboardControlador = lazy(() => import('./dashboard/DashboardControlador'))
 const DashboardGeral = lazy(() => import('./DashboardGeral'))
+const DASHBOARD_PROFILES = new Set(['prefeito', 'secretario', 'coordenador', 'tecnico', 'controlador'])
+
+function normalizeDashboardProfile(value) {
+    const normalized = String(value || '').trim().toLowerCase()
+    return DASHBOARD_PROFILES.has(normalized) ? normalized : null
+}
 
 function Dashboard() {
     const navigate = useNavigate()
     const { user, loading } = useCurrentUser()
-    const profile = detectProfile(user)
+    const fallbackProfile = normalizeDashboardProfile(detectProfile(user)) || 'tecnico'
+    const [resolvedProfile, setResolvedProfile] = useState(null)
     const [setupStatus, setSetupStatus] = useState({
         checked: false,
         pending: false,
@@ -24,6 +31,40 @@ function Dashboard() {
         total: 0,
         nextStep: '',
     })
+
+    useEffect(() => {
+        let isActive = true
+
+        if (loading) {
+            return () => {
+                isActive = false
+            }
+        }
+
+        async function resolveProfile() {
+            try {
+                const response = await getDashboardStatus()
+                const payload = response?.data || response || {}
+                const backendProfile = normalizeDashboardProfile(payload.perfil)
+                if (backendProfile) {
+                    if (isActive) setResolvedProfile(backendProfile)
+                    return
+                }
+            } catch (_) {
+                // fallback local abaixo
+            }
+
+            if (isActive) {
+                setResolvedProfile(fallbackProfile)
+            }
+        }
+
+        resolveProfile()
+
+        return () => {
+            isActive = false
+        }
+    }, [loading, fallbackProfile])
 
     useEffect(() => {
         let isActive = true
@@ -82,13 +123,13 @@ function Dashboard() {
         }
     }, [loading, user])
 
-    if (loading) {
+    if (loading || resolvedProfile === null) {
         return <Loading fullScreen />
     }
 
     // Renderizar dashboard baseado no perfil
     const renderDashboard = () => {
-        switch (profile) {
+        switch (resolvedProfile) {
             case 'prefeito':
                 return <DashboardPrefeito />
             case 'secretario':

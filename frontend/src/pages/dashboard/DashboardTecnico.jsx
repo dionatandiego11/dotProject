@@ -7,6 +7,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getDashboardTecnico } from '../../services/api'
+import { adaptTecnicoDashboard } from './adapters'
 import { StatCard, SectionHeader, StatusBadge } from '../../components/dashboard/DashboardComponents'
 
 function DashboardTecnico() {
@@ -22,10 +23,12 @@ function DashboardTecnico() {
     const loadData = async () => {
         try {
             setLoading(true)
+            setError(null)
             const response = await getDashboardTecnico()
-            setData(response.data || response)
+            const payload = response?.data || response
+            setData(adaptTecnicoDashboard(payload))
         } catch (err) {
-            setError(err.message)
+            setError(err.message || 'Erro ao carregar dashboard')
         } finally {
             setLoading(false)
         }
@@ -54,27 +57,11 @@ function DashboardTecnico() {
         )
     }
 
-    const usuario = data?.usuario || { nome: 'Técnico', coordenacao: 'Pavimentação', supervisor: 'João Silva' }
-    const indicadores = data?.indicadores || { a_fazer: 3, em_andamento: 2, em_revisao: 1, concluidas: 12 }
+    const usuario = data?.usuario || { nome: 'Tecnico', coordenacao: 'Nao informada', supervisor: 'Nao informado' }
+    const indicadores = data?.indicadores || { a_fazer: 0, em_andamento: 0, em_revisao: 0, concluidas: 0 }
     const tarefas = data?.tarefas || []
     const projetos = data?.projetos || []
-    const producao = data?.producao || { semana: 5, mes: 12, media_dia: 2.5, taxa_prazo: 92 }
-
-    // Mock data for tarefas
-    const tarefasMock = [
-        { id: 1, titulo: 'Enviar relatório de medição', projeto: 'Pavimentação Rua dos Trabalhadores', prioridade: 'urgente', vence_hoje: true },
-        { id: 2, titulo: 'Atualizar fotos de acompanhamento', projeto: 'Asfalto Av. Brasil', prioridade: 'importante', vence_dias: 3 },
-        { id: 3, titulo: 'Revisar projeto técnico', projeto: 'Drenagem Bairro Sul', prioridade: 'normal', vence_dias: null },
-    ]
-
-    const projetosMock = [
-        { nome: 'Pavimentação Rua dos Trabalhadores', tarefas_ativas: 3, status: 'atencao' },
-        { nome: 'Asfalto Av. Brasil', tarefas_ativas: 2, status: 'em_dia' },
-        { nome: 'Recapeamento Centro', tarefas_ativas: 1, status: 'em_dia' },
-    ]
-
-    const tarefasExibir = tarefas.length > 0 ? tarefas : tarefasMock
-    const projetosExibir = projetos.length > 0 ? projetos : projetosMock
+    const producao = data?.producao || { semana: 0, mes: 0, media_dia: 0, taxa_prazo: 0 }
 
     const prioridadeCores = {
         urgente: { bg: '#fef2f2', border: '#ef4444', texto: '🔴 Urgente - Vence hoje' },
@@ -111,7 +98,7 @@ function DashboardTecnico() {
             <div style={{ backgroundColor: 'white', borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
                 <SectionHeader titulo="Prioridades de Hoje" icone="⭐" />
                 <div>
-                    {tarefasExibir.map((tarefa) => {
+                    {tarefas.map((tarefa) => {
                         const prio = prioridadeCores[tarefa.prioridade] || prioridadeCores.normal
                         return (
                             <div key={tarefa.id} style={{
@@ -178,13 +165,13 @@ function DashboardTecnico() {
                 {/* Projetos */}
                 <div style={{ backgroundColor: 'white', borderRadius: 12, padding: 24, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
                     <SectionHeader titulo="Meus Projetos" icone="📁" />
-                    {projetosExibir.map((proj, idx) => (
+                    {projetos.map((proj, idx) => (
                         <div key={idx} style={{
                             display: 'flex',
                             justifyContent: 'space-between',
                             alignItems: 'center',
                             padding: 12,
-                            borderBottom: idx < projetosExibir.length - 1 ? '1px solid #e5e7eb' : 'none'
+                            borderBottom: idx < projetos.length - 1 ? '1px solid #e5e7eb' : 'none'
                         }}>
                             <div>
                                 <div style={{ fontWeight: 500, color: '#374151', fontSize: 14 }}>{proj.nome}</div>
@@ -200,3 +187,6 @@ function DashboardTecnico() {
 }
 
 export default DashboardTecnico
+
+
+

@@ -6,15 +6,29 @@ use DotProject\Api\Controller\Dashboard\SecretarioDashboardController;
 use DotProject\Api\Controller\Dashboard\TecnicoDashboardController;
 use DotProject\Api\Request;
 use DotProject\Api\Response;
+use DotProject\Core\Database;
 use PHPUnit\Framework\TestCase;
 
 class DashboardIntegrationTest extends TestCase
 {
+    private static ?bool $dbReady = null;
     private $request;
     private $response;
 
     protected function setUp(): void
     {
+        if (self::$dbReady === false) {
+            $this->markTestSkipped('Database connection is not initialized for dashboard integration tests.');
+        }
+
+        try {
+            Database::getInstance();
+            self::$dbReady = true;
+        } catch (\RuntimeException $e) {
+            self::$dbReady = false;
+            $this->markTestSkipped('Database connection is not initialized for dashboard integration tests.');
+        }
+
         // Mock Request and Response
         $this->request = $this->createMock(Request::class);
         $this->response = $this->createMock(Response::class);

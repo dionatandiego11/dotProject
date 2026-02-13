@@ -1,15 +1,19 @@
-/**
- * Dashboard do Secretário - Visão da Secretaria
+﻿/**
+ * Dashboard do SecretÃ¡rio - VisÃ£o da Secretaria
  * 
- * Mostra indicadores da secretaria do usuário.
+ * Mostra indicadores da secretaria do usuÃ¡rio.
  */
 
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getDashboardSecretario, marcarAlertaLido } from '../../services/api'
+import {
+    getDashboardSecretario,
+    getDashboardAlertas,
+    marcarAlertaLido
+} from '../../services/api'
+import { adaptSecretarioDashboard } from './adapters'
 import {
     StatCard,
-    ProgressBar,
     AlertaCard,
     SectionHeader,
     StatusBadge,
@@ -30,8 +34,13 @@ function DashboardSecretario() {
         try {
             setLoading(true)
             setError(null)
-            const response = await getDashboardSecretario()
-            setData(response.data || response)
+            const [dashboardResponse, alertasResponse] = await Promise.all([
+                getDashboardSecretario(),
+                getDashboardAlertas(),
+            ])
+            const dashboardPayload = dashboardResponse?.data || dashboardResponse
+            const alertasPayload = alertasResponse?.data || alertasResponse
+            setData(adaptSecretarioDashboard(dashboardPayload, alertasPayload))
         } catch (err) {
             setError(err.message || 'Erro ao carregar dashboard')
         } finally {
@@ -57,7 +66,7 @@ function DashboardSecretario() {
                 minHeight: '60vh'
             }}>
                 <div style={{ textAlign: 'center' }}>
-                    <div style={{ fontSize: 48, marginBottom: 16 }}>⏳</div>
+                    <div style={{ fontSize: 48, marginBottom: 16 }}>â³</div>
                     <div style={{ color: '#6b7280' }}>Carregando dashboard...</div>
                 </div>
             </div>
@@ -67,17 +76,17 @@ function DashboardSecretario() {
     if (error) {
         return (
             <div style={{ padding: 24, backgroundColor: '#fef2f2', borderRadius: 12, margin: 24 }}>
-                <h3 style={{ color: '#991b1b', margin: 0 }}>❌ Erro ao carregar</h3>
+                <h3 style={{ color: '#991b1b', margin: 0 }}>âŒ Erro ao carregar</h3>
                 <p style={{ color: '#b91c1c' }}>{error}</p>
                 <button onClick={loadData} style={{ backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '10px 20px', borderRadius: 6, cursor: 'pointer' }}>
-                    🔄 Tentar novamente
+                    ðŸ”„ Tentar novamente
                 </button>
             </div>
         )
     }
 
-    const secretaria = data?.secretaria || { nome: 'Secretaria Municipal', projetos: 32, equipe: 45 }
-    const indicadores = data?.indicadores || { em_dia: 20, atencao: 7, travados: 5, concluidos: 8 }
+    const secretaria = data?.secretaria || { nome: 'Secretaria', projetos: 0, equipe: 0 }
+    const indicadores = data?.indicadores || { em_dia: 0, atencao: 0, travados: 0, concluidos: 0 }
     const alertas = data?.alertas || []
     const coordenadores = data?.coordenadores || []
     const programas = data?.programas || []
@@ -88,7 +97,7 @@ function DashboardSecretario() {
         { titulo: 'Em dia', campo: 'em_dia' },
         { titulo: 'Atrasados', campo: 'atrasados' },
         {
-            titulo: '% Execução', campo: 'percentual', render: (row) => (
+            titulo: '% ExecuÃ§Ã£o', campo: 'percentual', render: (row) => (
                 <span style={{
                     color: row.percentual >= 70 ? '#22c55e' : row.percentual >= 50 ? '#eab308' : '#ef4444',
                     fontWeight: 600
@@ -105,31 +114,31 @@ function DashboardSecretario() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
                 <div>
                     <h1 style={{ margin: 0, fontSize: 28, color: '#1f2937' }}>
-                        🏛️ {secretaria.nome}
+                        ðŸ›ï¸ {secretaria.nome}
                     </h1>
                     <p style={{ margin: '8px 0 0', color: '#6b7280' }}>
                         Projetos: {secretaria.projetos} | Equipe: {secretaria.equipe}
                     </p>
                 </div>
                 <div style={{ display: 'flex', gap: 12 }}>
-                    <button onClick={() => navigate('/dashboard')} style={{ backgroundColor: '#f3f4f6', border: 'none', padding: '10px 16px', borderRadius: 8, cursor: 'pointer', fontSize: 14 }}>
-                        ← Voltar
+                    <button onClick={() => navigate('/')} style={{ backgroundColor: '#f3f4f6', border: 'none', padding: '10px 16px', borderRadius: 8, cursor: 'pointer', fontSize: 14 }}>
+                        â† Voltar
                     </button>
                     <button onClick={loadData} style={{ backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '10px 16px', borderRadius: 8, cursor: 'pointer', fontSize: 14 }}>
-                        🔄 Atualizar
+                        ðŸ”„ Atualizar
                     </button>
                 </div>
             </div>
 
             {/* Indicadores */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16, marginBottom: 24 }}>
-                <StatCard titulo="Em Dia" valor={indicadores.em_dia} icone="🟢" cor="green" subtitulo="Projetos" />
-                <StatCard titulo="Atenção" valor={indicadores.atencao} icone="🟡" cor="yellow" subtitulo="Projetos" />
-                <StatCard titulo="Travados" valor={indicadores.travados} icone="🔴" cor="red" subtitulo="Projetos" />
-                <StatCard titulo="Concluídos" valor={indicadores.concluidos} icone="✅" cor="gray" subtitulo="Em 2024" />
+                <StatCard titulo="Em Dia" valor={indicadores.em_dia} icone="ðŸŸ¢" cor="green" subtitulo="Projetos" />
+                <StatCard titulo="AtenÃ§Ã£o" valor={indicadores.atencao} icone="ðŸŸ¡" cor="yellow" subtitulo="Projetos" />
+                <StatCard titulo="Travados" valor={indicadores.travados} icone="ðŸ”´" cor="red" subtitulo="Projetos" />
+                <StatCard titulo="ConcluÃ­dos" valor={indicadores.concluidos} icone="âœ…" cor="gray" subtitulo="Em 2024" />
             </div>
 
-            {/* Saúde Resumo */}
+            {/* SaÃºde Resumo */}
             {data?.saude_resumo && (
                 <div style={{
                     backgroundColor: 'white',
@@ -138,7 +147,7 @@ function DashboardSecretario() {
                     marginBottom: 24,
                     boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
                 }}>
-                    <SectionHeader titulo="Saúde da Secretaria" icone="💊" />
+                    <SectionHeader titulo="SaÃºde da Secretaria" icone="ðŸ’Š" />
                     <div style={{
                         display: 'grid',
                         gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
@@ -159,8 +168,8 @@ function DashboardSecretario() {
                                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
                                         {[
                                             { key: 'em_dia', label: 'Em dia', color: '#16a34a', bg: '#f0fdf4' },
-                                            { key: 'atencao', label: 'Atenção', color: '#d97706', bg: '#fffbeb' },
-                                            { key: 'critico', label: 'Crítico', color: '#dc2626', bg: '#fef2f2' },
+                                            { key: 'atencao', label: 'AtenÃ§Ã£o', color: '#d97706', bg: '#fffbeb' },
+                                            { key: 'critico', label: 'CrÃ­tico', color: '#dc2626', bg: '#fef2f2' },
                                             { key: 'impedido', label: 'Impedido', color: '#6b7280', bg: '#f3f4f6' },
                                         ].map(s => (
                                             <span key={s.key} style={{
@@ -200,7 +209,7 @@ function DashboardSecretario() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: 24 }}>
                 {/* Alertas */}
                 <div style={{ backgroundColor: 'white', borderRadius: 12, padding: 24, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-                    <SectionHeader titulo="Alertas da Secretaria" icone="🚨" />
+                    <SectionHeader titulo="Alertas da Secretaria" icone="ðŸš¨" />
                     <div style={{ maxHeight: 350, overflowY: 'auto' }}>
                         {alertas.length > 0 ? (
                             alertas.slice(0, 5).map((alerta) => (
@@ -208,7 +217,7 @@ function DashboardSecretario() {
                             ))
                         ) : (
                             <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>
-                                ✅ Nenhum alerta no momento
+                                âœ… Nenhum alerta no momento
                             </div>
                         )}
                     </div>
@@ -216,13 +225,9 @@ function DashboardSecretario() {
 
                 {/* Programas */}
                 <div style={{ backgroundColor: 'white', borderRadius: 12, padding: 24, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-                    <SectionHeader titulo="Programas sob Responsabilidade" icone="📋" />
+                    <SectionHeader titulo="Programas sob Responsabilidade" icone="ðŸ“‹" />
                     <div>
-                        {(programas.length > 0 ? programas : [
-                            { nome: 'Programa de Pavimentação', status: 'atencao', projetos: 12, travados: 2 },
-                            { nome: 'Programa de Drenagem', status: 'travado', projetos: 8, travados: 3 },
-                            { nome: 'Programa de Praças e Parques', status: 'em_dia', projetos: 5, travados: 0 },
-                        ]).map((prog, idx) => (
+                        {programas.map((prog, idx) => (
                             <div key={idx} style={{
                                 padding: 12,
                                 borderBottom: '1px solid #e5e7eb',
@@ -245,15 +250,10 @@ function DashboardSecretario() {
 
             {/* Desempenho por Coordenador */}
             <div style={{ backgroundColor: 'white', borderRadius: 12, padding: 24, marginTop: 24, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-                <SectionHeader titulo="Desempenho por Coordenador" icone="👥" />
+                <SectionHeader titulo="Desempenho por Coordenador" icone="ðŸ‘¥" />
                 <DataTable
                     colunas={colunasCoordenadores}
-                    dados={coordenadores.length > 0 ? coordenadores : [
-                        { nome: 'João Silva', total_projetos: 8, em_dia: 6, atrasados: 2, percentual: 78 },
-                        { nome: 'Maria Santos', total_projetos: 12, em_dia: 9, atrasados: 3, percentual: 65 },
-                        { nome: 'Pedro Costa', total_projetos: 5, em_dia: 2, atrasados: 3, percentual: 45 },
-                        { nome: 'Ana Pereira', total_projetos: 7, em_dia: 7, atrasados: 0, percentual: 92 },
-                    ]}
+                    dados={coordenadores}
                     emptyMessage="Nenhum coordenador cadastrado"
                 />
             </div>
@@ -262,3 +262,6 @@ function DashboardSecretario() {
 }
 
 export default DashboardSecretario
+
+
+
