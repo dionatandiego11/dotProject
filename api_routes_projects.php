@@ -65,6 +65,11 @@ $router->get('/v1/projects/{id}/status-history', function (Request $req, Respons
     return $controller->statusHistory();
 });
 
+$router->get('/v1/projects/{id}/audit-log', function (Request $req, Response $res) {
+    $controller = new ProjectController($req, $res);
+    return $controller->auditLog();
+});
+
 $router->get('/v1/tasks', function (Request $req, Response $res) {
     $controller = new TaskController($req, $res);
     return $controller->index();

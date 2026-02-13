@@ -76,8 +76,8 @@ function TaskEditModal({ task, isOpen, onClose, onSave, projects = [] }) {
             setSaving(true)
             await onSave({
                 ...editedTask,
-                priority: parseInt(editedTask.priority),
-                percent_complete: parseInt(editedTask.percent_complete)
+                priority: parseInt(editedTask.priority, 10),
+                percent_complete: parseInt(String(editedTask.percent_complete), 10),
             })
             toast.success('Tarefa atualizada com sucesso!')
             onClose()

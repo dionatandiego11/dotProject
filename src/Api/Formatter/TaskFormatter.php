@@ -30,6 +30,7 @@ class TaskFormatter
         $data = [
             'id' => (int) $row['task_id'],
             'name' => $row['task_name'],
+            'description' => $row['task_description'] ?? '',
             'project' => [
                 'id' => (int) ($row['task_project'] ?? 0),
                 'name' => $row['project_name'] ?? null,

@@ -26,19 +26,22 @@ class ProjectMutationService
     private ProjectStatusService $projectStatusService;
     private ProjectStatusHistoryService $statusHistoryService;
     private ValidationService $validator;
+    private ?AuditService $auditService;
 
     public function __construct(
         ?Database $db = null,
         ?ProjectRepository $projectRepository = null,
         ?ProjectStatusService $projectStatusService = null,
         ?ProjectStatusHistoryService $statusHistoryService = null,
-        ?ValidationService $validator = null
+        ?ValidationService $validator = null,
+        ?AuditService $auditService = null
     ) {
         $this->db = $db ?? Database::getInstance();
         $this->projectRepository = $projectRepository ?? new ProjectRepository($this->db);
         $this->projectStatusService = $projectStatusService ?? new ProjectStatusService();
         $this->statusHistoryService = $statusHistoryService ?? new ProjectStatusHistoryService($this->db);
         $this->validator = $validator ?? new ValidationService();
+        $this->auditService = $auditService;
     }
 
     /**
@@ -107,6 +110,9 @@ class ProjectMutationService
             }
         }
 
+        $actualBudgetPayload = $this->extractActualBudgetPayload($body);
+        $supportsActualBudget = $this->supportsActualBudgetFields();
+
         $project = new ProjectEntity();
         $project->setName((string) ($body['name'] ?? ''));
         $project->setShortName($shortName !== '' ? $shortName : null);
@@ -141,6 +147,14 @@ class ProjectMutationService
         if ($this->tableHasColumn($this->db->table('projects'), 'project_target_budget')) {
             $legacyFields['project_target_budget'] = (float) ($body['budget'] ?? 0);
         }
+        if ($actualBudgetPayload['provided'] && $supportsActualBudget) {
+            if ($this->tableHasColumn($this->db->table('projects'), 'project_actual_budget')) {
+                $legacyFields['project_actual_budget'] = $actualBudgetPayload['value'];
+            }
+            if ($this->tableHasColumn($this->db->table('projects'), 'valor_executado')) {
+                $legacyFields['valor_executado'] = $actualBudgetPayload['value'];
+            }
+        }
         if ($this->tableHasColumn($this->db->table('projects'), 'project_type')) {
             $legacyFields['project_type'] = (int) ($body['type'] ?? 0);
         }
@@ -157,6 +171,16 @@ class ProjectMutationService
 
         if ($acaoPayload['provided'] && !$this->syncProjectAcoes($projectId, $acaoIds, $primaryAcaoId)) {
             return $this->errorResult('Failed to create project');
+        }
+
+        if ($actualBudgetPayload['provided'] && $supportsActualBudget) {
+            $this->auditValorExecutadoChange(
+                $projectId,
+                null,
+                $actualBudgetPayload['value'],
+                $userId,
+                $this->resolveStatusChangeSource($body, 'projects_create')
+            );
         }
 
         return [
@@ -298,6 +322,13 @@ class ProjectMutationService
             }
         }
 
+        $actualBudgetPayload = $this->extractActualBudgetPayload($body);
+        $supportsActualBudget = $this->supportsActualBudgetFields();
+        $previousActualBudget = null;
+        if ($actualBudgetPayload['provided'] && $supportsActualBudget) {
+            $previousActualBudget = $this->fetchProjectValorExecutado($projectId);
+        }
+
         if (array_key_exists('name', $body)) {
             $project->setName((string) $body['name']);
         }
@@ -344,6 +375,14 @@ class ProjectMutationService
         if (array_key_exists('budget', $body) && $this->tableHasColumn($this->db->table('projects'), 'project_target_budget')) {
             $legacyUpdates['project_target_budget'] = (float) ($body['budget'] ?? 0);
         }
+        if ($actualBudgetPayload['provided'] && $supportsActualBudget) {
+            if ($this->tableHasColumn($this->db->table('projects'), 'project_actual_budget')) {
+                $legacyUpdates['project_actual_budget'] = $actualBudgetPayload['value'];
+            }
+            if ($this->tableHasColumn($this->db->table('projects'), 'valor_executado')) {
+                $legacyUpdates['valor_executado'] = $actualBudgetPayload['value'];
+            }
+        }
         if (array_key_exists('type', $body) && $this->tableHasColumn($this->db->table('projects'), 'project_type')) {
             $legacyUpdates['project_type'] = (int) $body['type'];
         }
@@ -360,6 +399,16 @@ class ProjectMutationService
 
         if ($hasAcaoField && !$this->syncProjectAcoes($projectId, $acaoIds, $primaryAcaoId)) {
             return $this->errorResult('Failed to update project');
+        }
+
+        if ($actualBudgetPayload['provided'] && $supportsActualBudget) {
+            $this->auditValorExecutadoChange(
+                $projectId,
+                $previousActualBudget,
+                $actualBudgetPayload['value'],
+                $userId,
+                $this->resolveStatusChangeSource($body, 'projects_update')
+            );
         }
 
         if ($targetStatus !== null && $targetStatus !== $currentStatus) {
@@ -680,6 +729,39 @@ class ProjectMutationService
         return $acaoId > 0 ? $acaoId : null;
     }
 
+    /**
+     * @param array<string, mixed> $body
+     * @return array{provided: bool, value: ?float}
+     */
+    private function extractActualBudgetPayload(array $body): array
+    {
+        $keys = ['valor_executado', 'actual_budget', 'project_actual_budget'];
+        foreach ($keys as $key) {
+            if (!array_key_exists($key, $body)) {
+                continue;
+            }
+
+            return [
+                'provided' => true,
+                'value' => $this->normalizeBudgetValue($body[$key]),
+            ];
+        }
+
+        return [
+            'provided' => false,
+            'value' => null,
+        ];
+    }
+
+    private function normalizeBudgetValue(mixed $value): float
+    {
+        if ($value === null || $value === '') {
+            return 0.0;
+        }
+
+        return round((float) $value, 2);
+    }
+
     private function syncProjectAcoes(int $projectId, array $acaoIds, ?int $primaryAcaoId): bool
     {
         $linkTable = $this->resolveProjectAcaoLinkTable();
@@ -786,6 +868,52 @@ class ProjectMutationService
         }
 
         return (int) $value;
+    }
+
+    private function fetchProjectValorExecutado(int $projectId): ?float
+    {
+        $projectsTable = $this->db->table('projects');
+        $selectColumns = [];
+
+        if ($this->tableHasColumn($projectsTable, 'valor_executado')) {
+            $selectColumns[] = 'valor_executado';
+        }
+        if ($this->tableHasColumn($projectsTable, 'project_actual_budget')) {
+            $selectColumns[] = 'project_actual_budget';
+        }
+
+        if ($selectColumns === []) {
+            return null;
+        }
+
+        $row = $this->db->fetchOne(sprintf(
+            'SELECT %s FROM `%s` WHERE project_id = %d%s LIMIT 1',
+            implode(', ', $selectColumns),
+            $projectsTable,
+            $projectId,
+            $this->tenantAndCondition($projectsTable)
+        ));
+
+        if ($row === null) {
+            return null;
+        }
+
+        if (array_key_exists('valor_executado', $row) && $row['valor_executado'] !== null) {
+            return (float) $row['valor_executado'];
+        }
+
+        if (array_key_exists('project_actual_budget', $row) && $row['project_actual_budget'] !== null) {
+            return (float) $row['project_actual_budget'];
+        }
+
+        return null;
+    }
+
+    private function supportsActualBudgetFields(): bool
+    {
+        $projectsTable = $this->db->table('projects');
+        return $this->tableHasColumn($projectsTable, 'project_actual_budget')
+            || $this->tableHasColumn($projectsTable, 'valor_executado');
     }
 
     private function resolveProgramTable(): ?string
@@ -917,6 +1045,32 @@ class ProjectMutationService
             AuthorizationService::ACCESS_NOT_FOUND => ['kind' => 'not_found', 'message' => 'Project not found'],
             default => ['kind' => 'forbidden', 'message' => 'Access denied'],
         };
+    }
+
+    private function audit(): AuditService
+    {
+        if ($this->auditService === null) {
+            $this->auditService = new AuditService($this->db);
+        }
+
+        return $this->auditService;
+    }
+
+    private function auditValorExecutadoChange(
+        int $projectId,
+        ?float $valorAnterior,
+        ?float $valorNovo,
+        ?int $userId,
+        string $origem
+    ): void {
+        $this->audit()->logValorExecutadoChange(
+            'projeto',
+            $projectId,
+            $valorAnterior,
+            $valorNovo,
+            $userId,
+            $origem
+        );
     }
 
     protected function getDatabase(): Database

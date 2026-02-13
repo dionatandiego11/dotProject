@@ -60,6 +60,7 @@ class TaskController extends BaseController
         // Filtros opcionais
         $projectId = $this->request->getQueryParam('project_id');
         $status = $this->request->getQueryParam('status');
+        $priority = $this->request->getQueryParam('priority');
         $ownerId = $this->request->getQueryParam('owner_id');
         $search = $this->request->getQueryParam('search');
         $overdue = $this->request->getQueryParam('overdue'); // true/false
@@ -83,6 +84,11 @@ class TaskController extends BaseController
         if ($status !== null) {
             $where .= ' AND t.task_status = ?';
             $params[] = (int) $status;
+        }
+
+        if ($priority !== null) {
+            $where .= ' AND t.task_priority = ?';
+            $params[] = (int) $priority;
         }
 
         if ($ownerId !== null) {

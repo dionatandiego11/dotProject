@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getProject, getProjectTasks, getProjectStatusHistory } from '../services/api'
+import { getProject, getProjectTasks, getProjectStatusHistory, getProjectAuditLog } from '../services/api'
 import Timeline from '../components/Timeline'
 import Loading from '../components/Loading'
 import Button from '../components/ui/Button'
@@ -20,6 +20,9 @@ function ProjectDetails() {
     const [statusHistory, setStatusHistory] = useState([])
     const [statusHistoryLoading, setStatusHistoryLoading] = useState(false)
     const [statusHistoryError, setStatusHistoryError] = useState(null)
+    const [auditLog, setAuditLog] = useState([])
+    const [auditLogLoading, setAuditLogLoading] = useState(false)
+    const [auditLogError, setAuditLogError] = useState(null)
 
     useEffect(() => {
         loadProjectDetails()
@@ -52,6 +55,7 @@ function ProjectDetails() {
             await Promise.all([
                 loadProjectTasks(projectData.id || id),
                 loadProjectStatusHistory(projectData.id || id),
+                loadProjectAuditLog(projectData.id || id),
             ])
         } catch (err) {
             console.error(err)
@@ -87,6 +91,20 @@ function ProjectDetails() {
             setStatusHistoryError('Erro ao carregar historico de status')
         } finally {
             setStatusHistoryLoading(false)
+        }
+    }
+
+    async function loadProjectAuditLog(projectId) {
+        try {
+            setAuditLogLoading(true)
+            setAuditLogError(null)
+            const data = await getProjectAuditLog(projectId, { per_page: 30 })
+            setAuditLog(data.data || [])
+        } catch (err) {
+            console.error(err)
+            setAuditLogError('Erro ao carregar historico financeiro')
+        } finally {
+            setAuditLogLoading(false)
         }
     }
 
@@ -220,6 +238,51 @@ function ProjectDetails() {
                                         </td>
                                         <td>{item.changed_by_name || 'Sistema'}</td>
                                         <td>{formatStatusChangeSource(item.source)}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    )}
+                </div>
+            </div>
+
+            {/* HISTORICO FINANCEIRO */}
+            <div className="card" style={{ marginBottom: 24 }}>
+                <div className="card-header">
+                    <h2 className="card-title">Historico Financeiro</h2>
+                </div>
+                <div className="card-body" style={{ padding: 0 }}>
+                    {auditLogLoading ? (
+                        <div style={{ padding: 'var(--spacing-6)', textAlign: 'center' }}>
+                            Carregando...
+                        </div>
+                    ) : auditLogError ? (
+                        <div style={{ padding: 'var(--spacing-6)', textAlign: 'center', color: 'var(--color-danger-500)' }}>
+                            {auditLogError}
+                        </div>
+                    ) : auditLog.length === 0 ? (
+                        <div style={{ padding: 'var(--spacing-6)', textAlign: 'center', color: 'var(--color-gray-500)' }}>
+                            Nenhuma alteracao de valor executado registrada.
+                        </div>
+                    ) : (
+                        <table className="table">
+                            <thead>
+                                <tr>
+                                    <th>Data</th>
+                                    <th>De</th>
+                                    <th>Para</th>
+                                    <th>Origem</th>
+                                    <th>Usuario</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {auditLog.map(item => (
+                                    <tr key={item.id}>
+                                        <td>{formatDateTime(item.created_at)}</td>
+                                        <td>{formatNullableCurrency(item.valor_anterior)}</td>
+                                        <td>{formatNullableCurrency(item.valor_novo)}</td>
+                                        <td>{formatStatusChangeSource(item.origem)}</td>
+                                        <td>{item.usuario_id ?? 'Sistema'}</td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -427,6 +490,14 @@ function getTaskPriorityColor(priority) {
 
 function formatCurrency(value) {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)
+}
+
+function formatNullableCurrency(value) {
+    if (value === null || value === undefined || value === '') {
+        return '-'
+    }
+
+    return formatCurrency(Number(value) || 0)
 }
 
 function formatDate(dateString) {

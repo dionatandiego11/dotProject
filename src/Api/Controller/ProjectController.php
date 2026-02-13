@@ -731,6 +731,93 @@ class ProjectController extends BaseController
     }
 
     /**
+     * GET /v1/projects/{id}/audit-log
+     *
+     * Lista trilha de alteracoes de valor_executado para o projeto.
+     */
+    public function auditLog(): Response
+    {
+        $id = (int) $this->request->getParam('id');
+
+        if (!$this->checkPermission('projects', 'view')) {
+            return $this->response->forbidden('Insufficient permissions');
+        }
+
+        if ($guard = $this->ensureProjectAccess($id)) {
+            return $guard;
+        }
+
+        if (!$this->projectExists($id)) {
+            return $this->notFound('Project not found');
+        }
+
+        $pagination = $this->getPagination();
+        $auditTable = 'dotp_audit_log';
+        if (!$this->tableExists($auditTable)) {
+            return $this->response->paginated([], 0, $pagination['page'], $pagination['per_page']);
+        }
+
+        $where = sprintf(
+            "entidade_id = ? AND campo = ? AND (entidade_tipo = ? OR entidade_tipo = ?)%s",
+            $this->tenantAndCondition($auditTable)
+        );
+        $params = [$id, 'valor_executado', 'projeto', 'project'];
+
+        $countSql = sprintf(
+            'SELECT COUNT(*) FROM `%s` WHERE %s',
+            $auditTable,
+            $where
+        );
+        $total = (int) ($this->db->fetchValueParams($countSql, $params) ?? 0);
+
+        $sql = sprintf(
+            'SELECT id, entidade_tipo, entidade_id, campo, valor_anterior, valor_novo, usuario_id, origem, contexto_json, created_at
+             FROM `%s`
+             WHERE %s
+             ORDER BY created_at DESC, id DESC
+             LIMIT ? OFFSET ?',
+            $auditTable,
+            $where
+        );
+        $rows = $this->db->fetchAllParams($sql, array_merge($params, [
+            $pagination['per_page'],
+            $pagination['offset'],
+        ]));
+
+        $data = array_map(function (array $row): array {
+            $context = null;
+            if (!empty($row['contexto_json']) && is_string($row['contexto_json'])) {
+                $decoded = json_decode($row['contexto_json'], true);
+                if (is_array($decoded)) {
+                    $context = $decoded;
+                }
+            }
+
+            return [
+                'id' => (int) ($row['id'] ?? 0),
+                'entidade_tipo' => (string) ($row['entidade_tipo'] ?? ''),
+                'entidade_id' => (int) ($row['entidade_id'] ?? 0),
+                'campo' => (string) ($row['campo'] ?? 'valor_executado'),
+                'valor_anterior' => isset($row['valor_anterior']) ? (float) $row['valor_anterior'] : null,
+                'valor_novo' => isset($row['valor_novo']) ? (float) $row['valor_novo'] : null,
+                'usuario_id' => isset($row['usuario_id']) && $row['usuario_id'] !== null
+                    ? (int) $row['usuario_id']
+                    : null,
+                'origem' => (string) ($row['origem'] ?? 'system'),
+                'contexto' => $context,
+                'created_at' => (string) ($row['created_at'] ?? ''),
+            ];
+        }, $rows);
+
+        return $this->response->paginated(
+            $data,
+            $total,
+            $pagination['page'],
+            $pagination['per_page']
+        );
+    }
+
+    /**
      * Backward-compatible wrapper kept for unit tests/reflection callers.
      *
      * @param array<string, mixed> $row

@@ -52,3 +52,11 @@ export async function getProjectStatusHistory(projectId, params = {}) {
         : `/projects/${projectId}/status-history`;
     return apiRequest(endpoint);
 }
+
+export async function getProjectAuditLog(projectId, params = {}) {
+    const queryString = new URLSearchParams(params).toString();
+    const endpoint = queryString
+        ? `/projects/${projectId}/audit-log?${queryString}`
+        : `/projects/${projectId}/audit-log`;
+    return apiRequest(endpoint);
+}

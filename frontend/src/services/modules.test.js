@@ -34,6 +34,12 @@ describe('Service modules', () => {
         expect(apiRequest).toHaveBeenCalledWith('/projects/15/status-history?limit=10');
     });
 
+    it('calls project audit log endpoint', async () => {
+        await projectsService.getProjectAuditLog(15, { page: 2, per_page: 5 });
+
+        expect(apiRequest).toHaveBeenCalledWith('/projects/15/audit-log?page=2&per_page=5');
+    });
+
     it('sends JSON payload for task update', async () => {
         await tasksService.updateTask(99, { name: 'Nova tarefa' });
 

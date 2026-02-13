@@ -6,6 +6,7 @@ import Input from '../../components/ui/Input'
 import TaskEditModal from '../../components/TaskEditModal'
 import { useToast } from '../../contexts/ToastContext'
 import { useValidation } from '../../hooks/useValidation'
+import useCurrentUser from '../../hooks/useCurrentUser'
 
 const EMPTY_TASK_FORM = {
     name: '',
@@ -25,6 +26,14 @@ const TASK_STATUS_OPTIONS = [
     { value: '5', label: 'Cancelado' },
     { value: '6', label: 'Arquivado' },
     { value: '7', label: 'Revisão' },
+]
+
+const PRIORITY_FILTER_OPTIONS = [
+    { value: '', label: 'Todas as prioridades' },
+    { value: '0', label: 'Baixa' },
+    { value: '1', label: 'Normal' },
+    { value: '2', label: 'Alta' },
+    { value: '3', label: 'Urgente' },
 ]
 
 function getPriorityLabel(priority) {
@@ -47,6 +56,20 @@ function getTaskStatusLabel(status) {
     return option?.label || 'Indefinido'
 }
 
+function getTaskStatusStyles(status) {
+    const map = {
+        0: { color: '#6b7280', background: '#f3f4f6' },
+        1: { color: '#475569', background: '#f1f5f9' },
+        2: { color: '#1d4ed8', background: '#eff6ff' },
+        3: { color: '#166534', background: '#f0fdf4' },
+        4: { color: '#92400e', background: '#fffbeb' },
+        5: { color: '#991b1b', background: '#fef2f2' },
+        6: { color: '#374151', background: '#f3f4f6' },
+        7: { color: '#6d28d9', background: '#f5f3ff' },
+    }
+    return map[Number(status)] || map[0]
+}
+
 function isOverdue(endDate, percentComplete) {
     if (!endDate || Number(percentComplete) >= 100) {
         return false
@@ -56,6 +79,7 @@ function isOverdue(endDate, percentComplete) {
 }
 
 export default function TarefasPage() {
+    const { user } = useCurrentUser()
     const toast = useToast()
     const validation = useValidation()
     const [tasks, setTasks] = useState([])
@@ -69,7 +93,9 @@ export default function TarefasPage() {
     const [search, setSearch] = useState('')
     const [projectIdFilter, setProjectIdFilter] = useState('')
     const [statusFilter, setStatusFilter] = useState('')
+    const [priorityFilter, setPriorityFilter] = useState('')
     const [ownerIdFilter, setOwnerIdFilter] = useState('')
+    const [onlyMine, setOnlyMine] = useState(false)
     const [overdueOnly, setOverdueOnly] = useState(false)
 
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
@@ -79,6 +105,38 @@ export default function TarefasPage() {
     const [saving, setSaving] = useState(false)
 
     const totalTasks = useMemo(() => Number(meta.total || tasks.length || 0), [meta.total, tasks.length])
+    const activeFilters = useMemo(() => {
+        const labels = []
+
+        if (search.trim()) {
+            labels.push(`Busca: "${search.trim()}"`)
+        }
+
+        if (projectIdFilter) {
+            const project = projects.find((item) => Number(item.id) === Number(projectIdFilter))
+            labels.push(`Projeto: ${project?.name || `#${projectIdFilter}`}`)
+        }
+
+        if (statusFilter) {
+            labels.push(`Status: ${getTaskStatusLabel(statusFilter)}`)
+        }
+
+        if (priorityFilter) {
+            labels.push(`Prioridade: ${getPriorityLabel(priorityFilter)}`)
+        }
+
+        if (onlyMine && user?.id) {
+            labels.push('Somente minhas tarefas')
+        } else if (ownerIdFilter.trim()) {
+            labels.push(`Responsável: #${ownerIdFilter.trim()}`)
+        }
+
+        if (overdueOnly) {
+            labels.push('Somente atrasadas')
+        }
+
+        return labels
+    }, [search, projectIdFilter, projects, statusFilter, priorityFilter, onlyMine, ownerIdFilter, overdueOnly, user?.id])
 
     useEffect(() => {
         loadProjects()
@@ -86,7 +144,7 @@ export default function TarefasPage() {
 
     useEffect(() => {
         loadTasks(page)
-    }, [page, search, projectIdFilter, statusFilter, ownerIdFilter, overdueOnly])
+    }, [page, search, projectIdFilter, statusFilter, priorityFilter, ownerIdFilter, onlyMine, overdueOnly, user?.id])
 
     async function loadProjects() {
         try {
@@ -115,7 +173,13 @@ export default function TarefasPage() {
             if (statusFilter) {
                 params.status = statusFilter
             }
-            if (ownerIdFilter.trim()) {
+            if (priorityFilter) {
+                params.priority = priorityFilter
+            }
+
+            if (onlyMine && user?.id) {
+                params.owner_id = String(user.id)
+            } else if (ownerIdFilter.trim()) {
                 params.owner_id = ownerIdFilter.trim()
             }
             if (overdueOnly) {
@@ -145,7 +209,9 @@ export default function TarefasPage() {
         setSearch('')
         setProjectIdFilter('')
         setStatusFilter('')
+        setPriorityFilter('')
         setOwnerIdFilter('')
+        setOnlyMine(false)
         setOverdueOnly(false)
         setPage(1)
     }
@@ -226,7 +292,15 @@ export default function TarefasPage() {
 
             <div className="page-content">
                 <form className="card" style={{ marginBottom: 'var(--spacing-4)' }} onSubmit={applyFilters}>
-                    <div className="card-body" style={{ display: 'grid', gap: 'var(--spacing-3)', gridTemplateColumns: '2fr 1fr 1fr 1fr auto auto' }}>
+                    <div
+                        className="card-body"
+                        style={{
+                            display: 'grid',
+                            gap: 'var(--spacing-3)',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                            alignItems: 'end',
+                        }}
+                    >
                         <Input
                             value={searchInput}
                             onChange={(event) => setSearchInput(event.target.value)}
@@ -265,11 +339,37 @@ export default function TarefasPage() {
                                 </option>
                             ))}
                         </select>
+                        <select
+                            value={priorityFilter}
+                            onChange={(event) => setPriorityFilter(event.target.value)}
+                            style={{
+                                padding: 'var(--spacing-2) var(--spacing-3)',
+                                border: '1px solid var(--color-gray-300)',
+                                borderRadius: 'var(--radius-md)',
+                                background: 'white',
+                            }}
+                        >
+                            {PRIORITY_FILTER_OPTIONS.map((priority) => (
+                                <option key={priority.value || 'all'} value={priority.value}>
+                                    {priority.label}
+                                </option>
+                            ))}
+                        </select>
                         <Input
                             value={ownerIdFilter}
                             onChange={(event) => setOwnerIdFilter(event.target.value)}
                             placeholder="ID do responsável"
+                            disabled={onlyMine}
                         />
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-2)', fontSize: '0.875rem' }}>
+                            <input
+                                type="checkbox"
+                                checked={onlyMine}
+                                onChange={(event) => setOnlyMine(event.target.checked)}
+                                disabled={!user?.id}
+                            />
+                            Minhas tarefas
+                        </label>
                         <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-2)', fontSize: '0.875rem' }}>
                             <input
                                 type="checkbox"
@@ -278,12 +378,20 @@ export default function TarefasPage() {
                             />
                             Atrasadas
                         </label>
-                        <div style={{ display: 'flex', gap: 'var(--spacing-2)' }}>
+                        <div style={{ display: 'flex', gap: 'var(--spacing-2)', flexWrap: 'wrap' }}>
                             <Button type="submit" variant="secondary">Filtrar</Button>
                             <Button type="button" variant="ghost" onClick={resetFilters}>Limpar</Button>
                         </div>
                     </div>
                 </form>
+
+                {activeFilters.length > 0 && (
+                    <div className="card" style={{ marginBottom: 'var(--spacing-4)' }}>
+                        <div className="card-body" style={{ fontSize: '0.875rem', color: 'var(--color-gray-700)' }}>
+                            <strong>Filtros ativos:</strong> {activeFilters.join(' | ')}
+                        </div>
+                    </div>
+                )}
 
                 {error && (
                     <div className="card" style={{ marginBottom: 'var(--spacing-4)' }}>
@@ -330,9 +438,27 @@ export default function TarefasPage() {
                                             <tr key={task.id} style={overdue ? { background: '#fef2f2' } : {}}>
                                                 <td>
                                                     <strong>{task.name}</strong>
+                                                    {task.description && (
+                                                        <div style={{ fontSize: '0.8rem', color: 'var(--color-gray-600)' }}>
+                                                            {task.description}
+                                                        </div>
+                                                    )}
                                                 </td>
                                                 <td>{task.project?.name || '-'}</td>
-                                                <td>{getTaskStatusLabel(task.status)}</td>
+                                                <td>
+                                                    <span
+                                                        style={{
+                                                            display: 'inline-block',
+                                                            padding: '2px 8px',
+                                                            borderRadius: 999,
+                                                            fontSize: '0.75rem',
+                                                            fontWeight: 600,
+                                                            ...getTaskStatusStyles(task.status),
+                                                        }}
+                                                    >
+                                                        {getTaskStatusLabel(task.status)}
+                                                    </span>
+                                                </td>
                                                 <td>
                                                     <span style={{ color: getPriorityColor(task.priority), fontWeight: 600 }}>
                                                         {getPriorityLabel(task.priority)}
