@@ -175,14 +175,22 @@ class PrefeitoDashboardController extends BaseController
 
         foreach ($entidadesSaude as $ent) {
             try {
-                $rows = $db->fetchAll(
-                    "SELECT
-                        COALESCE(status_saude, 'em_dia') as status_saude,
-                        COUNT(*) as total
-                    FROM {$ent['table']}
-                    WHERE 1=1{$ent['tenant']}
-                    GROUP BY status_saude"
-                );
+                if ($this->tableHasColumn($ent['table'], 'status_saude')) {
+                    $rows = $db->fetchAll(
+                        "SELECT
+                            COALESCE(status_saude, 'em_dia') as status_saude,
+                            COUNT(*) as total
+                        FROM {$ent['table']}
+                        WHERE 1=1{$ent['tenant']}
+                        GROUP BY COALESCE(status_saude, 'em_dia')"
+                    );
+                } else {
+                    $rows = $db->fetchAll(
+                        "SELECT 'em_dia' as status_saude, COUNT(*) as total
+                        FROM {$ent['table']}
+                        WHERE 1=1{$ent['tenant']}"
+                    );
+                }
                 $dist = ['em_dia' => 0, 'atencao' => 0, 'critico' => 0, 'impedido' => 0];
                 foreach ($rows as $row) {
                     $key = $row['status_saude'] ?? 'em_dia';

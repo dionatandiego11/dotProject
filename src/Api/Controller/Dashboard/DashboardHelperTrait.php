@@ -20,6 +20,10 @@ trait DashboardHelperTrait
      * @var array<string, bool>
      */
     private array $tableHasTenantColumn = [];
+    /**
+     * @var array<string, bool>
+     */
+    private array $tableHasColumn = [];
 
     protected function checkModernTables(): bool
     {
@@ -164,5 +168,32 @@ trait DashboardHelperTrait
         }
 
         return $this->tableHasTenantColumn[$table];
+    }
+
+    protected function tableHasColumn(string $table, string $column): bool
+    {
+        $table = trim($table, '`');
+        $column = trim($column, '`');
+        $cacheKey = $table . '.' . $column;
+
+        if (array_key_exists($cacheKey, $this->tableHasColumn)) {
+            return $this->tableHasColumn[$cacheKey];
+        }
+
+        try {
+            $db = \DotProject\Core\Database::getInstance();
+            $exists = (int) ($db->fetchValue(
+                "SELECT COUNT(*) FROM information_schema.columns
+                 WHERE table_schema = DATABASE()
+                   AND table_name = ?
+                   AND column_name = ?",
+                [$table, $column]
+            ) ?? 0);
+            $this->tableHasColumn[$cacheKey] = $exists > 0;
+        } catch (\Throwable $e) {
+            $this->tableHasColumn[$cacheKey] = false;
+        }
+
+        return $this->tableHasColumn[$cacheKey];
     }
 }

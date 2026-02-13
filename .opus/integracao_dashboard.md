@@ -48,8 +48,9 @@ Alinhar frontend e backend dos dashboards aos módulos do sistema, garantindo co
 - [x] Criar smoke E2E por perfil (carrega sem erro e com dados coerentes).
   Entregue em `frontend/e2e/dashboard-smoke.spec.js` com Playwright.
   No WSL atual, execução fica `skipped` quando faltam libs nativas do Chromium (ex.: `libnspr4`).
-- [ ] Garantir execução de testes em ambiente com conexão DB inicializada.
-  Nota: os testes de integração de dashboard agora pulam com mensagem explícita quando o DB não está inicializado.
+- [x] Garantir execução de testes em ambiente com conexão DB inicializada.
+  Validado em container `phpfpm` + `mariadb`: `7/7` testes de integração de dashboard passando.
+  Ajuste aplicado: compatibilidade do `SecretarioDashboardController` com schema sem `status_saude` em `dotp_programas`/`dotp_projetos_prefeitura`.
 
 ## Fase 5 - Go-Live Controlado
 - [ ] Publicar com feature flag de contrato novo (se aplicável).
@@ -77,5 +78,5 @@ Alinhar frontend e backend dos dashboards aos módulos do sistema, garantindo co
 - [ ] 2) Fase 1
 - [x] 3) Fase 2
 - [x] 4) Fase 3
-- [ ] 5) Fase 4
+- [x] 5) Fase 4
 - [ ] 6) Fase 5

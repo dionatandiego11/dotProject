@@ -101,6 +101,9 @@ class SecretarioDashboardController extends BaseController
         $tenantProjetos = $this->tenantAndCondition('dotp_projetos_prefeitura');
         $tenantProjetosAlias = $this->tenantAndCondition('dotp_projetos_prefeitura', 'p');
         $tenantProjetosSubquery = $this->tenantAndCondition('dotp_projetos_prefeitura', 'pp');
+        $tenantProjetosSaudeAlias = $this->tenantAndCondition('dotp_projetos_prefeitura', 'pp');
+        $hasProgramaSaudeColumn = $this->tableHasColumn('dotp_programas', 'status_saude');
+        $hasProjetoSaudeColumn = $this->tableHasColumn('dotp_projetos_prefeitura', 'status_saude');
 
         if (empty($unidadesEscopo)) {
             $alertas = ['total' => 0, 'nao_lidos' => 0];
@@ -133,7 +136,7 @@ class SecretarioDashboardController extends BaseController
                     nome,
                     estado,
                     percent_execucao,
-                    COALESCE(status_saude, 'em_dia') as status_saude,
+                    " . ($hasProgramaSaudeColumn ? "COALESCE(p.status_saude, 'em_dia')" : "'em_dia'") . " as status_saude,
                     (SELECT COUNT(*) FROM dotp_projetos_prefeitura pp WHERE pp.programa_id = p.id AND pp.estado != 'Cancelado'{$tenantProjetosSubquery}) as total_projetos
                 FROM dotp_programas p
                 WHERE unidade_id IN ($placeholders)
@@ -186,22 +189,42 @@ class SecretarioDashboardController extends BaseController
         // Saúde resumo (distribuição de saúde nos programas e projetos do escopo)
         $saudeResumo = ['programas' => ['em_dia' => 0, 'atencao' => 0, 'critico' => 0, 'impedido' => 0], 'projetos' => ['em_dia' => 0, 'atencao' => 0, 'critico' => 0, 'impedido' => 0]];
         try {
-            $saudeProgramas = $db->fetchAll(
-                "SELECT COALESCE(status_saude, 'em_dia') as status_saude, COUNT(*) as total
-                FROM dotp_programas WHERE unidade_id IN ($placeholders){$tenantProgramas}
-                GROUP BY status_saude",
-                $unidadesEscopo
-            );
+            if ($hasProgramaSaudeColumn) {
+                $saudeProgramas = $db->fetchAll(
+                    "SELECT COALESCE(p.status_saude, 'em_dia') as status_saude, COUNT(*) as total
+                    FROM dotp_programas p
+                    WHERE p.unidade_id IN ($placeholders){$tenantProgramas}
+                    GROUP BY COALESCE(p.status_saude, 'em_dia')",
+                    $unidadesEscopo
+                );
+            } else {
+                $saudeProgramas = $db->fetchAll(
+                    "SELECT 'em_dia' as status_saude, COUNT(*) as total
+                    FROM dotp_programas p
+                    WHERE p.unidade_id IN ($placeholders){$tenantProgramas}",
+                    $unidadesEscopo
+                );
+            }
             foreach ($saudeProgramas as $row) {
                 $saudeResumo['programas'][$row['status_saude'] ?? 'em_dia'] = (int) $row['total'];
             }
 
-            $saudeProjetos = $db->fetchAll(
-                "SELECT COALESCE(status_saude, 'em_dia') as status_saude, COUNT(*) as total
-                FROM dotp_projetos_prefeitura WHERE unidade_id IN ($placeholders){$tenantProjetos}
-                GROUP BY status_saude",
-                $unidadesEscopo
-            );
+            if ($hasProjetoSaudeColumn) {
+                $saudeProjetos = $db->fetchAll(
+                    "SELECT COALESCE(pp.status_saude, 'em_dia') as status_saude, COUNT(*) as total
+                    FROM dotp_projetos_prefeitura pp
+                    WHERE pp.unidade_id IN ($placeholders){$tenantProjetosSaudeAlias}
+                    GROUP BY COALESCE(pp.status_saude, 'em_dia')",
+                    $unidadesEscopo
+                );
+            } else {
+                $saudeProjetos = $db->fetchAll(
+                    "SELECT 'em_dia' as status_saude, COUNT(*) as total
+                    FROM dotp_projetos_prefeitura pp
+                    WHERE pp.unidade_id IN ($placeholders){$tenantProjetosSaudeAlias}",
+                    $unidadesEscopo
+                );
+            }
             foreach ($saudeProjetos as $row) {
                 $saudeResumo['projetos'][$row['status_saude'] ?? 'em_dia'] = (int) $row['total'];
             }

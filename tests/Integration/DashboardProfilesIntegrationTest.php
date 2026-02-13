@@ -96,7 +96,8 @@ class DashboardProfilesIntegrationTest extends TestCase
         $this->assertSame(200, $this->responseStatus($result), var_export($body, true));
         $this->assertSame('secretario', $data['perfil'] ?? null);
         $this->assertSame($this->fixture['secretaria_unidade_id'], (int) ($data['unidade_id'] ?? 0));
-        $this->assertNotEmpty($data['programas'] ?? []);
+        $this->assertSame('modern_tables', $data['source'] ?? null, var_export($body, true));
+        $this->assertNotEmpty($data['programas'] ?? [], var_export($body, true));
         $this->assertTrue($this->hasRowWithId($data['projetos_atencao'] ?? [], $this->fixture['projeto_atrasado_id']));
         $this->assertTrue($this->hasRowWithValue($data['projetos_resumo'] ?? [], 'estado', 'Atrasado'));
     }
@@ -357,7 +358,7 @@ class DashboardProfilesIntegrationTest extends TestCase
             'user_password' => md5('dotproject123'),
             'user_parent' => 0,
             'user_type' => 1,
-            'user_company' => 0,
+            'user_company' => null,
             'user_department' => 0,
             'user_owner' => 1,
         ];
