@@ -16,9 +16,10 @@ class ProjectFormatter
 {
     /**
      * @param array<string, mixed> $row
+     * @param array<int, array<string, mixed>>|null $projectAcoes
      * @return array<string, mixed>
      */
-    public function formatProject(array $row, bool $detailed = false): array
+    public function formatProject(array $row, bool $detailed = false, ?array $projectAcoes = null): array
     {
         $unidadeId = isset($row['project_company']) && (int) $row['project_company'] > 0
             ? (int) $row['project_company']
@@ -41,6 +42,10 @@ class ProjectFormatter
         if ($acaoNome === '') {
             $acaoNome = null;
         }
+        $acoes = $this->normalizeProjectAcoes($projectAcoes, $acaoId, $acaoNome);
+        $acaoPrincipal = $this->resolvePrimaryAcao($acoes);
+        $acaoId = $acaoPrincipal['id'];
+        $acaoNome = $acaoPrincipal['nome'];
 
         $data = [
             'id' => (int) $row['project_id'],
@@ -66,6 +71,7 @@ class ProjectFormatter
                 'id' => $acaoId,
                 'nome' => $acaoNome,
             ],
+            'acoes' => $acoes,
             'status' => (int) ($row['project_status'] ?? 0),
             'percent_complete' => (int) ($row['project_percent_complete'] ?? 0),
             'priority' => (int) ($row['project_priority'] ?? 0),
@@ -93,6 +99,103 @@ class ProjectFormatter
         }
 
         return $data;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>>|null $projectAcoes
+     * @return array<int, array{id: int, nome: ?string, principal: bool}>
+     */
+    private function normalizeProjectAcoes(?array $projectAcoes, ?int $legacyAcaoId, ?string $legacyAcaoNome): array
+    {
+        if ($projectAcoes === null) {
+            if ($legacyAcaoId === null) {
+                return [];
+            }
+
+            return [[
+                'id' => $legacyAcaoId,
+                'nome' => $legacyAcaoNome,
+                'principal' => true,
+            ]];
+        }
+
+        $result = [];
+        foreach ($projectAcoes as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $id = $item['id'] ?? $item['acao_id'] ?? null;
+            if (!is_numeric($id) || (int) $id <= 0) {
+                continue;
+            }
+
+            $acaoId = (int) $id;
+            $nome = null;
+            if (isset($item['nome'])) {
+                $nome = trim((string) $item['nome']);
+                $nome = $nome !== '' ? $nome : null;
+            } elseif (isset($item['acao_nome'])) {
+                $nome = trim((string) $item['acao_nome']);
+                $nome = $nome !== '' ? $nome : null;
+            }
+
+            $principal = !empty($item['principal']);
+            $result[$acaoId] = [
+                'id' => $acaoId,
+                'nome' => $nome,
+                'principal' => $principal,
+            ];
+        }
+
+        if ($result === []) {
+            return [];
+        }
+
+        $hasPrimary = false;
+        foreach ($result as $entry) {
+            if ($entry['principal']) {
+                $hasPrimary = true;
+                break;
+            }
+        }
+
+        if (!$hasPrimary) {
+            $firstKey = array_key_first($result);
+            if ($firstKey !== null) {
+                $result[$firstKey]['principal'] = true;
+            }
+        }
+
+        return array_values($result);
+    }
+
+    /**
+     * @param array<int, array{id: int, nome: ?string, principal: bool}> $acoes
+     * @return array{id: ?int, nome: ?string}
+     */
+    private function resolvePrimaryAcao(array $acoes): array
+    {
+        foreach ($acoes as $acao) {
+            if (!empty($acao['principal'])) {
+                return [
+                    'id' => (int) $acao['id'],
+                    'nome' => $acao['nome'],
+                ];
+            }
+        }
+
+        if ($acoes !== []) {
+            return [
+                'id' => (int) $acoes[0]['id'],
+                'nome' => $acoes[0]['nome'],
+            ];
+        }
+
+        return [
+            'id' => null,
+            'nome' => null,
+        ];
     }
 
     /**

@@ -20,6 +20,7 @@ class AcaoRepository
     private ?string $ppaTable;
     private ?string $projectsTable;
     private ?string $projectAcaoColumn;
+    private ?string $projectAcaoLinkTable;
     /** @var array<string, bool> */
     private array $tableExistsCache = [];
     /** @var array<string, bool> */
@@ -31,6 +32,7 @@ class AcaoRepository
         $this->table = $this->resolveAcaoTable();
         $this->programTable = $this->resolveProgramTable();
         $this->ppaTable = $this->resolvePpaTable();
+        $this->projectAcaoLinkTable = $this->resolveProjectAcaoLinkTable();
         [$this->projectsTable, $this->projectAcaoColumn] = $this->resolveProjectLink();
     }
 
@@ -272,6 +274,15 @@ class AcaoRepository
 
     private function buildProjectAggregatesSql(): string
     {
+        if ($this->projectAcaoLinkTable !== null) {
+            $tenantLinks = $this->tenantAndCondition($this->projectAcaoLinkTable, 'pa');
+            return sprintf(
+                '(SELECT COUNT(*) FROM `%s` pa WHERE pa.acao_id = a.id%s) AS total_projetos, 1 AS link_projetos_habilitado',
+                $this->projectAcaoLinkTable,
+                $tenantLinks
+            );
+        }
+
         if ($this->projectsTable === null || $this->projectAcaoColumn === null) {
             return '0 AS total_projetos, 0 AS link_projetos_habilitado';
         }
@@ -339,6 +350,27 @@ class AcaoRepository
         }
 
         return [null, null];
+    }
+
+    private function resolveProjectAcaoLinkTable(): ?string
+    {
+        if (
+            $this->tableExists('dotp_projeto_acoes') &&
+            $this->tableHasColumn('dotp_projeto_acoes', 'project_id') &&
+            $this->tableHasColumn('dotp_projeto_acoes', 'acao_id')
+        ) {
+            return 'dotp_projeto_acoes';
+        }
+
+        if (
+            $this->tableExists('projeto_acoes') &&
+            $this->tableHasColumn('projeto_acoes', 'project_id') &&
+            $this->tableHasColumn('projeto_acoes', 'acao_id')
+        ) {
+            return 'projeto_acoes';
+        }
+
+        return null;
     }
 
     private function createDefaultAcaoTable(): void

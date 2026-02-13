@@ -476,7 +476,7 @@ export default function AcoesPage() {
                             </div>
                         ) : !selectedAcao.link_projetos_habilitado ? (
                             <div style={{ padding: 'var(--spacing-6)', color: 'var(--color-gray-500)' }}>
-                                Vinculo direto Acao - Projeto ainda nao habilitado neste banco (coluna project_acao_id ausente).
+                                Vinculo Acao - Projeto ainda nao habilitado neste banco (tabela ponte ou coluna legada ausente).
                             </div>
                         ) : loadingProjects ? (
                             <div style={{ padding: 'var(--spacing-6)' }}>Carregando projetos...</div>

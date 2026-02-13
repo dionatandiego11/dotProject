@@ -9,7 +9,7 @@ const EMPTY_PROJECT = {
     end_date: '',
     company_id: '',
     programa_id: '',
-    acao_id: '',
+    acao_ids: [],
     status: '1',
 }
 
@@ -23,9 +23,15 @@ function getProjectProgramaId(project) {
     return value !== null && value !== undefined ? String(value) : ''
 }
 
-function getProjectAcaoId(project) {
+function getProjectAcaoIds(project) {
+    if (Array.isArray(project?.acoes) && project.acoes.length > 0) {
+        return project.acoes
+            .map((acao) => String(acao?.id ?? ''))
+            .filter((id) => id !== '')
+    }
+
     const value = project?.acao_id ?? project?.acao?.id ?? null
-    return value !== null && value !== undefined ? String(value) : ''
+    return value !== null && value !== undefined ? [String(value)] : []
 }
 
 export default function useProjectForm({ loadUnidades, validation }) {
@@ -62,7 +68,7 @@ export default function useProjectForm({ loadUnidades, validation }) {
             end_date: normalizeDateValue(project.end_date),
             company_id: getProjectUnitId(project),
             programa_id: getProjectProgramaId(project),
-            acao_id: getProjectAcaoId(project),
+            acao_ids: getProjectAcaoIds(project),
             status: project.status != null ? String(project.status) : '1',
         })
         validation.clearErrors()

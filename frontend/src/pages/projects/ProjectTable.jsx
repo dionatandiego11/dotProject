@@ -25,6 +25,24 @@ export default function ProjectTable({
         return project?.unidade?.nome || project?.company?.name || '-'
     }
 
+    function getProjectActions(project) {
+        if (Array.isArray(project?.acoes) && project.acoes.length > 0) {
+            return project.acoes.map((acao) => ({
+                id: acao?.id,
+                nome: acao?.nome || null,
+            }))
+        }
+
+        if (project?.acao_id || project?.acao?.id) {
+            return [{
+                id: project.acao_id ?? project.acao?.id,
+                nome: project.acao?.nome || null,
+            }]
+        }
+
+        return []
+    }
+
     return (
         <table className="table">
             <thead>
@@ -43,6 +61,9 @@ export default function ProjectTable({
                     const quickStatusOptions = getAllowedProjectStatuses(currentStatus, { includeCurrent: false })
                     const quickStatusValue = quickStatusSelectionByProjectId[String(project.id)] ?? ''
                     const quickStatusLoading = Boolean(quickStatusLoadingByProjectId[String(project.id)])
+                    const projectActions = getProjectActions(project)
+                    const projectActionPreview = projectActions.slice(0, 2)
+                    const projectActionOverflow = projectActions.length - projectActionPreview.length
 
                     return (
                         <tr key={project.id}>
@@ -68,9 +89,10 @@ export default function ProjectTable({
                                                 Programa: {project.programa?.nome || `#${project.programa_id}`}
                                             </div>
                                         )}
-                                        {(project.acao?.nome || project.acao_id) && (
+                                        {projectActions.length > 0 && (
                                             <div style={{ fontSize: '0.75rem', color: 'var(--color-gray-600)' }}>
-                                                Acao: {project.acao?.nome || `#${project.acao_id}`}
+                                                Acoes: {projectActionPreview.map((acao) => acao.nome || `#${acao.id}`).join(', ')}
+                                                {projectActionOverflow > 0 ? ` (+${projectActionOverflow})` : ''}
                                             </div>
                                         )}
                                     </div>

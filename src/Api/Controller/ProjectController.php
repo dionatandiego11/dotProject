@@ -54,6 +54,7 @@ class ProjectController extends BaseController
         $perm = new PermissionService();
 
         $pagination = $this->getPagination();
+        $projectAcaoLinkTable = $this->resolveProjectAcaoLinkTable();
 
         // Filtros opcionais
         $unidadeId = $this->resolveUnidadeQueryParam();
@@ -92,9 +93,26 @@ class ProjectController extends BaseController
             $params[] = (int) $programaId;
         }
 
-        if ($acaoId !== null && $acaoId !== '' && $this->tableHasColumn($this->db->table('projects'), 'project_acao_id')) {
-            $where .= ' AND project_acao_id = ?';
-            $params[] = (int) $acaoId;
+        if ($acaoId !== null && $acaoId !== '') {
+            $acaoIdInt = (int) $acaoId;
+            if ($projectAcaoLinkTable !== null) {
+                $where .= sprintf(
+                    ' AND (project_id IN (SELECT pa.project_id FROM `%s` pa WHERE pa.acao_id = ?%s)',
+                    $projectAcaoLinkTable,
+                    $this->tenantAndCondition($projectAcaoLinkTable, 'pa')
+                );
+                $params[] = $acaoIdInt;
+
+                if ($this->tableHasColumn($this->db->table('projects'), 'project_acao_id')) {
+                    $where .= ' OR project_acao_id = ?';
+                    $params[] = $acaoIdInt;
+                }
+
+                $where .= ')';
+            } elseif ($this->tableHasColumn($this->db->table('projects'), 'project_acao_id')) {
+                $where .= ' AND project_acao_id = ?';
+                $params[] = $acaoIdInt;
+            }
         }
 
         if ($status !== null) {
@@ -169,7 +187,22 @@ class ProjectController extends BaseController
             $pagination['offset'],
         ]));
 
-        $projects = array_map(fn($row) => $this->projectFormatter()->formatProject($row), $rows);
+        $projectIds = array_values(array_unique(array_map(
+            static fn(array $row): int => (int) ($row['project_id'] ?? 0),
+            $rows
+        )));
+        $projectActions = $projectAcaoLinkTable !== null
+            ? $this->fetchProjectActionsByProjectIds($projectIds)
+            : [];
+
+        $projects = array_map(function (array $row) use ($projectAcaoLinkTable, $projectActions): array {
+            $projectId = (int) ($row['project_id'] ?? 0);
+            $actions = $projectAcaoLinkTable !== null
+                ? ($projectActions[$projectId] ?? null)
+                : null;
+
+            return $this->projectFormatter()->formatProject($row, false, $actions);
+        }, $rows);
 
         return $this->response->paginated(
             $projects,
@@ -195,6 +228,8 @@ class ProjectController extends BaseController
         if ($guard = $this->ensureProjectAccess($id)) {
             return $guard;
         }
+
+        $projectAcaoLinkTable = $this->resolveProjectAcaoLinkTable();
 
         $programJoin = '';
         $programSelect = '';
@@ -245,7 +280,15 @@ class ProjectController extends BaseController
             return $this->notFound('Project not found');
         }
 
-        return $this->json($this->projectFormatter()->formatProject($row, true));
+        $projectActions = $projectAcaoLinkTable !== null
+            ? $this->fetchProjectActionsByProjectIds([$id])
+            : [];
+
+        return $this->json($this->projectFormatter()->formatProject(
+            $row,
+            true,
+            $projectAcaoLinkTable !== null ? ($projectActions[$id] ?? null) : null
+        ));
     }
 
     /**
@@ -472,11 +515,12 @@ class ProjectController extends BaseController
      * Backward-compatible wrapper kept for unit tests/reflection callers.
      *
      * @param array<string, mixed> $row
+     * @param array<int, array<string, mixed>>|null $projectAcoes
      * @return array<string, mixed>
      */
-    private function formatProject(array $row, bool $detailed = false): array
+    private function formatProject(array $row, bool $detailed = false, ?array $projectAcoes = null): array
     {
-        return $this->projectFormatter()->formatProject($row, $detailed);
+        return $this->projectFormatter()->formatProject($row, $detailed, $projectAcoes);
     }
 
     /**
@@ -497,6 +541,111 @@ class ProjectController extends BaseController
         }
 
         return $this->statusHistoryService;
+    }
+
+    /**
+     * @param array<int, int> $projectIds
+     * @return array<int, array<int, array<string, mixed>>>
+     */
+    private function fetchProjectActionsByProjectIds(array $projectIds): array
+    {
+        $projectIds = array_values(array_unique(array_filter(
+            array_map(static fn(mixed $id): int => (int) $id, $projectIds),
+            static fn(int $id): bool => $id > 0
+        )));
+        if ($projectIds === []) {
+            return [];
+        }
+
+        $linkTable = $this->resolveProjectAcaoLinkTable();
+        if ($linkTable === null) {
+            return [];
+        }
+        $acaoTable = $this->resolveAcaoTable();
+
+        $principalSelect = $this->tableHasColumn($linkTable, 'principal')
+            ? 'COALESCE(pa.principal, 0)'
+            : '0';
+        $acaoJoin = '';
+        $acaoSelect = 'NULL AS acao_nome';
+        $acaoOrder = 'pa.acao_id ASC';
+        if ($acaoTable !== null) {
+            $acaoJoin = sprintf(
+                ' LEFT JOIN `%s` ac ON ac.id = pa.acao_id%s',
+                $acaoTable,
+                $this->tenantAndCondition($acaoTable, 'ac')
+            );
+            $acaoSelect = 'ac.nome AS acao_nome';
+            $acaoOrder = 'ac.nome ASC, pa.acao_id ASC';
+        }
+        $placeholders = implode(', ', array_fill(0, count($projectIds), '?'));
+        $sql = sprintf(
+            'SELECT pa.project_id, pa.acao_id, %s AS principal, %s
+             FROM `%s` pa
+             %s
+             WHERE pa.project_id IN (%s)%s
+             ORDER BY pa.project_id ASC, principal DESC, %s',
+            $principalSelect,
+            $acaoSelect,
+            $linkTable,
+            $acaoJoin,
+            $placeholders,
+            $this->tenantAndCondition($linkTable, 'pa'),
+            $acaoOrder
+        );
+        $rows = $this->db->fetchAllParams($sql, $projectIds);
+
+        $grouped = [];
+        foreach ($rows as $row) {
+            $projectId = (int) ($row['project_id'] ?? 0);
+            $acaoId = (int) ($row['acao_id'] ?? 0);
+            if ($projectId <= 0 || $acaoId <= 0) {
+                continue;
+            }
+
+            $nome = isset($row['acao_nome']) ? trim((string) $row['acao_nome']) : null;
+            $grouped[$projectId][] = [
+                'id' => $acaoId,
+                'nome' => $nome !== '' ? $nome : null,
+                'principal' => ((int) ($row['principal'] ?? 0)) === 1,
+            ];
+        }
+
+        return $grouped;
+    }
+
+    private function resolveProjectAcaoLinkTable(): ?string
+    {
+        if (
+            $this->tableExists('dotp_projeto_acoes') &&
+            $this->tableHasColumn('dotp_projeto_acoes', 'project_id') &&
+            $this->tableHasColumn('dotp_projeto_acoes', 'acao_id')
+        ) {
+            return 'dotp_projeto_acoes';
+        }
+
+        if (
+            $this->tableExists('projeto_acoes') &&
+            $this->tableHasColumn('projeto_acoes', 'project_id') &&
+            $this->tableHasColumn('projeto_acoes', 'acao_id')
+        ) {
+            return 'projeto_acoes';
+        }
+
+        return null;
+    }
+
+    private function resolveAcaoTable(): ?string
+    {
+        if ($this->tableHasColumn('dotp_acoes', 'id')) {
+            return 'dotp_acoes';
+        }
+
+        if ($this->tableHasColumn('acoes', 'id')) {
+            return 'acoes';
+        }
+
+        return null;
     }
 
     private function resolveUnidadeQueryParam(): ?int

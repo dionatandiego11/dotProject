@@ -38,6 +38,9 @@ export default function ProjectForm({
     const acoesFiltradas = programaSelecionado === null
         ? acoes
         : acoes.filter((acao) => Number(acao.programa_id) === programaSelecionado)
+    const acaoIdsSelecionadas = Array.isArray(formData.acao_ids)
+        ? formData.acao_ids.map((id) => String(id))
+        : []
 
     return (
         <form onSubmit={onSubmit}>
@@ -211,10 +214,15 @@ export default function ProjectForm({
                         onChange={(event) => {
                             const nextProgramaId = event.target.value
                             onChange('programa_id', nextProgramaId)
-                            if (formData.acao_id) {
-                                const acaoAtual = acoes.find((acao) => String(acao.id) === String(formData.acao_id))
-                                if (acaoAtual && String(acaoAtual.programa_id) !== nextProgramaId) {
-                                    onChange('acao_id', '')
+                            if (acaoIdsSelecionadas.length > 0) {
+                                const idsPermitidas = new Set(
+                                    acoes
+                                        .filter((acao) => !nextProgramaId || String(acao.programa_id) === nextProgramaId)
+                                        .map((acao) => String(acao.id))
+                                )
+                                const idsFiltradas = acaoIdsSelecionadas.filter((id) => idsPermitidas.has(id))
+                                if (idsFiltradas.length !== acaoIdsSelecionadas.length) {
+                                    onChange('acao_ids', idsFiltradas)
                                 }
                             }
                         }}
@@ -241,30 +249,63 @@ export default function ProjectForm({
 
                 <div>
                     <label style={{ display: 'block', marginBottom: 'var(--spacing-2)', fontWeight: 500 }}>
-                        Acao
+                        Acoes
+                        {acaoIdsSelecionadas.length > 0 && (
+                            <span style={{ marginLeft: 'var(--spacing-2)', fontSize: '0.75rem', color: 'var(--color-gray-500)', fontWeight: 400 }}>
+                                ({acaoIdsSelecionadas.length} selecionada(s))
+                            </span>
+                        )}
                     </label>
-                    <select
-                        value={formData.acao_id}
-                        onChange={(event) => onChange('acao_id', event.target.value)}
-                        disabled={acoesLoading}
+                    <div
                         style={{
-                            width: '100%',
-                            padding: 'var(--spacing-2) var(--spacing-3)',
                             border: '1px solid var(--color-gray-300)',
                             borderRadius: 'var(--radius-md)',
-                            fontSize: '0.875rem',
                             background: 'white',
+                            padding: 'var(--spacing-2)',
+                            maxHeight: 160,
+                            overflowY: 'auto',
                         }}
                     >
-                        <option value="">
-                            {acoesLoading ? 'Carregando acoes...' : 'Sem vinculo'}
-                        </option>
-                        {acoesFiltradas.map((acao) => (
-                            <option key={acao.id} value={String(acao.id)}>
-                                {acao.codigo ? `${acao.codigo} - ` : ''}{acao.nome}
-                            </option>
-                        ))}
-                    </select>
+                        {acoesLoading ? (
+                            <div style={{ fontSize: '0.875rem', color: 'var(--color-gray-500)' }}>
+                                Carregando acoes...
+                            </div>
+                        ) : acoesFiltradas.length === 0 ? (
+                            <div style={{ fontSize: '0.875rem', color: 'var(--color-gray-500)' }}>
+                                Nenhuma acao disponivel para o programa selecionado.
+                            </div>
+                        ) : (
+                            acoesFiltradas.map((acao) => {
+                                const value = String(acao.id)
+                                const checked = acaoIdsSelecionadas.includes(value)
+                                return (
+                                    <label
+                                        key={acao.id}
+                                        style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: 'var(--spacing-2)',
+                                            padding: 'var(--spacing-1) 0',
+                                            fontSize: '0.875rem',
+                                            cursor: 'pointer',
+                                        }}
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            checked={checked}
+                                            onChange={(event) => {
+                                                const nextValues = event.target.checked
+                                                    ? [...acaoIdsSelecionadas, value]
+                                                    : acaoIdsSelecionadas.filter((id) => id !== value)
+                                                onChange('acao_ids', nextValues)
+                                            }}
+                                        />
+                                        <span>{acao.codigo ? `${acao.codigo} - ` : ''}{acao.nome}</span>
+                                    </label>
+                                )
+                            })
+                        )}
+                    </div>
                 </div>
 
                 <div>

@@ -93,4 +93,24 @@ class ProjectFormatterTest extends TestCase
         $this->assertSame(33, $result['percent_complete']);
         $this->assertSame(2, $result['owner_id']);
     }
+
+    public function testFormatsProjectWithMultipleActions(): void
+    {
+        $result = $this->formatter->formatProject(
+            [
+                'project_id' => 71,
+                'project_name' => 'Projeto Integrado',
+                'project_status' => 2,
+            ],
+            false,
+            [
+                ['id' => 8, 'nome' => 'Acao B', 'principal' => false],
+                ['id' => 3, 'nome' => 'Acao A', 'principal' => true],
+            ]
+        );
+
+        $this->assertCount(2, $result['acoes']);
+        $this->assertSame(3, $result['acao_id']);
+        $this->assertSame('Acao A', $result['acao']['nome']);
+    }
 }

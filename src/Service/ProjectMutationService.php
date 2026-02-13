@@ -97,10 +97,11 @@ class ProjectMutationService
             }
         }
 
-        $acaoId = null;
-        if ($this->tableHasColumn($this->db->table('projects'), 'project_acao_id') && array_key_exists('acao_id', $body)) {
-            $acaoId = $this->normalizeAcaoId($body['acao_id']);
-            $acaoValidation = $this->validateAcaoId($acaoId, $programaId);
+        $acaoPayload = $this->extractActionPayload($body);
+        $acaoIds = $acaoPayload['ids'];
+        $primaryAcaoId = $acaoPayload['primary_id'];
+        if ($acaoPayload['provided']) {
+            $acaoValidation = $this->validateAcaoIds($acaoIds, $programaId);
             if ($acaoValidation !== null) {
                 return $this->validationResult($acaoValidation);
             }
@@ -146,11 +147,15 @@ class ProjectMutationService
         if ($this->tableHasColumn($this->db->table('projects'), 'project_programa_id') && array_key_exists('programa_id', $body)) {
             $legacyFields['project_programa_id'] = $programaId;
         }
-        if ($this->tableHasColumn($this->db->table('projects'), 'project_acao_id') && array_key_exists('acao_id', $body)) {
-            $legacyFields['project_acao_id'] = $acaoId;
+        if ($this->tableHasColumn($this->db->table('projects'), 'project_acao_id') && $acaoPayload['provided']) {
+            $legacyFields['project_acao_id'] = $primaryAcaoId;
         }
 
         if (!$this->updateProjectRow($projectId, $legacyFields)) {
+            return $this->errorResult('Failed to create project');
+        }
+
+        if ($acaoPayload['provided'] && !$this->syncProjectAcoes($projectId, $acaoIds, $primaryAcaoId)) {
             return $this->errorResult('Failed to create project');
         }
 
@@ -277,11 +282,17 @@ class ProjectMutationService
             }
         }
 
-        $acaoId = null;
-        $hasAcaoField = array_key_exists('acao_id', $body);
-        if ($hasAcaoField && $this->tableHasColumn($this->db->table('projects'), 'project_acao_id')) {
-            $acaoId = $this->normalizeAcaoId($body['acao_id']);
-            $acaoValidation = $this->validateAcaoId($acaoId, $programaId);
+        $acaoPayload = $this->extractActionPayload($body);
+        $hasAcaoField = $acaoPayload['provided'];
+        $acaoIds = $acaoPayload['ids'];
+        $primaryAcaoId = $acaoPayload['primary_id'];
+        if ($hasAcaoField) {
+            $programaIdParaValidacao = $programaId;
+            if (!$hasProgramaField) {
+                $programaIdParaValidacao = $this->getProjectProgramaId($projectId);
+            }
+
+            $acaoValidation = $this->validateAcaoIds($acaoIds, $programaIdParaValidacao);
             if ($acaoValidation !== null) {
                 return $this->validationResult($acaoValidation);
             }
@@ -340,10 +351,14 @@ class ProjectMutationService
             $legacyUpdates['project_programa_id'] = $programaId;
         }
         if ($hasAcaoField && $this->tableHasColumn($this->db->table('projects'), 'project_acao_id')) {
-            $legacyUpdates['project_acao_id'] = $acaoId;
+            $legacyUpdates['project_acao_id'] = $primaryAcaoId;
         }
 
         if (!$this->updateProjectRow($projectId, $legacyUpdates)) {
+            return $this->errorResult('Failed to update project');
+        }
+
+        if ($hasAcaoField && !$this->syncProjectAcoes($projectId, $acaoIds, $primaryAcaoId)) {
             return $this->errorResult('Failed to update project');
         }
 
@@ -558,6 +573,103 @@ class ProjectMutationService
         return null;
     }
 
+    /**
+     * @param array<int, int> $acaoIds
+     * @return array<string, string>|null
+     */
+    private function validateAcaoIds(array $acaoIds, ?int $programaId): ?array
+    {
+        foreach ($acaoIds as $acaoId) {
+            $validation = $this->validateAcaoId($acaoId, $programaId);
+            if ($validation !== null) {
+                return $validation;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<string, mixed> $body
+     * @return array{provided: bool, ids: array<int, int>, primary_id: ?int}
+     */
+    private function extractActionPayload(array $body): array
+    {
+        if (array_key_exists('acoes', $body)) {
+            return $this->normalizeActionCollectionPayload($body['acoes']);
+        }
+
+        if (array_key_exists('acao_ids', $body)) {
+            return $this->normalizeActionCollectionPayload($body['acao_ids']);
+        }
+
+        if (array_key_exists('acao_id', $body)) {
+            $acaoId = $this->normalizeAcaoId($body['acao_id']);
+            return [
+                'provided' => true,
+                'ids' => $acaoId !== null ? [$acaoId] : [],
+                'primary_id' => $acaoId,
+            ];
+        }
+
+        return [
+            'provided' => false,
+            'ids' => [],
+            'primary_id' => null,
+        ];
+    }
+
+    /**
+     * @return array{provided: bool, ids: array<int, int>, primary_id: ?int}
+     */
+    private function normalizeActionCollectionPayload(mixed $value): array
+    {
+        if (!is_array($value)) {
+            return [
+                'provided' => true,
+                'ids' => [],
+                'primary_id' => null,
+            ];
+        }
+
+        $ids = [];
+        $primaryId = null;
+
+        foreach ($value as $item) {
+            $isPrimary = false;
+            $candidateId = null;
+
+            if (is_array($item)) {
+                $candidateId = $this->normalizeAcaoId($item['id'] ?? $item['acao_id'] ?? null);
+                $isPrimary = !empty($item['principal']) || !empty($item['is_primary']);
+            } else {
+                $candidateId = $this->normalizeAcaoId($item);
+            }
+
+            if ($candidateId === null) {
+                continue;
+            }
+
+            if (!in_array($candidateId, $ids, true)) {
+                $ids[] = $candidateId;
+            }
+
+            if ($isPrimary && $primaryId === null) {
+                $primaryId = $candidateId;
+            }
+        }
+
+        if ($primaryId === null && $ids !== []) {
+            $primaryId = $ids[0];
+        }
+
+        return [
+            'provided' => true,
+            'ids' => $ids,
+            'primary_id' => $primaryId,
+        ];
+    }
+
     private function normalizeAcaoId(mixed $value): ?int
     {
         if ($value === null || $value === '') {
@@ -566,6 +678,114 @@ class ProjectMutationService
 
         $acaoId = (int) $value;
         return $acaoId > 0 ? $acaoId : null;
+    }
+
+    private function syncProjectAcoes(int $projectId, array $acaoIds, ?int $primaryAcaoId): bool
+    {
+        $linkTable = $this->resolveProjectAcaoLinkTable();
+        if ($linkTable === null) {
+            return true;
+        }
+
+        $deleteSql = sprintf(
+            'DELETE FROM `%s` WHERE project_id = ?%s',
+            $linkTable,
+            $this->tenantAndCondition($linkTable)
+        );
+        $this->db->execute($deleteSql, [$projectId]);
+
+        if ($acaoIds === []) {
+            return true;
+        }
+
+        $tenantId = $this->resolveTenantId();
+        $timestamp = date('Y-m-d H:i:s');
+        $primaryAcaoId = in_array($primaryAcaoId, $acaoIds, true)
+            ? $primaryAcaoId
+            : $acaoIds[0];
+
+        foreach ($acaoIds as $acaoId) {
+            $columns = ['project_id', 'acao_id'];
+            $values = [$projectId, $acaoId];
+
+            if ($this->tableHasColumn($linkTable, 'principal')) {
+                $columns[] = 'principal';
+                $values[] = $acaoId === $primaryAcaoId ? 1 : 0;
+            }
+
+            if ($this->tableHasColumn($linkTable, 'peso_contribuicao')) {
+                $columns[] = 'peso_contribuicao';
+                $values[] = $acaoId === $primaryAcaoId ? 100 : null;
+            }
+
+            if ($this->tableHasColumn($linkTable, 'tenant_id') && $tenantId !== null) {
+                $columns[] = 'tenant_id';
+                $values[] = $tenantId;
+            }
+
+            if ($this->tableHasColumn($linkTable, 'created_at')) {
+                $columns[] = 'created_at';
+                $values[] = $timestamp;
+            }
+
+            if ($this->tableHasColumn($linkTable, 'updated_at')) {
+                $columns[] = 'updated_at';
+                $values[] = $timestamp;
+            }
+
+            $placeholders = implode(', ', array_fill(0, count($columns), '?'));
+            $sql = sprintf(
+                'INSERT INTO `%s` (%s) VALUES (%s)',
+                $linkTable,
+                implode(', ', array_map(static fn(string $column): string => "`{$column}`", $columns)),
+                $placeholders
+            );
+
+            $this->db->execute($sql, $values);
+        }
+
+        return true;
+    }
+
+    private function resolveProjectAcaoLinkTable(): ?string
+    {
+        if (
+            $this->tableExists('dotp_projeto_acoes') &&
+            $this->tableHasColumn('dotp_projeto_acoes', 'project_id') &&
+            $this->tableHasColumn('dotp_projeto_acoes', 'acao_id')
+        ) {
+            return 'dotp_projeto_acoes';
+        }
+
+        if (
+            $this->tableExists('projeto_acoes') &&
+            $this->tableHasColumn('projeto_acoes', 'project_id') &&
+            $this->tableHasColumn('projeto_acoes', 'acao_id')
+        ) {
+            return 'projeto_acoes';
+        }
+
+        return null;
+    }
+
+    private function getProjectProgramaId(int $projectId): ?int
+    {
+        if (!$this->tableHasColumn($this->db->table('projects'), 'project_programa_id')) {
+            return null;
+        }
+
+        $value = $this->db->fetchValue(sprintf(
+            'SELECT project_programa_id FROM `%s` WHERE project_id = %d%s LIMIT 1',
+            $this->db->table('projects'),
+            $projectId,
+            $this->tenantAndCondition($this->db->table('projects'))
+        ));
+
+        if ($value === null || (int) $value <= 0) {
+            return null;
+        }
+
+        return (int) $value;
     }
 
     private function resolveProgramTable(): ?string
@@ -611,6 +831,8 @@ class ProjectMutationService
     {
         return [
             'acao_id' => $message,
+            'acao_ids' => $message,
+            'acoes' => $message,
         ];
     }
 

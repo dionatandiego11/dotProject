@@ -28,6 +28,18 @@ import ProjectList from './ProjectList'
 import useProjectFilters from './useProjectFilters'
 import useProjectForm from './useProjectForm'
 
+function normalizeSelectedAcaoIds(formData) {
+    if (!Array.isArray(formData?.acao_ids)) {
+        return []
+    }
+
+    const ids = formData.acao_ids
+        .map((value) => parseInt(value, 10))
+        .filter((value) => !Number.isNaN(value) && value > 0)
+
+    return [...new Set(ids)]
+}
+
 export default function ProjectsPage() {
     const toast = useToast()
     const validation = useValidation()
@@ -158,6 +170,8 @@ export default function ProjectsPage() {
             setCreating(true)
             const unidadeId = formData.company_id ? parseInt(formData.company_id, 10) : null
             const statusValue = formData.status ? parseInt(formData.status, 10) : 0
+            const selectedAcaoIds = normalizeSelectedAcaoIds(formData)
+            const primaryAcaoId = selectedAcaoIds.length > 0 ? selectedAcaoIds[0] : null
 
             if (!CREATE_ALLOWED_PROJECT_STATUSES.includes(statusValue)) {
                 toast.error('Status inicial invalido para criacao de projeto.')
@@ -173,7 +187,8 @@ export default function ProjectsPage() {
                 unidade_id: unidadeId,
                 company_id: unidadeId,
                 programa_id: formData.programa_id ? parseInt(formData.programa_id, 10) : null,
-                acao_id: formData.acao_id ? parseInt(formData.acao_id, 10) : null,
+                acao_ids: selectedAcaoIds,
+                acao_id: primaryAcaoId,
                 status: statusValue,
             })
 
@@ -207,6 +222,8 @@ export default function ProjectsPage() {
             const unidadeId = formData.company_id ? parseInt(formData.company_id, 10) : null
             const currentStatus = getNumericProjectStatus(editingProject)
             const nextStatus = formData.status ? parseInt(formData.status, 10) : currentStatus
+            const selectedAcaoIds = normalizeSelectedAcaoIds(formData)
+            const primaryAcaoId = selectedAcaoIds.length > 0 ? selectedAcaoIds[0] : null
 
             if (!canTransitionProjectStatus(currentStatus, nextStatus)) {
                 toast.error(`Transicao de status invalida: ${getStatusLabelById(currentStatus)} -> ${getStatusLabelById(nextStatus)}.`)
@@ -223,7 +240,8 @@ export default function ProjectsPage() {
                 unidade_id: unidadeId,
                 company_id: unidadeId,
                 programa_id: formData.programa_id ? parseInt(formData.programa_id, 10) : null,
-                acao_id: formData.acao_id ? parseInt(formData.acao_id, 10) : null,
+                acao_ids: selectedAcaoIds,
+                acao_id: primaryAcaoId,
             })
             if (currentStatus !== nextStatus) {
                 await updateProjectStatus(editingProject.id, { status: nextStatus })
